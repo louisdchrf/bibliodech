@@ -122,17 +122,8 @@ def create_series(body: dict, request: Request, db: Session = Depends(get_db)):
     return _series_to_dict(s)
 
 
-@router.post("/api/series/detect-all")
-def detect_series_all(
-    background_tasks: BackgroundTasks,
-    request: Request,
-    db: Session = Depends(get_db),
-):
-    """Lance la détection de série sur tous les livres sans série (heuristiques titre + re-lookup API)."""
-    user = get_current_user(request, db)
-    require_contributor(user)
-
-    # Passe 1 : heuristiques titre (instantané)
+async def _detect_all_series(db: Session) -> dict:
+    """Logique de détection de séries par heuristiques titre, appelable depuis l'endpoint et le scheduler."""
     books_no_series = (
         db.query(Book)
         .filter(Book.series_id.is_(None), Book.enrichment_status == "ok")
@@ -156,22 +147,33 @@ def detect_series_all(
 
     # Passe 2 : re-lookup API pour les livres restants sans correspondance titre
     if queued_lookup:
-        import asyncio
         from app.routers.scan import _enrich_book
+        import asyncio
         for book_id in queued_lookup:
             book = db.query(Book).filter(Book.id == book_id).first()
             if book and book.isbn:
                 book.enrichment_status = "pending"
         db.commit()
+        tasks = []
         for book_id in queued_lookup:
             book = db.query(Book).filter(Book.id == book_id).first()
             if book and book.isbn:
-                background_tasks.add_task(_enrich_book, book_id, book.isbn)
+                tasks.append(_enrich_book(book_id, book.isbn))
+        if tasks:
+            await asyncio.gather(*tasks)
 
-    return {
-        "found_instant": found_instant,
-        "queued_lookup": len(queued_lookup),
-    }
+    return {"found_instant": found_instant, "queued_lookup": len(queued_lookup)}
+
+
+@router.post("/api/series/detect-all")
+async def detect_series_all(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Lance la détection de série sur tous les livres sans série (heuristiques titre + re-lookup API)."""
+    user = get_current_user(request, db)
+    require_contributor(user)
+    return await _detect_all_series(db)
 
 
 @router.get("/api/series/suggestions")
