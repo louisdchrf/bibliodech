@@ -42,6 +42,7 @@ class Book(Base):
     room_id = Column(Integer, ForeignKey("rooms.id"), nullable=True)
     added_at = Column(DateTime, default=datetime.utcnow)
     enrichment_status = Column(String, nullable=False, default="ok")
+    enrichment_source = Column(String, nullable=True)  # source principale (ex: "sudoc", "bnf")
     source_data = Column(Text, nullable=True)  # JSON: résultats bruts par source
 
     series = relationship("Series", back_populates="books")

@@ -12,6 +12,9 @@
       <select id="filter-location" class="select-input">
         <option value="">Toutes les localisations</option>
       </select>
+      <select id="filter-source" class="select-input">
+        <option value="">Toutes les sources</option>
+      </select>
       <select id="sort-by" class="select-input">
         <option value="title">Trier par titre</option>
         <option value="author">Trier par auteur</option>
@@ -98,6 +101,7 @@
   const searchInput = document.getElementById('search');
   const filterSeries = document.getElementById('filter-series');
   const filterLocation = document.getElementById('filter-location');
+  const filterSource = document.getElementById('filter-source');
   const sortBy = document.getElementById('sort-by');
   const modalOverlay = document.getElementById('modal-overlay');
   const modalContent = document.getElementById('modal-content');
@@ -299,6 +303,8 @@
     if (sid) params.set('series_id', sid);
     const lid = filterLocation.value;
     if (lid) params.set('room_id', lid);
+    const src = filterSource.value;
+    if (src) params.set('source', src);
     params.set('sort_by', sortBy.value);
     params.set('limit', '1000');  // pagination : suffisant pour une biblio personnelle
     const res = await fetch('/api/books?' + params.toString());
@@ -1015,6 +1021,7 @@
   });
   filterSeries.addEventListener('change', loadBooks);
   filterLocation.addEventListener('change', loadBooks);
+  filterSource.addEventListener('change', loadBooks);
   sortBy.addEventListener('change', loadBooks);
 
   // ── Re-enrichissement ────────────────────────────────────────────────────
@@ -1104,7 +1111,17 @@
     }, 3000);
   });
 
-  Promise.all([loadSeries(), loadLocations()]).then(() => { loadBooks(); updateReenrichCount(); });
+  async function loadSourceFilter() {
+    const res = await fetch('/api/stats');
+    if (!res.ok) return;
+    const data = await res.json();
+    const sources = data.by_source || [];
+    if (sources.length <= 1) return;
+    filterSource.innerHTML = '<option value="">Toutes les sources</option>'
+      + sources.map(s => `<option value="${s.id}">${escHtml(s.label)} (${s.count})</option>`).join('');
+  }
+
+  Promise.all([loadSeries(), loadLocations(), loadSourceFilter()]).then(() => { loadBooks(); updateReenrichCount(); });
 
   // Rechargement des localisations si on revient sur l'onglet après en avoir créé une
   document.addEventListener('visibilitychange', () => {

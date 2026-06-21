@@ -39,6 +39,14 @@ def init_db():
 
         if "source_data" not in book_cols:
             conn.execute(text("ALTER TABLE books ADD COLUMN source_data TEXT"))
+        if "enrichment_source" not in book_cols:
+            conn.execute(text("ALTER TABLE books ADD COLUMN enrichment_source TEXT"))
+            # Backfill : première clé de source_data comme source principale
+            conn.execute(text("""
+                UPDATE books SET enrichment_source = (
+                    SELECT key FROM json_each(source_data) LIMIT 1
+                ) WHERE source_data IS NOT NULL AND json_valid(source_data)
+            """))
 
         user_cols = [r[1] for r in conn.execute(text("PRAGMA table_info(users)"))]
         if "must_change_password" not in user_cols:

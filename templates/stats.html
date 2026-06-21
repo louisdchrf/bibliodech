@@ -33,6 +33,12 @@
       <div id="chart-authors"></div>
     </div>
 
+    <!-- Sources -->
+    <div class="stat-card">
+      <h2 class="stat-card-title">Sources d'enrichissement</h2>
+      <div id="chart-sources"></div>
+    </div>
+
     <!-- Prêts -->
     <div class="stat-card">
       <h2 class="stat-card-title">Prêts</h2>
@@ -241,6 +247,7 @@
     donutChart(document.getElementById('chart-languages'), d.languages);
     barChart(document.getElementById('chart-locations'), d.by_location, { color: PRIMARY });
     barChart(document.getElementById('chart-authors'),   d.top_authors,  { color: ACCENT });
+    barChart(document.getElementById('chart-sources'),   (d.by_source || []).map(s => ({ label: s.label, count: s.count })), { color: PRIMARY });
     renderLoans(d.loans);
   }
 

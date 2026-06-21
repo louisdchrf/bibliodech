@@ -264,6 +264,19 @@ def get_stats(request: Request, db: Session = Depends(get_db)):
         ).scalar()
         months.append({"label": label, "count": count})
 
+    # ── Par source d'enrichissement ───────────────────────────────────────────
+    source_rows = db.query(Book.enrichment_source, func.count(Book.id))\
+        .group_by(Book.enrichment_source).order_by(func.count(Book.id).desc()).all()
+    SOURCE_LABELS = {
+        "sudoc": "SUDOC", "bnf": "BnF", "decitre": "Decitre",
+        "isbndb": "ISBNdb", "openlibrary": "Open Library",
+        "openlibrary_search": "Open Library (search)", "googlebooks": "Google Books",
+    }
+    by_source = [
+        {"id": src or "none", "label": SOURCE_LABELS.get(src, src or "Manuel / Import"), "count": cnt}
+        for src, cnt in source_rows
+    ]
+
     # ── Langues ───────────────────────────────────────────────────────────────
     lang_rows = db.query(Book.language, func.count(Book.id))\
         .filter(Book.language.isnot(None), Book.language != "")\
@@ -307,6 +320,7 @@ def get_stats(request: Request, db: Session = Depends(get_db)):
             "active_loans": active_loans,
         },
         "by_location": by_location,
+        "by_source": by_source,
         "top_authors": top_authors,
         "by_month": months,
         "languages": languages,

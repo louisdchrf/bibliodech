@@ -20,35 +20,6 @@
 
     <ul id="sources-list" class="sources-list"></ul>
 
-    <!-- Clés API optionnelles par source -->
-    <div class="api-keys-section">
-      <h3 class="api-keys-title">Clés API</h3>
-
-      <div class="api-key-row">
-        <div class="api-key-info">
-          <span class="api-key-label">Google Books</span>
-          <span class="api-key-desc">Sans clé : ~100 req/jour · Avec clé : 1 000 req/jour gratuit · <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console</a> → Books API</span>
-        </div>
-        <div class="api-key-input-wrap">
-          <input type="password" id="googlebooks-key-input" class="input-sm api-key-input" placeholder="Clé API Google Books…" autocomplete="off">
-          <button type="button" id="googlebooks-key-toggle" class="btn btn-ghost btn-xs" title="Afficher/masquer">👁</button>
-        </div>
-        <span id="googlebooks-key-status" class="api-key-status"></span>
-      </div>
-
-      <div class="api-key-row">
-        <div class="api-key-info">
-          <span class="api-key-label">ISBNdb</span>
-          <span class="api-key-desc">Excellente couverture FR/EN · <a href="https://isbndb.com/isbn-database" target="_blank" rel="noopener">isbndb.com</a> · ~15 $/mois</span>
-        </div>
-        <div class="api-key-input-wrap">
-          <input type="password" id="isbndb-key-input" class="input-sm api-key-input" placeholder="Clé API ISBNdb…" autocomplete="off">
-          <button type="button" id="isbndb-key-toggle" class="btn btn-ghost btn-xs" title="Afficher/masquer">👁</button>
-        </div>
-        <span id="isbndb-key-status" class="api-key-status"></span>
-      </div>
-    </div>
-
     <div class="settings-row">
       <label>Timeout (secondes)</label>
       <input type="number" id="timeout-input" min="1" max="15" step="1" class="input-sm" style="width:5rem">
@@ -229,6 +200,24 @@
   </div>
 </div>
 
+<!-- Modal clé API source -->
+<div id="api-key-modal" class="modal-overlay" style="display:none">
+  <div class="modal-card modal-card-sm">
+    <button class="modal-close" id="api-key-modal-close">&times;</button>
+    <h3 id="api-key-modal-title" style="margin-bottom:.75rem">Clé API</h3>
+    <p id="api-key-modal-desc" class="text-muted" style="font-size:.85rem;margin-bottom:1rem"></p>
+    <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:1rem">
+      <input type="password" id="api-key-modal-input" class="input-sm" style="flex:1" autocomplete="off" placeholder="Clé API…">
+      <button type="button" id="api-key-modal-toggle" class="btn btn-ghost btn-xs" title="Afficher/masquer">👁</button>
+    </div>
+    <div class="modal-footer" style="padding:0">
+      <button class="btn btn-ghost" id="api-key-modal-cancel">Annuler</button>
+      <button class="btn btn-primary" id="api-key-modal-save">Enregistrer</button>
+    </div>
+    <div id="api-key-modal-msg" style="margin-top:.5rem;font-size:.82rem"></div>
+  </div>
+</div>
+
 <!-- Modal création utilisateur -->
 <div id="create-user-modal" class="modal-overlay" style="display:none">
   <div class="modal-card" style="max-width:520px">
@@ -385,6 +374,8 @@
       li.className = 'source-item';
       li.draggable = true;
       li.dataset.index = i;
+      const API_KEY_SOURCES = { googlebooks: 'googlebooks_api_key', isbndb: 'isbndb_api_key' };
+      const hasKey = API_KEY_SOURCES[src.id];
       li.innerHTML = `
         <span class="drag-handle" title="Glisser pour réordonner">⠿</span>
         <label class="source-toggle">
@@ -396,11 +387,75 @@
             value="${src.timeout ?? 5}" min="1" max="30" step="1" style="width:4rem">
           <span class="source-timeout-unit">s</span>
         </label>
+        ${hasKey ? `<button type="button" class="btn btn-ghost btn-xs api-key-btn" data-source="${src.id}" data-key="${hasKey}" title="Configurer la clé API">🔑</button>` : ''}
       `;
       list.appendChild(li);
     });
     initDrag();
+    wireApiKeyBtns();
   }
+
+  // ── Popup clé API ─────────────────────────────────────────────────────────
+  const API_KEY_INFO = {
+    googlebooks: {
+      label: 'Google Books',
+      desc: 'Sans clé : ~100 req/jour · Avec clé : 1 000 req/jour gratuit · <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console</a> → Books API',
+    },
+    isbndb: {
+      label: 'ISBNdb',
+      desc: 'Excellente couverture FR/EN · <a href="https://isbndb.com/isbn-database" target="_blank" rel="noopener">isbndb.com</a> · ~15 $/mois',
+    },
+  };
+  let _apiKeyTarget = null; // { settingKey }
+
+  function wireApiKeyBtns() {
+    list.querySelectorAll('.api-key-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const sourceId = btn.dataset.source;
+        const settingKey = btn.dataset.key;
+        const info = API_KEY_INFO[sourceId] || { label: sourceId, desc: '' };
+        _apiKeyTarget = { settingKey };
+        document.getElementById('api-key-modal-title').textContent = `Clé API — ${info.label}`;
+        document.getElementById('api-key-modal-desc').innerHTML = info.desc;
+        document.getElementById('api-key-modal-msg').textContent = '';
+        // Charger la valeur courante
+        const res = await fetch('/api/settings');
+        const cfg = await res.json();
+        document.getElementById('api-key-modal-input').value = cfg[settingKey] || '';
+        document.getElementById('api-key-modal-input').type = 'password';
+        document.getElementById('api-key-modal').style.display = 'flex';
+        document.getElementById('api-key-modal-input').focus();
+      });
+    });
+  }
+
+  document.getElementById('api-key-modal-close').addEventListener('click', () => {
+    document.getElementById('api-key-modal').style.display = 'none';
+  });
+  document.getElementById('api-key-modal-cancel').addEventListener('click', () => {
+    document.getElementById('api-key-modal').style.display = 'none';
+  });
+  document.getElementById('api-key-modal-toggle').addEventListener('click', () => {
+    const inp = document.getElementById('api-key-modal-input');
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+  });
+  document.getElementById('api-key-modal-save').addEventListener('click', async () => {
+    if (!_apiKeyTarget) return;
+    const val = document.getElementById('api-key-modal-input').value.trim();
+    const msgEl = document.getElementById('api-key-modal-msg');
+    const res = await fetch(`/api/settings/${_apiKeyTarget.settingKey}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: val }),
+    });
+    if (res.ok) {
+      msgEl.textContent = '✓ Clé enregistrée';
+      msgEl.style.color = 'var(--color-success, green)';
+      setTimeout(() => { document.getElementById('api-key-modal').style.display = 'none'; }, 800);
+    } else {
+      msgEl.textContent = 'Erreur lors de l\'enregistrement';
+      msgEl.style.color = 'var(--color-danger, red)';
+    }
+  });
 
   let dragIdx = null;
   function initDrag() {
@@ -626,80 +681,6 @@
   editModalClose.addEventListener('click', () => { editModal.style.display = 'none'; });
   editModal.addEventListener('click', (e) => { if (e.target === editModal) editModal.style.display = 'none'; });
 
-  // ── Google Books key ─────────────────────────────────────────────────────
-  const googlebooksInput  = document.getElementById('googlebooks-key-input');
-  const googlebooksToggle = document.getElementById('googlebooks-key-toggle');
-  const googlebooksStatus = document.getElementById('googlebooks-key-status');
-
-  googlebooksToggle.addEventListener('click', () => {
-    googlebooksInput.type = googlebooksInput.type === 'password' ? 'text' : 'password';
-  });
-
-  function updateGooglebooksStatus(key) {
-    if (key) {
-      googlebooksStatus.textContent = '✓ Configurée';
-      googlebooksStatus.className = 'api-key-status api-key-status-ok';
-    } else {
-      googlebooksStatus.textContent = 'Sans clé (limité)';
-      googlebooksStatus.className = 'api-key-status api-key-status-empty';
-    }
-  }
-
-  btnSave.addEventListener('click', async () => {
-    const key = googlebooksInput.value.trim();
-    await fetch('/api/settings/googlebooks_api_key', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ value: key }),
-    });
-    updateGooglebooksStatus(key);
-  });
-
-  // ── ISBNdb key ───────────────────────────────────────────────────────────
-  const isbndbInput = document.getElementById('isbndb-key-input');
-  const isbndbToggle = document.getElementById('isbndb-key-toggle');
-  const isbndbStatus = document.getElementById('isbndb-key-status');
-
-  isbndbToggle.addEventListener('click', () => {
-    isbndbInput.type = isbndbInput.type === 'password' ? 'text' : 'password';
-  });
-
-  async function loadIsbndbKey() {
-    const res = await fetch('/api/settings');
-    const data = await res.json();
-    const key = data.isbndb_api_key || '';
-    isbndbInput.value = key;
-    updateIsbndbStatus(key);
-  }
-
-  function updateIsbndbStatus(key) {
-    if (key) {
-      isbndbStatus.textContent = '✓ Configurée';
-      isbndbStatus.className = 'api-key-status api-key-status-ok';
-      // Auto-activer ISBNdb dans la liste si elle est désactivée
-      const src = sources.find(s => s.id === 'isbndb');
-      if (src && !src.enabled) {
-        const cb = list.querySelector('input[data-id="isbndb"]');
-        // Ne pas forcer — laisser l'utilisateur décider
-      }
-    } else {
-      isbndbStatus.textContent = 'Non configurée';
-      isbndbStatus.className = 'api-key-status api-key-status-empty';
-    }
-  }
-
-  // Intégrer la sauvegarde de la clé dans le bouton Enregistrer
-  const _origSave = btnSave.onclick;
-  btnSave.addEventListener('click', async () => {
-    const key = isbndbInput.value.trim();
-    await fetch('/api/settings/isbndb_api_key', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ value: key }),
-    });
-    updateIsbndbStatus(key);
-  });
-
   // ── Import CSV ───────────────────────────────────────────────────────────
   document.getElementById('csv-import-input').addEventListener('change', async (e) => {
     const file = e.target.files[0];
@@ -845,16 +826,6 @@
 
   // ── Init ──────────────────────────────────────────────────────────────────
   loadSources();
-  loadIsbndbKey();
-
-  // Charger la clé Google Books
-  (async () => {
-    const res = await fetch('/api/settings');
-    const data = await res.json();
-    const key = data.googlebooks_api_key || '';
-    googlebooksInput.value = key;
-    updateGooglebooksStatus(key);
-  })();
 
   // ── Activité ──────────────────────────────────────────────────────────────
   const ACTION_LABELS = {

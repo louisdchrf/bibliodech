@@ -22,6 +22,7 @@ def list_books(
     series_id: Optional[int] = Query(None),
     exclude_series_id: Optional[int] = Query(None),
     room_id: Optional[str] = Query(None),  # int ou "none" pour livres sans localisation
+    source: Optional[str] = Query(None),   # filtre par source d'enrichissement
     sort_by: str = Query("title"),
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
@@ -42,6 +43,10 @@ def list_books(
         q = q.filter(Book.room_id.is_(None))
     elif room_id is not None:
         q = q.filter(Book.room_id == int(room_id))
+    if source == "none":
+        q = q.filter(Book.enrichment_source.is_(None))
+    elif source is not None:
+        q = q.filter(Book.enrichment_source == source)
 
     if sort_by == "author":
         q = q.order_by(Book.authors)

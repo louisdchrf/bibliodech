@@ -100,6 +100,7 @@ async def _enrich_book(book_id: int, isbn: str) -> None:
         book.cover_url = await _resolve_cover(isbn, info)
 
         book.enrichment_status = "ok"
+        book.enrichment_source = info.get("source")
         if info.get("_per_source"):
             book.source_data = json.dumps(info["_per_source"], ensure_ascii=False)
 
