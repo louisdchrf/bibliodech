@@ -154,6 +154,18 @@ def missing_page(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse("missing.html", {"request": request, "user": user, "active": "missing", "build_version": BUILD_VERSION})
 
 
+@app.get("/tasks", response_class=HTMLResponse)
+def tasks_page(request: Request, db: Session = Depends(get_db)):
+    try:
+        user = get_current_user(request, db)
+    except Exception:
+        return RedirectResponse(url="/login", status_code=302)
+    if redir := _require_pw_changed(user): return redir
+    from app.auth import require_admin
+    require_admin(user)
+    return templates.TemplateResponse("tasks.html", {"request": request, "user": user, "active": "tasks", "build_version": BUILD_VERSION})
+
+
 @app.get("/api/books/export/csv")
 def export_books_csv(request: Request, db: Session = Depends(get_db)):
     get_current_user(request, db)

@@ -20,10 +20,11 @@
       <a href="/scanner" {% if active=='scanner' %}class="active"{% endif %}>Scanner</a>
       <a href="/library" {% if active=='library' %}class="active"{% endif %}>Bibliothèque</a>
       <a href="/series" {% if active=='series' %}class="active"{% endif %}>Séries</a>
+      <a href="/missing" {% if active=='missing' %}class="active"{% endif %}>À compléter</a>
       <a href="/locations" {% if active=='locations' %}class="active"{% endif %}>Localisations</a>
       <a href="/loans" {% if active=='loans' %}class="active"{% endif %}>Prêts</a>
-      <a href="/missing" {% if active=='missing' %}class="active"{% endif %}>À compléter</a>
       <a href="/stats" {% if active=='stats' %}class="active"{% endif %}>Statistiques</a>
+      {% if user.role == 'admin' %}<a href="/tasks" {% if active=='tasks' %}class="active"{% endif %}>Tâches</a>{% endif %}
       {% if user.role == 'admin' %}<a href="/settings" {% if active=='settings' or active=='users' %}class="active"{% endif %}>Paramètres</a>{% endif %}
     </div>
     <div class="nav-user">
