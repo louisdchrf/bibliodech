@@ -327,6 +327,22 @@ def list_shelves(request: Request, db: Session = Depends(get_db)):
     return [r[0] for r in rows]
 
 
+@router.get("/api/activity")
+def get_activity(request: Request, db: Session = Depends(get_db)):
+    get_current_user(request, db)
+    from app import scheduler as sched
+    return sched.get_running()
+
+
+@router.get("/api/tasks/next-runs")
+def get_next_runs(request: Request, db: Session = Depends(get_db)):
+    from app.auth import require_admin
+    user = get_current_user(request, db)
+    require_admin(user)
+    from app import scheduler as sched
+    return sched.get_next_runs()
+
+
 @router.get("/api/tasks/schedules")
 def get_task_schedules(request: Request, db: Session = Depends(get_db)):
     from app.auth import require_admin

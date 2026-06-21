@@ -15,6 +15,23 @@ log = logging.getLogger(__name__)
 _scheduler = AsyncIOScheduler(timezone="UTC")
 _SCHEDULES_KEY = "task_schedules"
 
+# ── Activité en cours ─────────────────────────────────────────────────────────
+_running: dict[str, dict] = {}  # task_id → {label, started_at}
+
+
+def get_running() -> list[dict]:
+    return [{"id": tid, **info} for tid, info in _running.items()]
+
+
+def get_next_runs() -> dict[str, str | None]:
+    """Retourne le prochain lancement (ISO) pour chaque tâche planifiée."""
+    result = {}
+    for task_id in SCHEDULABLE_TASKS:
+        job = _scheduler.get_job(f"task_{task_id}")
+        nrt = getattr(job, "next_run_time", None) if job else None
+        result[task_id] = nrt.isoformat() if nrt else None
+    return result
+
 # Tâches planifiables : id → (label, coroutine_factory)
 # Chaque coroutine_factory reçoit (db) et exécute la logique directement
 SCHEDULABLE_TASKS = {
@@ -58,6 +75,10 @@ async def _run_task(task_id: str):
     """Exécute une tâche planifiée et met à jour last_run / last_result."""
     from app.database import SessionLocal
     db = SessionLocal()
+    _running[task_id] = {
+        "label": SCHEDULABLE_TASKS.get(task_id, task_id),
+        "started_at": datetime.now(timezone.utc).isoformat(),
+    }
     try:
         log.info(f"[scheduler] Lancement de la tâche '{task_id}'")
         result = await _execute_task(task_id, db)
@@ -70,6 +91,7 @@ async def _run_task(task_id: str):
     except Exception as e:
         log.error(f"[scheduler] Erreur tâche '{task_id}': {e}")
     finally:
+        _running.pop(task_id, None)
         db.close()
 
 

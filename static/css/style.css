@@ -1739,3 +1739,33 @@ html.dark .missing-vol-tobuy     { background: #2d0f0f; }
   font-weight: 700;
   white-space: nowrap;
 }
+
+/* ── Activité nav ────────────────────────────────────────────────────────── */
+.activity-nav-btn {
+  display: flex; align-items: center; gap: .4rem;
+  font-size: .8rem; color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  padding: .2rem .6rem;
+  animation: activity-pulse 2s ease-in-out infinite;
+}
+@keyframes activity-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: .65; }
+}
+.activity-spinner {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--color-primary);
+  display: inline-block; flex-shrink: 0;
+  animation: spinner-blink 1.2s ease-in-out infinite;
+}
+@keyframes spinner-blink {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: .4; transform: scale(.7); }
+}
+
+/* ── Prochain lancement ──────────────────────────────────────────────────── */
+.task-next-run {
+  font-size: .72rem; color: var(--color-text-muted);
+  white-space: nowrap;
+}

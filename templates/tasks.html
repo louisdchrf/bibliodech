@@ -125,6 +125,7 @@
           <div class="task-name">${escHtml(t.name)}</div>
           <div class="task-desc">${escHtml(t.desc)}</div>
           ${lastRun ? `<div style="font-size:.75rem;color:var(--color-text-muted);margin-top:.25rem">Dernier lancement : ${lastRun}${cfg.last_result ? ` — ${escHtml(cfg.last_result)}` : ''}</div>` : ''}
+          <div id="next-run-${t.id}" class="task-next-run"></div>
         </div>
         <div class="task-actions" style="gap:.5rem">
           <span class="task-status" id="status-${t.id}"></span>
@@ -146,11 +147,38 @@
     wireMatchLibrary();
   }
 
+  let _nextRuns = {};
+
+  function fmtNextRun(iso) {
+    if (!iso) return null;
+    const diff = new Date(iso) - Date.now();
+    if (diff <= 0) return 'imminent';
+    const s = Math.round(diff / 1000);
+    if (s < 60) return `dans ${s}s`;
+    const m = Math.round(s / 60);
+    if (m < 60) return `dans ${m} min`;
+    const h = Math.floor(m / 60), rm = m % 60;
+    return rm ? `dans ${h}h ${rm}min` : `dans ${h}h`;
+  }
+
+  function updateNextRunLabels() {
+    for (const [id, iso] of Object.entries(_nextRuns)) {
+      const el = document.getElementById(`next-run-${id}`);
+      if (el) el.textContent = fmtNextRun(iso) ? `⏰ ${fmtNextRun(iso)}` : '';
+    }
+  }
+
   async function loadSchedules() {
-    const res = await fetch('/api/tasks/schedules');
-    _schedules = await res.json();
+    const [r1, r2] = await Promise.all([
+      fetch('/api/tasks/schedules'),
+      fetch('/api/tasks/next-runs'),
+    ]);
+    _schedules = await r1.json();
+    _nextRuns = await r2.json();
     renderSchedulableCards();
     wireTaskBtns();
+    updateNextRunLabels();
+    setInterval(updateNextRunLabels, 30000);
   }
 
   // ── Sauvegarder la planification ─────────────────────────────────────────
