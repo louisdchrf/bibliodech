@@ -120,18 +120,117 @@ def _extract_total_from_text(text: str) -> int | None:
     return None
 
 
+_WP_HEADERS = {"User-Agent": "Bibliodech/1.0 (ldecherf1@gmail.com)"}
+_WP_API = "https://fr.wikipedia.org/w/api.php"
+
+
+async def _wikipedia_volume_list(series_name: str, client: httpx.AsyncClient) -> list[dict] | None:
+    """
+    Cherche la série sur Wikipedia FR, extrait le total d'albums depuis l'infobox
+    et les titres depuis la liste des albums.
+    Retourne [{position, title}] ou None si rien trouvé.
+    """
+    # 1. Chercher le titre de l'article
+    try:
+        r = await client.get(_WP_API, params={
+            "action": "query", "list": "search",
+            "srsearch": f"{series_name} bande dessinée",
+            "srlimit": 3, "format": "json", "utf8": 1,
+        }, headers=_WP_HEADERS, timeout=10)
+        hits = r.json().get("query", {}).get("search", [])
+    except Exception:
+        return None
+
+    if not hits:
+        return None
+
+    # Prendre le premier hit dont le titre ressemble au nom de la série
+    article_title = None
+    for hit in hits:
+        t = hit["title"].lower()
+        if any(w in t for w in series_name.lower().split()[:2]):
+            article_title = hit["title"]
+            break
+    if not article_title:
+        article_title = hits[0]["title"]
+
+    # 2. Récupérer le wikitext
+    try:
+        r2 = await client.get(_WP_API, params={
+            "action": "query", "titles": article_title,
+            "prop": "revisions", "rvprop": "content", "rvslots": "main",
+            "format": "json", "utf8": 1,
+        }, headers=_WP_HEADERS, timeout=10)
+        pages = r2.json().get("query", {}).get("pages", {})
+        content = next(iter(pages.values())) \
+            .get("revisions", [{}])[0] \
+            .get("slots", {}).get("main", {}).get("*", "")
+    except Exception:
+        return None
+
+    if not content:
+        return None
+
+    # 3. Total depuis l'infobox : | albums = 17
+    total: int | None = None
+    m = re.search(r"\|\s*nombre\s+d[’'\"]albums\s*=\s*(\d+)", content) \
+        or re.search(r'\|\s*(?:nb_)?albums\s*=\s*(\d+)', content)
+    if m:
+        total = int(m.group(1))
+
+    if not total:
+        total = _extract_total_from_text(content)
+
+    # 4. Titres des tomes depuis la liste des albums dans le wikitext
+    # Patterns : # ''Titre'' (année) ou | titre = Titre
+    title_map: dict[int, str] = {}
+
+    # Pattern liste numérotée wiki : # ''Titre''
+    for i, m in enumerate(re.finditer(r'^\s*#\s*(?:\'\'\'?)?([^\'#\n\[]{3,60})(?:\'\'\'?)?', content, re.MULTILINE), start=1):
+        raw = m.group(1).strip().rstrip("'").strip()
+        if raw and not raw.startswith('|') and len(raw) > 2:
+            title_map[i] = raw
+
+    # Pattern tableau : | titre = X ou | Titre || ...
+    for m in re.finditer(r'\|\s*(?:titre\d*\s*=\s*)([^\|\n\]]{3,60})', content, re.IGNORECASE):
+        raw = m.group(1).strip()
+        if raw and len(raw) > 2:
+            pos = len(title_map) + 1
+            if pos not in title_map:
+                title_map[pos] = raw
+
+    if not total and not title_map:
+        return None
+
+    # Si on a un total mais peu de titres, compléter avec positions sans titre
+    if total:
+        return [
+            {"position": float(i), "title": title_map.get(i)}
+            for i in range(1, total + 1)
+        ]
+
+    return [
+        {"position": float(pos), "title": title}
+        for pos, title in sorted(title_map.items())
+    ]
+
+
 async def search_complete_volume_list(
     series_name: str,
     client: httpx.AsyncClient,
 ) -> list[dict]:
     """
-    Cherche la liste complète des volumes d'une série via DDG.
-    Stratégie en 3 requêtes :
-      1. Liste des tomes + extraction des numéros individuels
-      2. Nombre total de tomes
-      3. Titres des tomes (enrichissement)
+    Cherche la liste complète des volumes d'une série.
+    Stratégie : Wikipedia FR d'abord, puis DDG en fallback.
     Retourne [{position, title}].
     """
+    # Étape 1 : Wikipedia
+    wp_result = await _wikipedia_volume_list(series_name, client)
+    if wp_result:
+        return wp_result
+
+    # Étape 2 : DDG fallback
+    await asyncio.sleep(0.5)
     text1 = await _ddg_query(f'"{series_name}" liste tomes bd série complet', client)
     await asyncio.sleep(1.0)
     text2 = await _ddg_query(f'"{series_name}" série nombre tomes total intégrale', client)
@@ -142,35 +241,13 @@ async def search_complete_volume_list(
 
     if total and found_nums:
         max_found = max(found_nums)
-        if total >= max_found * 0.7:
-            all_nums = set(float(i) for i in range(1, total + 1))
-        else:
-            all_nums = found_nums
+        all_nums = set(float(i) for i in range(1, total + 1)) if total >= max_found * 0.7 else found_nums
     elif total:
         all_nums = set(float(i) for i in range(1, total + 1))
     else:
         all_nums = found_nums
 
-    if not all_nums:
-        return []
-
-    await asyncio.sleep(1.0)
-    text3 = await _ddg_query(f'"{series_name}" tome 1 2 3 titre liste', client)
-    title_map: dict[float, str] = {}
-    for m in re.finditer(
-        r'(?:tome|vol\.?)\s+(\d+)\s*[-–:]\s*([A-ZÀ-ÿ][^,.\n!?]{3,60})',
-        text3, re.IGNORECASE
-    ):
-        pos = float(m.group(1))
-        title = m.group(2).strip()
-        if pos in all_nums and pos not in title_map:
-            title_map[pos] = title
-
-    return [
-        {"position": p, "title": title_map.get(p)}
-        for p in sorted(all_nums)
-        if 1 <= p <= 200
-    ]
+    return [{"position": p, "title": None} for p in sorted(all_nums) if 1 <= p <= 200]
 
 
 
