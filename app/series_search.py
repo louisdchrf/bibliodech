@@ -88,84 +88,36 @@ async def _ddg_query(query: str, client: httpx.AsyncClient) -> str:
     return " ".join(_clean_html(t) for t in raw_titles + raw_snippets)
 
 
-async def _ddg_find_url(query: str, client: httpx.AsyncClient, domain: str) -> str | None:
-    """Cherche via DDG et retourne la première URL du domaine cible trouvée dans les résultats."""
-    try:
-        r = await client.get(
-            _DDG_URL,
-            params={"q": query, "kl": "fr-fr", "kp": "-1"},
-            headers=_HEADERS,
-            timeout=12,
-            follow_redirects=True,
-        )
-        if r.status_code != 200:
-            return None
-    except Exception:
-        return None
+def _extract_volume_numbers(text: str) -> set[float]:
+    nums: set[float] = set()
+    for pat in _VOL_PATTERNS:
+        for m in re.finditer(pat, text, re.IGNORECASE):
+            try:
+                nums.add(float(m.group(1)))
+            except ValueError:
+                pass
+    return nums
 
-    # DDG encode les URLs en data-href ou href dans les liens de résultats
-    urls = re.findall(r'href="(https?://[^"]*' + re.escape(domain) + r'[^"]*)"', r.text)
-    for url in urls:
-        if domain in url:
-            return url
+
+def _extract_total_from_text(text: str) -> int | None:
+    """Cherche des formulations du type 'série en X tomes', 'X albums', etc."""
+    patterns = [
+        r's[eé]rie\s+(?:en\s+)?(\d+)\s+(?:tomes?|volumes?|albums?)',
+        r'(\d+)\s+(?:tomes?|volumes?|albums?)\s+(?:au\s+total|en\s+tout|parus?)',
+        r'intégrale\s+(?:en\s+)?(\d+)\s+(?:tomes?|volumes?)',
+        r'(?:comporte|contient|comprend)\s+(\d+)\s+(?:tomes?|volumes?)',
+        r'(\d+)\s+(?:tomes?|volumes?)\s+(?:dans\s+la\s+s[eé]rie|de\s+la\s+s[eé]rie)',
+    ]
+    for pat in patterns:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            try:
+                n = int(m.group(1))
+                if 2 <= n <= 200:
+                    return n
+            except ValueError:
+                pass
     return None
-
-
-# ── Babelio ───────────────────────────────────────────────────────────────────
-
-async def _fetch_babelio_volumes(url: str, client: httpx.AsyncClient) -> list[dict]:
-    """
-    Récupère la liste des volumes depuis une page série Babelio.
-    Retourne [{position, title}].
-    """
-    try:
-        r = await client.get(url, headers=_HEADERS, timeout=15, follow_redirects=True)
-        if r.status_code != 200:
-            return []
-    except Exception:
-        return []
-
-    html = r.text
-    volumes = []
-
-    # Les livres d'une série Babelio sont dans des blocs avec titre et numéro de tome
-    # Pattern typique : <a ...>Titre - Tome N - Sous-titre</a> ou "(Série, #N)"
-    book_blocks = re.findall(
-        r'<a[^>]+href="[^"]*babelio\.com/livres/[^"]*"[^>]*>(.*?)</a>',
-        html, re.S
-    )
-    for block in book_blocks:
-        text = _clean_html(block)
-        if not text or len(text) < 3:
-            continue
-
-        position = None
-        # Chercher le numéro de tome dans le titre
-        for pat in _VOL_PATTERNS:
-            m = re.search(pat, text, re.IGNORECASE)
-            if m:
-                try:
-                    position = float(m.group(1))
-                    break
-                except ValueError:
-                    pass
-
-        if position is not None:
-            # Nettoyer le titre : enlever les patterns "Tome N -" du début
-            title = re.sub(r'^.*?[-–]\s*(?:tome|vol\.?|t\.)\s*\d+\s*[-–]\s*', '', text, flags=re.IGNORECASE).strip()
-            if not title:
-                title = text
-            volumes.append({"position": position, "title": title})
-
-    # Dédupliquer par position, garder le premier
-    seen: set[float] = set()
-    result = []
-    for v in volumes:
-        if v["position"] not in seen:
-            seen.add(v["position"])
-            result.append(v)
-
-    return sorted(result, key=lambda x: x["position"])
 
 
 async def search_complete_volume_list(
@@ -173,41 +125,54 @@ async def search_complete_volume_list(
     client: httpx.AsyncClient,
 ) -> list[dict]:
     """
-    Cherche la liste complète des volumes d'une série.
-    Stratégie :
-      1. DDG site:babelio.com → URL série → scrape liste complète
-      2. Fallback : extraction de numéros depuis snippets DDG généraux
+    Cherche la liste complète des volumes d'une série via DDG.
+    Stratégie en 3 requêtes :
+      1. Liste des tomes + extraction des numéros individuels
+      2. Nombre total de tomes
+      3. Titres des tomes (enrichissement)
     Retourne [{position, title}].
     """
-    # ── Étape 1 : trouver la page Babelio via DDG ─────────────────────────
-    babelio_url = await _ddg_find_url(
-        f'site:babelio.com "{series_name}" série',
-        client,
-        "babelio.com/serie",
-    )
-
-    if babelio_url:
-        await asyncio.sleep(0.8)
-        volumes = await _fetch_babelio_volumes(babelio_url, client)
-        if volumes:
-            return volumes
-
-    # ── Étape 2 : fallback DDG général ────────────────────────────────────
-    await asyncio.sleep(0.8)
-    text1 = await _ddg_query(f'"{series_name}" liste tomes bd livre série', client)
-    await asyncio.sleep(0.8)
-    text2 = await _ddg_query(f'{series_name} intégrale nombre tomes', client)
+    text1 = await _ddg_query(f'"{series_name}" liste tomes bd série complet', client)
+    await asyncio.sleep(1.0)
+    text2 = await _ddg_query(f'"{series_name}" série nombre tomes total intégrale', client)
     full_text = text1 + " " + text2
 
-    nums: set[float] = set()
-    for pat in _VOL_PATTERNS:
-        for m in re.finditer(pat, full_text, re.IGNORECASE):
-            try:
-                nums.add(float(m.group(1)))
-            except ValueError:
-                pass
+    total = _extract_total_from_text(full_text)
+    found_nums = _extract_volume_numbers(full_text)
 
-    return [{"position": p, "title": None} for p in sorted(nums) if 1 <= p <= 500]
+    if total and found_nums:
+        max_found = max(found_nums)
+        if total >= max_found * 0.7:
+            all_nums = set(float(i) for i in range(1, total + 1))
+        else:
+            all_nums = found_nums
+    elif total:
+        all_nums = set(float(i) for i in range(1, total + 1))
+    else:
+        all_nums = found_nums
+
+    if not all_nums:
+        return []
+
+    await asyncio.sleep(1.0)
+    text3 = await _ddg_query(f'"{series_name}" tome 1 2 3 titre liste', client)
+    title_map: dict[float, str] = {}
+    for m in re.finditer(
+        r'(?:tome|vol\.?)\s+(\d+)\s*[-–:]\s*([A-ZÀ-ÿ][^,.\n!?]{3,60})',
+        text3, re.IGNORECASE
+    ):
+        pos = float(m.group(1))
+        title = m.group(2).strip()
+        if pos in all_nums and pos not in title_map:
+            title_map[pos] = title
+
+    return [
+        {"position": p, "title": title_map.get(p)}
+        for p in sorted(all_nums)
+        if 1 <= p <= 200
+    ]
+
+
 
 
 # ── Détection de série ────────────────────────────────────────────────────────
