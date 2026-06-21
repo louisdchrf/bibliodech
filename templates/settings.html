@@ -256,6 +256,17 @@
         </div>
       </div>
 
+      <div class="task-card task-card-expand">
+        <div class="task-info">
+          <div class="task-name">Fusionner les séries en doublon</div>
+          <div class="task-desc">Détecte les séries dont les noms sont quasi-identiques (casse, ponctuation, accents) et propose de les fusionner.</div>
+        </div>
+        <div class="task-actions">
+          <button class="btn btn-ghost btn-sm" id="btn-find-dupes">Détecter</button>
+        </div>
+        <div id="dupes-result" style="display:none;margin-top:1rem;width:100%"></div>
+      </div>
+
     </div>
   </div>
 
@@ -1043,6 +1054,69 @@
       label: result => `${result.updated} livre${result.updated !== 1 ? 's' : ''} mis à jour`,
     },
   };
+
+  // ── Fusion séries doublons ────────────────────────────────────────────────
+  document.getElementById('btn-find-dupes').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-find-dupes');
+    const resultEl = document.getElementById('dupes-result');
+    btn.disabled = true;
+    btn.textContent = '⏳';
+    resultEl.style.display = 'none';
+
+    const res = await fetch('/api/series/duplicates');
+    btn.disabled = false;
+    btn.textContent = 'Détecter';
+
+    if (!res.ok) { resultEl.style.display = ''; resultEl.textContent = 'Erreur.'; return; }
+    const pairs = await res.json();
+    resultEl.style.display = '';
+
+    if (!pairs.length) {
+      resultEl.innerHTML = '<p class="task-status task-status-ok">Aucun doublon détecté.</p>';
+      return;
+    }
+
+    resultEl.innerHTML = pairs.map((p, i) => `
+      <div class="dupe-pair" id="dupe-${i}">
+        <div class="dupe-info">
+          <span class="dupe-name">${escHtml(p.a.name)}</span>
+          <span class="dupe-count">${p.a.book_count} livre${p.a.book_count !== 1 ? 's' : ''}</span>
+          <span class="dupe-arrow">→</span>
+          <span class="dupe-name">${escHtml(p.b.name)}</span>
+          <span class="dupe-count">${p.b.book_count} livre${p.b.book_count !== 1 ? 's' : ''}</span>
+        </div>
+        <div class="dupe-actions">
+          <button class="btn btn-sm btn-ghost merge-btn" data-from="${p.a.id}" data-into="${p.b.id}" data-pair="${i}">
+            Garder "${escHtml(p.b.name)}"
+          </button>
+          <button class="btn btn-sm btn-ghost merge-btn" data-from="${p.b.id}" data-into="${p.a.id}" data-pair="${i}">
+            Garder "${escHtml(p.a.name)}"
+          </button>
+          <button class="btn btn-sm btn-ghost" onclick="document.getElementById('dupe-${i}').remove()">Ignorer</button>
+        </div>
+      </div>
+    `).join('');
+
+    resultEl.querySelectorAll('.merge-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const fromId = Number(btn.dataset.from);
+        const intoId = Number(btn.dataset.into);
+        const pairEl = document.getElementById(`dupe-${btn.dataset.pair}`);
+        btn.disabled = true;
+        const res = await fetch('/api/series/merge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ from_id: fromId, into_id: intoId }),
+        });
+        if (res.ok) {
+          pairEl.innerHTML = '<p class="task-status task-status-ok">✓ Fusionné</p>';
+        } else {
+          btn.disabled = false;
+          alert('Erreur lors de la fusion.');
+        }
+      });
+    });
+  });
 
   function initTasks() {
     if (tasksInited) return;

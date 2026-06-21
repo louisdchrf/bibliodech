@@ -349,6 +349,58 @@ async def analyze_series(request: Request, db: Session = Depends(get_db)):
     return result
 
 
+@router.get("/api/series/duplicates")
+def series_duplicates(request: Request, db: Session = Depends(get_db)):
+    """Retourne les paires de séries dont les noms sont très proches (doublons potentiels)."""
+    get_current_user(request, db)
+    series_list = db.query(Series).order_by(Series.name).all()
+
+    def _normalize(name: str) -> str:
+        """Nom normalisé pour comparaison : minuscules, sans ponctuation, sans accents courants."""
+        n = name.lower()
+        n = re.sub(r"[,.\-''\s]+", " ", n).strip()
+        return n
+
+    pairs = []
+    seen = set()
+    for i, s1 in enumerate(series_list):
+        for s2 in series_list[i + 1:]:
+            key = (min(s1.id, s2.id), max(s1.id, s2.id))
+            if key in seen:
+                continue
+            n1, n2 = _normalize(s1.name), _normalize(s2.name)
+            # Doublon si noms normalisés identiques OU l'un contient l'autre
+            if n1 == n2 or n1 in n2 or n2 in n1:
+                seen.add(key)
+                c1 = db.query(Book).filter(Book.series_id == s1.id).count()
+                c2 = db.query(Book).filter(Book.series_id == s2.id).count()
+                pairs.append({
+                    "a": {**_series_to_dict(s1, c1)},
+                    "b": {**_series_to_dict(s2, c2)},
+                })
+    return pairs
+
+
+@router.post("/api/series/merge")
+def merge_series(body: dict, request: Request, db: Session = Depends(get_db)):
+    """Fusionne series_id_from dans series_id_into, supprime la série source."""
+    user = get_current_user(request, db)
+    require_contributor(user)
+    from_id = body.get("from_id")
+    into_id = body.get("into_id")
+    if not from_id or not into_id or from_id == into_id:
+        raise HTTPException(status_code=400, detail="from_id et into_id requis et distincts")
+    src = db.query(Series).filter(Series.id == from_id).first()
+    dst = db.query(Series).filter(Series.id == into_id).first()
+    if not src or not dst:
+        raise HTTPException(status_code=404, detail="Série introuvable")
+    db.query(Book).filter(Book.series_id == from_id).update({"series_id": into_id})
+    db.delete(src)
+    db.commit()
+    count = db.query(Book).filter(Book.series_id == into_id).count()
+    return _series_to_dict(dst, count)
+
+
 @router.get("/api/series/{series_id}")
 def get_series(series_id: int, request: Request, db: Session = Depends(get_db)):
     get_current_user(request, db)

@@ -1587,3 +1587,20 @@ body.modal-open { overflow: hidden; }
 .task-status-running { color: var(--color-text-muted); }
 .task-status-ok  { color: var(--color-success); }
 .task-status-err { color: var(--color-error); }
+
+/* ── Fusion séries doublons ─────────────────────────────────────────────── */
+.task-card-expand { flex-wrap: wrap; }
+.task-card-expand .task-actions { width: 100%; justify-content: flex-start; }
+
+.dupe-pair {
+  display: flex; flex-direction: column; gap: .5rem;
+  padding: .75rem; margin-bottom: .5rem;
+  background: var(--color-surface-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+}
+.dupe-info { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.dupe-name { font-weight: 600; font-size: .9rem; }
+.dupe-count { font-size: .78rem; color: var(--color-text-muted); }
+.dupe-arrow { color: var(--color-text-muted); }
+.dupe-actions { display: flex; gap: .4rem; flex-wrap: wrap; }
