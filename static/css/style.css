@@ -1744,3 +1744,19 @@ html.dark .missing-vol-tobuy     { background: #2d0f0f; }
 }
 
 .picker-empty { font-size: .85rem; color: var(--color-text-muted); padding: .25rem .5rem; }
+
+.missing-vol-unchecked {
+  background: var(--color-surface-2);
+  border-left-color: var(--color-text-muted);
+  opacity: .8;
+}
+
+.badge-new {
+  background: #fef3c7;
+  color: #92400e;
+  font-size: .68rem;
+  padding: .15rem .4rem;
+  border-radius: 99px;
+  font-weight: 700;
+  white-space: nowrap;
+}
