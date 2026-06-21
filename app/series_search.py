@@ -181,28 +181,43 @@ async def _wikipedia_volume_list(series_name: str, client: httpx.AsyncClient) ->
     if not total:
         total = _extract_total_from_text(content)
 
-    # 4. Titres des tomes depuis la liste des albums dans le wikitext
-    # Patterns : # ''Titre'' (année) ou | titre = Titre
+    # 4. Titres : extraire depuis les références |titre=Série, Tome N, Titre réel
     title_map: dict[int, str] = {}
+    _roman = {"I":1,"II":2,"III":3,"IV":4,"V":5,"VI":6,"VII":7,"VIII":8,
+              "IX":9,"X":10,"XI":11,"XII":12,"XIII":13,"XIV":14,"XV":15,
+              "XVI":16,"XVII":17,"XVIII":18,"XIX":19,"XX":20}
 
-    # Pattern liste numérotée wiki : # ''Titre''
-    for i, m in enumerate(re.finditer(r'^\s*#\s*(?:\'\'\'?)?([^\'#\n\[]{3,60})(?:\'\'\'?)?', content, re.MULTILINE), start=1):
-        raw = m.group(1).strip().rstrip("'").strip()
-        if raw and not raw.startswith('|') and len(raw) > 2:
-            title_map[i] = raw
+    # Références : |titre=..., Tome X, Sous-titre| ou |titre=..., Tome 3 - Sous-titre|
+    for m in re.finditer(
+        r'\|titre=(?:[^\|]+?[,\s]+)?[Tt]ome\s+([IVXivx]+|\d+)[,\s\-–]+([^\|\n}]{3,80})',
+        content
+    ):
+        num = m.group(1).upper()
+        pos = _roman.get(num) or (int(num) if num.isdigit() else None)
+        if pos is None:
+            continue
+        subtitle = m.group(2).strip().rstrip("'").strip()
+        if subtitle and pos not in title_map:
+            title_map[pos] = subtitle
 
-    # Pattern tableau : | titre = X ou | Titre || ...
-    for m in re.finditer(r'\|\s*(?:titre\d*\s*=\s*)([^\|\n\]]{3,60})', content, re.IGNORECASE):
-        raw = m.group(1).strip()
-        if raw and len(raw) > 2:
-            pos = len(title_map) + 1
-            if pos not in title_map:
-                title_map[pos] = raw
+    # Fallback : liste numérotée wikitext # ''Titre''
+    if not title_map:
+        section_match = re.search(
+            r'==\s*(?:Albums?|Tomes?|Liste[^\n]*)\s*==(.+?)(?:^==|\Z)',
+            content, re.IGNORECASE | re.MULTILINE | re.DOTALL
+        )
+        section = section_match.group(1) if section_match else content
+        for i, m in enumerate(re.finditer(
+            r"^\s*#\s*(?:'{2,3})?([A-ZÀ-ÿa-z][^\n#\[\]]{3,80}?)(?:'{2,3})?(?:\s*[\(\|]|\s*$)",
+            section, re.MULTILINE
+        ), start=1):
+            raw = m.group(1).strip().strip("'").strip()
+            if raw and len(raw) > 2:
+                title_map[i] = raw
 
     if not total and not title_map:
         return None
 
-    # Si on a un total mais peu de titres, compléter avec positions sans titre
     if total:
         return [
             {"position": float(i), "title": title_map.get(i)}

@@ -74,17 +74,13 @@ def _find_library_matches(db: Session) -> list[dict]:
             mv_words = _title_words(mv.title)
             if not mv_words:
                 continue
-            # Candidats = livres qui partagent au moins 1 mot clé (via index)
             threshold = min(2, len(mv_words))
-            candidate_ids = None
+            # Candidats = livres qui apparaissent dans AU MOINS UN bucket de mot
+            candidate_ids: set[int] = set()
             for w in mv_words:
-                hits = word_index.get(w, set())
-                candidate_ids = hits if candidate_ids is None else candidate_ids & hits
-                if not candidate_ids and threshold == 1:
-                    candidate_ids = word_index.get(mv_words[0], set())
-                    break
+                candidate_ids |= word_index.get(w, set())
 
-            for bid in (candidate_ids or set()):
+            for bid in candidate_ids:
                 if bid in owned_ids:
                     continue
                 common = sum(1 for w in mv_words if w in book_words_cache[bid])
