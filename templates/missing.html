@@ -198,7 +198,7 @@
           debounce = setTimeout(async () => {
             const q = input.value.trim();
             if (q.length < 2) { results.innerHTML = ''; return; }
-            const res = await fetch(`/api/books?search=${encodeURIComponent(q)}&limit=10`);
+            const res = await fetch(`/api/books?search=${encodeURIComponent(q)}&limit=10&exclude_series_id=${sid}`);
             if (!res.ok) return;
             const data = await res.json();
             results.innerHTML = data.items.length

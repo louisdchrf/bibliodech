@@ -20,6 +20,7 @@ def list_books(
     request: Request,
     search: Optional[str] = Query(None),
     series_id: Optional[int] = Query(None),
+    exclude_series_id: Optional[int] = Query(None),
     room_id: Optional[str] = Query(None),  # int ou "none" pour livres sans localisation
     sort_by: str = Query("title"),
     limit: int = Query(200, ge=1, le=1000),
@@ -35,6 +36,8 @@ def list_books(
         )
     if series_id is not None:
         q = q.filter(Book.series_id == series_id)
+    if exclude_series_id is not None:
+        q = q.filter((Book.series_id != exclude_series_id) | Book.series_id.is_(None))
     if room_id == "none":
         q = q.filter(Book.room_id.is_(None))
     elif room_id is not None:
