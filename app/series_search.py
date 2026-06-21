@@ -95,12 +95,12 @@ async def search_series_ddg(
     author = authors[0] if authors else ""
 
     # Stratégie 1 : requête stricte avec guillemets
-    text = await _ddg_query(f'"{title}" "{author}" série tome')
+    text = await _ddg_query(f'"{title}" "{author}" série tome', client)
     result = _extract_series_from_text(text, title) if text.strip() else None
     if result:
         return result
 
     # Stratégie 2 : sans guillemets (titres courts ou auteurs peu connus)
     await asyncio.sleep(0.8)
-    text = await _ddg_query(f'{title} {author} série bd livre')
+    text = await _ddg_query(f'{title} {author} série bd livre', client)
     return _extract_series_from_text(text, title) if text.strip() else None
