@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+{% block title %}Localisations – Bibliodech{% endblock %}
+
+{% block content %}
+<div class="settings-page">
+  <div class="settings-header">
+    <h1>Localisations</h1>
+  </div>
+  <p class="text-muted" style="margin-bottom:1.5rem">
+    Organisez vos livres par adresse, pièce et étagère. Chaque niveau s'imbrique dans le précédent.
+  </p>
+  <div id="tree-root" class="loc-tree">
+    <div class="text-muted">Chargement…</div>
+  </div>
+</div>
+
+<!-- Modal générique -->
+<div id="loc-modal" class="modal-overlay" style="display:none">
+  <div class="modal-card" style="max-width:420px">
+    <div class="modal-header">
+      <strong id="modal-title">Nouvelle localisation</strong>
+      <button type="button" class="modal-close" id="modal-close">&times;</button>
+    </div>
+    <form id="loc-form">
+      <input type="hidden" id="modal-type">
+      <input type="hidden" id="modal-id">
+      <input type="hidden" id="modal-parent-id">
+
+      <div class="field" id="field-parent" style="display:none">
+        <label id="parent-label">Appartient à</label>
+        <select id="modal-parent" class="input-full"></select>
+      </div>
+      <div class="field">
+        <label id="name-label">Nom</label>
+        <input type="text" id="modal-name" class="input-full" required autocomplete="off">
+      </div>
+
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-primary btn-sm">Enregistrer</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="modal-cancel">Annuler</button>
+        <button type="button" class="btn btn-danger btn-sm" id="modal-delete" style="margin-left:auto;display:none">Supprimer</button>
+      </div>
+      <div id="modal-error" class="form-error" style="display:none"></div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const treeRoot = document.getElementById('tree-root');
+  const modal = document.getElementById('loc-modal');
+  const modalTitle = document.getElementById('modal-title');
+  const modalType = document.getElementById('modal-type');
+  const modalId = document.getElementById('modal-id');
+  const modalParentId = document.getElementById('modal-parent-id');
+  const modalParentSel = document.getElementById('modal-parent');
+  const fieldParent = document.getElementById('field-parent');
+  const parentLabel = document.getElementById('parent-label');
+  const nameLabel = document.getElementById('name-label');
+  const modalName = document.getElementById('modal-name');
+  const form = document.getElementById('loc-form');
+  const modalDelete = document.getElementById('modal-delete');
+  const modalError = document.getElementById('modal-error');
+
+  function esc(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Données ──────────────────────────────────────────────────────────────
+  let tree = [];  // [{id, name, rooms:[{id,name,site_id,shelves:[{id,name,room_id,book_count}]}]}]
+
+  async function loadTree() {
+    const res = await fetch('/api/locations/tree');
+    tree = await res.json();
+    renderTree();
+  }
+
+  // ── Rendu ────────────────────────────────────────────────────────────────
+  function renderTree() {
+    if (!tree.length) {
+      treeRoot.innerHTML = `
+        <div class="loc-empty">
+          <p class="text-muted">Aucune localisation configurée.</p>
+          <button class="btn btn-primary btn-sm" onclick="openCreate('site')">+ Ajouter une adresse</button>
+        </div>`;
+      return;
+    }
+
+    treeRoot.innerHTML = tree.map(site => `
+      <div class="loc-site-block">
+        <div class="loc-site-header">
+          <span class="loc-site-icon">🏠</span>
+          <span class="loc-site-name">${esc(site.name)}</span>
+          <div class="loc-actions">
+            <button class="btn btn-ghost btn-xs" onclick="openCreate('room', ${site.id})">+ Pièce</button>
+            <button class="btn btn-ghost btn-xs" onclick="openEdit('site', ${site.id}, ${JSON.stringify(site.name)})">✏</button>
+            <button class="btn btn-ghost btn-xs btn-danger-ghost" onclick="confirmDelete('site', ${site.id})">✕</button>
+          </div>
+        </div>
+        <div class="loc-rooms">
+          ${site.rooms.length ? site.rooms.map(room => `
+            <div class="loc-room-block">
+              <div class="loc-room-header">
+                <span class="loc-room-icon">🚪</span>
+                <span class="loc-room-name">${esc(room.name)}</span>
+                <div class="loc-actions">
+                  <button class="btn btn-ghost btn-xs" onclick="openCreate('shelf', ${room.id})">+ Étagère</button>
+                  <button class="btn btn-ghost btn-xs" onclick="openEdit('room', ${room.id}, ${JSON.stringify(room.name)}, ${site.id})">✏</button>
+                  <button class="btn btn-ghost btn-xs btn-danger-ghost" onclick="confirmDelete('room', ${room.id})">✕</button>
+                </div>
+              </div>
+              <div class="loc-shelves">
+                ${room.shelves.length ? room.shelves.map(shelf => `
+                  <div class="loc-shelf-item">
+                    <span class="loc-shelf-icon">📚</span>
+                    <span class="loc-shelf-name">${esc(shelf.name)}</span>
+                    <span class="loc-book-count">${shelf.book_count} livre${shelf.book_count !== 1 ? 's' : ''}</span>
+                    <button class="btn btn-ghost btn-xs" onclick="openEdit('shelf', ${shelf.id}, ${JSON.stringify(shelf.name)}, ${room.id})">✏</button>
+                    <button class="btn btn-ghost btn-xs btn-danger-ghost" onclick="confirmDelete('shelf', ${shelf.id})">✕</button>
+                  </div>
+                `).join('') : '<div class="loc-shelves-empty text-muted">Aucune étagère</div>'}
+              </div>
+            </div>
+          `).join('') : '<div class="loc-rooms-empty text-muted">Aucune pièce</div>'}
+        </div>
+      </div>
+    `).join('') + `
+      <div style="margin-top:1rem">
+        <button class="btn btn-ghost btn-sm" onclick="openCreate('site')">+ Ajouter une adresse</button>
+      </div>`;
+  }
+
+  // ── Ouverture modal ───────────────────────────────────────────────────────
+  window.openCreate = function(type, parentId = null) {
+    modalType.value = type;
+    modalId.value = '';
+    modalParentId.value = parentId || '';
+    modalDelete.style.display = 'none';
+    modalError.style.display = 'none';
+    modalName.value = '';
+
+    if (type === 'site') {
+      modalTitle.textContent = 'Nouvelle adresse / localisation';
+      nameLabel.textContent = 'Nom (ex: Appartement, Maison de campagne…)';
+      fieldParent.style.display = 'none';
+    } else if (type === 'room') {
+      modalTitle.textContent = 'Nouvelle pièce';
+      nameLabel.textContent = 'Nom de la pièce (ex: Salon, Bureau…)';
+      parentLabel.textContent = 'Dans quelle adresse ?';
+      populateSiteSelect(parentId);
+      fieldParent.style.display = '';
+    } else if (type === 'shelf') {
+      modalTitle.textContent = 'Nouvelle étagère';
+      nameLabel.textContent = 'Nom de l\'étagère (ex: Étagère 1, Bibliothèque…)';
+      parentLabel.textContent = 'Dans quelle pièce ?';
+      populateRoomSelect(parentId);
+      fieldParent.style.display = '';
+    }
+    modal.style.display = 'flex';
+    setTimeout(() => modalName.focus(), 50);
+  };
+
+  window.openEdit = function(type, id, name, parentId = null) {
+    modalType.value = type;
+    modalId.value = id;
+    modalParentId.value = parentId || '';
+    modalDelete.style.display = 'inline-flex';
+    modalError.style.display = 'none';
+    modalName.value = name;
+
+    if (type === 'site') {
+      modalTitle.textContent = 'Modifier l\'adresse';
+      nameLabel.textContent = 'Nom';
+      fieldParent.style.display = 'none';
+    } else if (type === 'room') {
+      modalTitle.textContent = 'Modifier la pièce';
+      nameLabel.textContent = 'Nom de la pièce';
+      parentLabel.textContent = 'Adresse';
+      populateSiteSelect(parentId);
+      fieldParent.style.display = '';
+    } else if (type === 'shelf') {
+      modalTitle.textContent = 'Modifier l\'étagère';
+      nameLabel.textContent = 'Nom de l\'étagère';
+      parentLabel.textContent = 'Pièce';
+      populateRoomSelect(parentId);
+      fieldParent.style.display = '';
+    }
+    modal.style.display = 'flex';
+    setTimeout(() => modalName.focus(), 50);
+  };
+
+  window.confirmDelete = async function(type, id) {
+    const labels = { site: 'cette adresse et toutes ses pièces/étagères', room: 'cette pièce et toutes ses étagères', shelf: 'cette étagère' };
+    if (!confirm(`Supprimer ${labels[type]} ? Les livres concernés seront déliés.`)) return;
+    const endpoints = { site: `/api/sites/${id}`, room: `/api/rooms/${id}`, shelf: `/api/shelves/${id}` };
+    const res = await fetch(endpoints[type], { method: 'DELETE' });
+    if (res.ok || res.status === 204) { await loadTree(); }
+    else { alert('Erreur lors de la suppression.'); }
+  };
+
+  function populateSiteSelect(selectedId) {
+    modalParentSel.innerHTML = tree.map(s =>
+      `<option value="${s.id}" ${s.id == selectedId ? 'selected' : ''}>${esc(s.name)}</option>`
+    ).join('');
+  }
+
+  function populateRoomSelect(selectedId) {
+    const rooms = tree.flatMap(s => s.rooms.map(r => ({...r, siteName: s.name})));
+    modalParentSel.innerHTML = rooms.map(r =>
+      `<option value="${r.id}" ${r.id == selectedId ? 'selected' : ''}>${esc(r.siteName)} › ${esc(r.name)}</option>`
+    ).join('');
+  }
+
+  function closeModal() { modal.style.display = 'none'; }
+  document.getElementById('modal-close').addEventListener('click', closeModal);
+  document.getElementById('modal-cancel').addEventListener('click', closeModal);
+  modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+
+  // ── Soumission ────────────────────────────────────────────────────────────
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    modalError.style.display = 'none';
+    const type = modalType.value;
+    const id = modalId.value;
+    const name = modalName.value.trim();
+    const parentId = modalParentSel.value || modalParentId.value || null;
+
+    const endpoints = { site: '/api/sites', room: '/api/rooms', shelf: '/api/shelves' };
+    const parentKeys = { room: 'site_id', shelf: 'room_id' };
+
+    const body = { name };
+    if (type !== 'site') body[parentKeys[type]] = parentId ? parseInt(parentId) : null;
+
+    const url = id ? `${endpoints[type]}/${id}` : endpoints[type];
+    const method = id ? 'PUT' : 'POST';
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) {
+      closeModal();
+      await loadTree();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      modalError.textContent = err.detail || 'Erreur lors de l\'enregistrement.';
+      modalError.style.display = '';
+    }
+  });
+
+  modalDelete.addEventListener('click', async () => {
+    const type = modalType.value;
+    const id = modalId.value;
+    if (!id) return;
+    await confirmDelete(type, id);
+    closeModal();
+  });
+
+  loadTree();
+})();
+</script>
+{% endblock %}

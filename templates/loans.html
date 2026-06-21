@@ -1,0 +1,361 @@
+{% extends "base.html" %}
+{% block title %}Prêts – Bibliodech{% endblock %}
+
+{% block content %}
+<div class="settings-page">
+  <div class="page-header" style="margin-bottom:1.5rem">
+    <h1>Prêts</h1>
+    <div style="display:flex;gap:.5rem">
+      <button class="btn btn-ghost" id="btn-show-history">Historique</button>
+      <button class="btn btn-ghost" id="btn-send-overdue" title="Envoyer un mail de rappel aux emprunteurs en retard">📧 Rappels</button>
+      <button class="btn btn-primary" onclick="openAddBorrower()">+ Emprunteur</button>
+    </div>
+  </div>
+
+  <!-- Prêts en cours -->
+  <section id="section-active">
+    <h2 style="font-size:1rem;font-weight:600;margin-bottom:1rem;color:var(--text-muted)">PRÊTS EN COURS</h2>
+    <div id="active-loans" class="loans-list">
+      <p class="text-muted">Chargement…</p>
+    </div>
+  </section>
+
+  <!-- Historique (caché par défaut) -->
+  <section id="section-history" style="display:none;margin-top:2rem">
+    <h2 style="font-size:1rem;font-weight:600;margin-bottom:1rem;color:var(--text-muted)">HISTORIQUE</h2>
+    <div id="history-loans" class="loans-list">
+      <p class="text-muted">Chargement…</p>
+    </div>
+  </section>
+
+  <!-- Emprunteurs -->
+  <section style="margin-top:2.5rem">
+    <h2 style="font-size:1rem;font-weight:600;margin-bottom:1rem;color:var(--text-muted)">EMPRUNTEURS</h2>
+    <div id="borrowers-list" class="borrowers-list"></div>
+  </section>
+</div>
+
+<!-- Modal prêt -->
+<div id="loan-modal" class="modal-overlay" style="display:none">
+  <div class="modal-card" style="max-width:440px">
+    <div class="modal-header">
+      <h2 class="modal-title">Prêter un livre</h2>
+      <button class="modal-close" onclick="closeLoanModal()">✕</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:1rem">
+      <div>
+        <label class="field-label">Livre</label>
+        <div id="loan-book-title" style="font-weight:500"></div>
+      </div>
+      <div>
+        <label class="field-label">Emprunteur</label>
+        <select id="loan-borrower" class="select-input" style="width:100%">
+          <option value="">— choisir —</option>
+        </select>
+      </div>
+      <div>
+        <label class="field-label">Date de retour prévue <span style="color:var(--text-muted);font-weight:400">(optionnel)</span></label>
+        <input type="date" id="loan-due-date" class="search-input" style="width:100%">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeLoanModal()">Annuler</button>
+      <button class="btn btn-primary" onclick="submitLoan()">Prêter</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal emprunteur -->
+<div id="borrower-modal" class="modal-overlay" style="display:none">
+  <div class="modal-card" style="max-width:420px">
+    <div class="modal-header">
+      <h2 class="modal-title" id="borrower-modal-title">Nouvel emprunteur</h2>
+      <button class="modal-close" onclick="closeBorrowerModal()">✕</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:1rem">
+      <div>
+        <label class="field-label">Nom *</label>
+        <input type="text" id="borrower-name" class="search-input" style="width:100%" placeholder="Prénom Nom">
+      </div>
+      <div>
+        <label class="field-label">Contact <span style="color:var(--text-muted);font-weight:400">(email, tél…)</span></label>
+        <input type="text" id="borrower-contact" class="search-input" style="width:100%" placeholder="Optionnel">
+      </div>
+      <div>
+        <label class="field-label">Notes</label>
+        <textarea id="borrower-notes" class="search-input" style="width:100%;resize:vertical;min-height:64px" placeholder="Optionnel"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeBorrowerModal()">Annuler</button>
+      <button class="btn btn-primary" onclick="submitBorrower()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let loanBookId = null;
+let editBorrowerId = null;
+let historyVisible = false;
+
+async function loadAll() {
+  await Promise.all([loadActiveLoans(), loadBorrowers()]);
+}
+
+async function loadActiveLoans() {
+  const res = await fetch('/api/loans?active_only=true');
+  const loans = await res.json();
+  renderLoans(document.getElementById('active-loans'), loans, true);
+}
+
+async function loadHistory() {
+  const res = await fetch('/api/loans');
+  const loans = await res.json();
+  const past = loans.filter(l => l.return_date);
+  renderLoans(document.getElementById('history-loans'), past, false);
+}
+
+async function loadBorrowers() {
+  const res = await fetch('/api/borrowers');
+  const borrowers = await res.json();
+  const el = document.getElementById('borrowers-list');
+  if (!borrowers.length) {
+    el.innerHTML = '<p class="text-muted">Aucun emprunteur enregistré.</p>';
+    return;
+  }
+  el.innerHTML = '';
+  borrowers.forEach(b => {
+    const div = document.createElement('div');
+    div.className = 'borrower-row';
+    div.innerHTML = `
+      <div class="borrower-info">
+        <span class="borrower-name">${esc(b.name)}</span>
+        ${b.contact ? `<span class="borrower-contact">${esc(b.contact)}</span>` : ''}
+        ${b.active_loans > 0 ? `<span class="loan-badge">${b.active_loans} prêt${b.active_loans > 1 ? 's' : ''}</span>` : ''}
+      </div>
+      <div class="borrower-actions">
+        <button class="btn btn-ghost btn-sm" onclick="openEditBorrower(${b.id},'${esc(b.name)}','${esc(b.contact||'')}','${esc(b.notes||'')}')">Modifier</button>
+        ${b.active_loans === 0 ? `<button class="btn btn-danger-ghost btn-sm" onclick="deleteBorrower(${b.id})">Supprimer</button>` : ''}
+      </div>
+    `;
+    el.appendChild(div);
+  });
+}
+
+function renderLoans(el, loans, showReturn) {
+  if (!loans.length) {
+    el.innerHTML = '<p class="text-muted">Aucun prêt' + (showReturn ? ' en cours' : '') + '.</p>';
+    return;
+  }
+  el.innerHTML = '';
+  loans.forEach(loan => {
+    const div = document.createElement('div');
+    div.className = 'loan-row' + (loan.overdue ? ' loan-overdue' : '');
+    const due = loan.due_date ? ` · retour prévu ${formatDate(loan.due_date)}` : '';
+    const returned = loan.return_date ? ` · rendu le ${formatDate(loan.return_date)}` : '';
+    div.innerHTML = `
+      <div class="loan-cover">
+        ${loan.book_cover ? `<img src="${esc(loan.book_cover)}" alt="">` : '<div class="loan-cover-placeholder"></div>'}
+      </div>
+      <div class="loan-info">
+        <div class="loan-title">${esc(loan.book_title || '—')}</div>
+        <div class="loan-meta">
+          <span class="loan-borrower">${esc(loan.borrower_name || '—')}</span>
+          · prêté le ${formatDate(loan.loan_date)}${due}${returned}
+          ${loan.overdue ? '<span class="loan-late-badge">En retard</span>' : ''}
+        </div>
+      </div>
+      ${showReturn ? `<button class="btn btn-ghost btn-sm loan-return-btn" onclick="markReturned(${loan.id})">Rendu ✓</button>` : ''}
+    `;
+    el.appendChild(div);
+  });
+}
+
+async function markReturned(loanId) {
+  await fetch(`/api/loans/${loanId}/return`, { method: 'POST' });
+  await loadActiveLoans();
+  if (historyVisible) await loadHistory();
+  await loadBorrowers();
+}
+
+// ── Loan modal ───────────────────────────────────────────────────────────────
+
+async function openLoanModal(bookId, bookTitle) {
+  loanBookId = bookId;
+  document.getElementById('loan-book-title').textContent = bookTitle;
+  document.getElementById('loan-due-date').value = '';
+
+  await populateLoanSelect(document.getElementById('loan-borrower'));
+
+  document.getElementById('loan-modal').style.display = 'flex';
+}
+
+function closeLoanModal() {
+  document.getElementById('loan-modal').style.display = 'none';
+  loanBookId = null;
+}
+
+async function submitLoan() {
+  const who = parseLoanSelectValue(document.getElementById('loan-borrower').value);
+  if (!who.borrower_id && !who.user_id) { alert('Choisissez un emprunteur.'); return; }
+  const dueDate = document.getElementById('loan-due-date').value || null;
+
+  const res = await fetch('/api/loans', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ book_id: loanBookId, ...who, due_date: dueDate }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    alert(err.detail || 'Erreur');
+    return;
+  }
+  closeLoanModal();
+  await loadAll();
+}
+
+// ── Borrower modal ───────────────────────────────────────────────────────────
+
+function openAddBorrower() {
+  editBorrowerId = null;
+  document.getElementById('borrower-modal-title').textContent = 'Nouvel emprunteur';
+  document.getElementById('borrower-name').value = '';
+  document.getElementById('borrower-contact').value = '';
+  document.getElementById('borrower-notes').value = '';
+  document.getElementById('borrower-modal').style.display = 'flex';
+}
+
+function openEditBorrower(id, name, contact, notes) {
+  editBorrowerId = id;
+  document.getElementById('borrower-modal-title').textContent = 'Modifier l\'emprunteur';
+  document.getElementById('borrower-name').value = name;
+  document.getElementById('borrower-contact').value = contact;
+  document.getElementById('borrower-notes').value = notes;
+  document.getElementById('borrower-modal').style.display = 'flex';
+}
+
+function closeBorrowerModal() {
+  document.getElementById('borrower-modal').style.display = 'none';
+}
+
+async function submitBorrower() {
+  const name = document.getElementById('borrower-name').value.trim();
+  if (!name) { alert('Le nom est obligatoire.'); return; }
+  const body = {
+    name,
+    contact: document.getElementById('borrower-contact').value.trim() || null,
+    notes: document.getElementById('borrower-notes').value.trim() || null,
+  };
+  const url = editBorrowerId ? `/api/borrowers/${editBorrowerId}` : '/api/borrowers';
+  const method = editBorrowerId ? 'PUT' : 'POST';
+  const res = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) { alert('Erreur'); return; }
+  closeBorrowerModal();
+  await loadBorrowers();
+}
+
+async function deleteBorrower(id) {
+  if (!confirm('Supprimer cet emprunteur ?')) return;
+  const res = await fetch(`/api/borrowers/${id}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const err = await res.json();
+    alert(err.detail || 'Erreur');
+    return;
+  }
+  await loadBorrowers();
+}
+
+// ── History toggle ────────────────────────────────────────────────────────────
+
+document.getElementById('btn-send-overdue').addEventListener('click', async () => {
+  if (!confirm('Envoyer un mail de rappel à tous les emprunteurs en retard ?')) return;
+  const btn = document.getElementById('btn-send-overdue');
+  btn.disabled = true;
+  btn.textContent = '📧 Envoi…';
+  const res = await fetch('/api/loans/send-overdue', { method: 'POST' });
+  btn.disabled = false;
+  btn.textContent = '📧 Rappels';
+  if (res.ok) {
+    const d = await res.json();
+    const msg = `${d.sent} mail(s) envoyé(s)${d.skipped ? `, ${d.skipped} sans email` : ''}${d.errors.length ? `, ${d.errors.length} erreur(s)` : ''}.`;
+    alert(msg);
+  } else {
+    const err = await res.json();
+    alert(err.detail || 'Erreur lors de l\'envoi');
+  }
+});
+
+document.getElementById('btn-show-history').addEventListener('click', async () => {
+  historyVisible = !historyVisible;
+  const sec = document.getElementById('section-history');
+  sec.style.display = historyVisible ? 'block' : 'none';
+  document.getElementById('btn-show-history').textContent = historyVisible ? 'Masquer l\'historique' : 'Historique';
+  if (historyVisible) await loadHistory();
+});
+
+// ── Shared helpers ────────────────────────────────────────────────────────
+
+async function populateLoanSelect(sel) {
+  const [resUsers, resBorrowers] = await Promise.all([
+    fetch('/api/users/active'),
+    fetch('/api/borrowers'),
+  ]);
+  const users = resUsers.ok ? await resUsers.json() : [];
+  const borrowers = resBorrowers.ok ? await resBorrowers.json() : [];
+
+  sel.innerHTML = '<option value="">— choisir —</option>';
+
+  if (users.length) {
+    const grp = document.createElement('optgroup');
+    grp.label = 'Utilisateurs du site';
+    users.forEach(u => {
+      const opt = document.createElement('option');
+      opt.value = 'u:' + u.id;
+      opt.textContent = u.username;
+      grp.appendChild(opt);
+    });
+    sel.appendChild(grp);
+  }
+
+  if (borrowers.length) {
+    const grp = document.createElement('optgroup');
+    grp.label = 'Emprunteurs externes';
+    borrowers.forEach(b => {
+      const opt = document.createElement('option');
+      opt.value = 'b:' + b.id;
+      opt.textContent = b.name;
+      grp.appendChild(opt);
+    });
+    sel.appendChild(grp);
+  }
+}
+
+function parseLoanSelectValue(val) {
+  if (!val) return {};
+  if (val.startsWith('u:')) return { user_id: parseInt(val.slice(2)) };
+  if (val.startsWith('b:')) return { borrower_id: parseInt(val.slice(2)) };
+  return {};
+}
+
+// ── Utils ──────────────────────────────────────────────────────────────────
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function formatDate(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+loadAll();
+</script>
+{% endblock %}

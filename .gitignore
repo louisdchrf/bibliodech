@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+.env.*
+
+# Base de données et données utilisateur
+data/
+*.db
+*.sqlite
+
+# Docker
+.docker/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Éditeurs
+.vscode/
+.idea/
+*.swp
+.claude/

@@ -1,0 +1,9 @@
+{
+  local_certs
+  auto_https off
+}
+
+https://192.168.111.142:8443 {
+  tls internal
+  reverse_proxy bibliodech:8000
+}

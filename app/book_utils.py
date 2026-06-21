@@ -1,0 +1,72 @@
+import json
+from datetime import date
+from app.models import Book
+
+
+def book_to_dict(book: Book, series_name: str | None = None) -> dict:
+    # Localisation effective : room_id direct prioritaire, sinon via shelf legacy
+    room = book.room
+    if room is None and book.location and book.location.room:
+        room = book.location.room
+
+    site = room.site if room else None
+
+    loc = {
+        "room_id": room.id,
+        "room_name": room.name,
+        "site_id": site.id if site else None,
+        "site_name": site.name if site else None,
+        "label": f"{site.name} › {room.name}" if site else room.name,
+    } if room else None
+
+    # Prêt actif (pas de return_date)
+    try:
+        active_loan = next((l for l in book.loans if l.return_date is None), None)
+    except Exception:
+        active_loan = None
+
+    if active_loan:
+        if active_loan.user:
+            borrower_name = active_loan.user.username
+        elif active_loan.borrower:
+            borrower_name = active_loan.borrower.name
+        else:
+            borrower_name = None
+        loan_info = {
+            "id": active_loan.id,
+            "borrower_name": borrower_name,
+            "borrower_is_user": active_loan.user_id is not None,
+            "loan_date": active_loan.loan_date.isoformat() if active_loan.loan_date else None,
+            "due_date": active_loan.due_date.isoformat() if active_loan.due_date else None,
+            "overdue": (
+                active_loan.due_date is not None
+                and active_loan.due_date.date() < date.today()
+            ),
+        }
+    else:
+        loan_info = None
+
+    return {
+        "id": book.id,
+        "isbn": book.isbn,
+        "title": book.title,
+        "subtitle": book.subtitle,
+        "authors": json.loads(book.authors) if book.authors else [],
+        "publisher": book.publisher,
+        "publish_date": book.publish_date,
+        "cover_url": book.cover_url,
+        "description": book.description,
+        "page_count": book.page_count,
+        "language": book.language,
+        "source": book.source,
+        "work_key": book.work_key,
+        "series_id": book.series_id,
+        "series_position": book.series_position,
+        "room_id": room.id if room else None,
+        "location": loc,
+        "added_at": book.added_at.isoformat() if book.added_at else None,
+        "series_name": series_name or (book.series.name if book.series else None),
+        "enrichment_status": book.enrichment_status,
+        "active_loan": loan_info,
+        "source_data": json.loads(book.source_data) if book.source_data else None,
+    }

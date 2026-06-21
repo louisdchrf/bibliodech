@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connexion – Bibliodech</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="login-body">
+  <div class="login-card">
+    <div class="login-logo">📚</div>
+    <h1 class="login-title">Bibliodech</h1>
+    <p class="login-subtitle">Gestion de bibliothèque personnelle</p>
+
+    {% if error %}
+    <div class="flash flash-error">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" action="/login" class="login-form">
+      <div class="field">
+        <label for="username">Nom d'utilisateur</label>
+        <input
+          type="text"
+          id="username"
+          name="username"
+          required
+          autofocus
+          autocomplete="username"
+          placeholder="Votre identifiant"
+        >
+      </div>
+      <div class="field">
+        <label for="password">Mot de passe</label>
+        <input
+          type="password"
+          id="password"
+          name="password"
+          required
+          autocomplete="current-password"
+          placeholder="••••••••"
+        >
+      </div>
+      <button type="submit" class="btn btn-primary btn-full">Se connecter</button>
+    </form>
+  </div>
+</body>
+</html>

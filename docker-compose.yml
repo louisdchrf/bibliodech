@@ -1,0 +1,18 @@
+services:
+  bibliodech:
+    build: .
+    container_name: bibliodech
+    ports:
+      - "8000:8000"
+    volumes:
+      - bibliodech_data:/app/data
+    environment:
+      DATABASE_URL: sqlite:////app/data/bibliodech.db
+      SECRET_KEY: change-me-in-production
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: admin123
+      BUILD_VERSION: "${BUILD_VERSION:-dev}"
+    restart: unless-stopped
+
+volumes:
+  bibliodech_data:

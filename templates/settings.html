@@ -1,0 +1,840 @@
+{% extends "base.html" %}
+{% block title %}Paramètres – Bibliodech{% endblock %}
+
+{% block content %}
+<div class="settings-page">
+  <h1 class="settings-title">Paramètres</h1>
+
+  <div class="settings-tabs">
+    <button class="settings-tab active" data-tab="sources">Sources ISBN</button>
+    <button class="settings-tab" data-tab="users">Comptes utilisateurs</button>
+    <button class="settings-tab" data-tab="io">Import / Export</button>
+    <button class="settings-tab" data-tab="display">Affichage</button>
+    <button class="settings-tab" data-tab="email">Email</button>
+  </div>
+
+  <!-- Onglet Sources -->
+  <div id="tab-sources" class="settings-tab-panel">
+    <p class="settings-desc">Glissez pour réordonner. Les sources sont interrogées en parallèle mais leur priorité détermine quelle information est retenue en cas de doublon. Désactiver une source accélère la recherche.</p>
+
+    <ul id="sources-list" class="sources-list"></ul>
+
+    <!-- Clés API optionnelles par source -->
+    <div class="api-keys-section">
+      <h3 class="api-keys-title">Clés API</h3>
+
+      <div class="api-key-row">
+        <div class="api-key-info">
+          <span class="api-key-label">Google Books</span>
+          <span class="api-key-desc">Sans clé : ~100 req/jour · Avec clé : 1 000 req/jour gratuit · <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console</a> → Books API</span>
+        </div>
+        <div class="api-key-input-wrap">
+          <input type="password" id="googlebooks-key-input" class="input-sm api-key-input" placeholder="Clé API Google Books…" autocomplete="off">
+          <button type="button" id="googlebooks-key-toggle" class="btn btn-ghost btn-xs" title="Afficher/masquer">👁</button>
+        </div>
+        <span id="googlebooks-key-status" class="api-key-status"></span>
+      </div>
+
+      <div class="api-key-row">
+        <div class="api-key-info">
+          <span class="api-key-label">ISBNdb</span>
+          <span class="api-key-desc">Excellente couverture FR/EN · <a href="https://isbndb.com/isbn-database" target="_blank" rel="noopener">isbndb.com</a> · ~15 $/mois</span>
+        </div>
+        <div class="api-key-input-wrap">
+          <input type="password" id="isbndb-key-input" class="input-sm api-key-input" placeholder="Clé API ISBNdb…" autocomplete="off">
+          <button type="button" id="isbndb-key-toggle" class="btn btn-ghost btn-xs" title="Afficher/masquer">👁</button>
+        </div>
+        <span id="isbndb-key-status" class="api-key-status"></span>
+      </div>
+    </div>
+
+    <div class="settings-row">
+      <label>Timeout (secondes)</label>
+      <input type="number" id="timeout-input" min="1" max="15" step="1" class="input-sm" style="width:5rem">
+    </div>
+    <div class="settings-actions">
+      <button id="btn-save" class="btn btn-primary">Enregistrer</button>
+      <span id="save-msg" class="save-msg"></span>
+    </div>
+  </div>
+
+  <!-- Onglet Affichage -->
+  <div id="tab-display" class="settings-tab-panel" style="display:none">
+    <ul class="sources-list">
+      <li class="source-item">
+        <span class="source-label">Mode sombre</span>
+        <span class="source-id">Thème de l'interface</span>
+        <label class="toggle-switch"><input type="checkbox" id="pref-dark"><span class="toggle-slider"></span></label>
+      </li>
+      <li class="source-item">
+        <span class="source-label">Badge série</span>
+        <span class="source-id">Affiché sur les cartes de la bibliothèque</span>
+        <label class="toggle-switch"><input type="checkbox" id="pref-badge-series"><span class="toggle-slider"></span></label>
+      </li>
+      <li class="source-item">
+        <span class="source-label">Badge localisation</span>
+        <span class="source-id">Affiché sur les cartes de la bibliothèque</span>
+        <label class="toggle-switch"><input type="checkbox" id="pref-badge-location"><span class="toggle-slider"></span></label>
+      </li>
+    </ul>
+  </div>
+
+  <!-- Onglet Email -->
+  <div id="tab-email" class="settings-tab-panel" style="display:none">
+    <p class="settings-desc">Configuration du serveur SMTP pour l'envoi de mails automatiques.</p>
+
+    <div class="form-grid form-grid-2" style="margin-bottom:1rem">
+      <div class="field">
+        <label>Serveur SMTP</label>
+        <input type="text" id="smtp-host" class="input-sm" placeholder="smtp.gmail.com">
+      </div>
+      <div class="field">
+        <label>Port</label>
+        <input type="number" id="smtp-port" class="input-sm" value="587" style="width:6rem">
+      </div>
+      <div class="field">
+        <label>Identifiant</label>
+        <input type="text" id="smtp-user" class="input-sm" placeholder="user@domaine.fr" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>Mot de passe</label>
+        <div style="display:flex;gap:.4rem;align-items:center">
+          <input type="password" id="smtp-password" class="input-sm" autocomplete="new-password">
+          <button type="button" id="smtp-pw-toggle" class="btn btn-ghost btn-xs" title="Afficher">👁</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Expéditeur <span class="text-muted">(From)</span></label>
+        <input type="text" id="smtp-from" class="input-sm" placeholder="Bibliodech <noreply@domaine.fr>">
+      </div>
+      <div class="field">
+        <label>URL du site <span class="text-muted">(pour les liens dans les mails)</span></label>
+        <input type="text" id="site-url" class="input-sm" placeholder="https://biblio.example.com">
+      </div>
+    </div>
+
+    <div class="settings-row" style="margin-bottom:1.25rem">
+      <label class="checkbox-label">
+        <input type="checkbox" id="smtp-tls"> Utiliser STARTTLS
+      </label>
+    </div>
+
+    <div class="settings-actions" style="margin-bottom:2rem">
+      <button id="btn-save-smtp" class="btn btn-primary">Enregistrer</button>
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <input type="email" id="smtp-test-to" class="input-sm" placeholder="Adresse de test…" style="width:220px">
+        <button id="btn-test-smtp" class="btn btn-ghost">Envoyer un test</button>
+      </div>
+      <span id="smtp-msg" class="save-msg"></span>
+    </div>
+
+    <h3 class="settings-group-title" style="font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-muted);margin-bottom:.75rem">Scénarios automatiques</h3>
+    <ul class="sources-list">
+      <li class="source-item">
+        <span class="source-label">Avis de retard</span>
+        <span class="source-id">Mail envoyé manuellement depuis la page Prêts</span>
+        <label class="toggle-switch"><input type="checkbox" id="mail-overdue"><span class="toggle-slider"></span></label>
+      </li>
+      <li class="source-item">
+        <span class="source-label">Nouveau compte</span>
+        <span class="source-id">Mail avec identifiants envoyé à la création d'un utilisateur</span>
+        <label class="toggle-switch"><input type="checkbox" id="mail-new-account"><span class="toggle-slider"></span></label>
+      </li>
+      <li class="source-item">
+        <span class="source-label">Réinitialisation du mot de passe</span>
+        <span class="source-id">Mail avec mot de passe temporaire lors d'un reset admin</span>
+        <label class="toggle-switch"><input type="checkbox" id="mail-reset-password"><span class="toggle-slider"></span></label>
+      </li>
+    </ul>
+  </div>
+
+  <!-- Onglet Import / Export -->
+  <div id="tab-io" class="settings-tab-panel" style="display:none">
+
+    <div class="io-section">
+      <h3 class="io-section-title">Import</h3>
+      <div class="io-row" style="margin-bottom:.75rem">
+        <div class="io-row-info">
+          <span class="io-label">Modèle CSV</span>
+          <span class="io-desc">Téléchargez le modèle, remplissez-le et réimportez-le. La localisation est optionnelle — format : <em>Adresse > Pièce</em> ou juste <em>Pièce</em>.</span>
+        </div>
+        <a href="/api/books/import/template" class="btn btn-ghost" download>⬇ Modèle CSV</a>
+      </div>
+      <div class="io-row">
+        <div class="io-row-info">
+          <span class="io-label">Importer un fichier CSV</span>
+          <span class="io-desc">Les livres existants ne sont pas modifiés. Les séries inconnues sont créées automatiquement.</span>
+        </div>
+        <label class="btn btn-primary" style="cursor:pointer">
+          ⬆ Choisir un fichier
+          <input type="file" id="csv-import-input" accept=".csv,text/csv" style="display:none">
+        </label>
+      </div>
+      <div id="import-progress" style="display:none;margin-top:1rem">
+        <div class="io-import-progress">
+          <span class="io-import-spinner"></span>
+          <span>Import en cours…</span>
+        </div>
+      </div>
+      <div id="import-result" style="display:none;margin-top:1rem"></div>
+    </div>
+
+    <div class="io-section">
+      <h3 class="io-section-title">Export</h3>
+      <div class="io-row">
+        <div class="io-row-info">
+          <span class="io-label">Export CSV</span>
+          <span class="io-desc">Toute la collection en tableur (titre, auteurs, ISBN, éditeur, localisation…)</span>
+        </div>
+        <a href="/api/books/export/csv" class="btn btn-ghost" download="bibliodech.csv">⬇ Télécharger CSV</a>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Onglet Comptes -->
+  <div id="tab-users" class="settings-tab-panel" style="display:none">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:1rem">
+      <button class="btn btn-primary" id="btn-open-create-user">+ Créer un compte</button>
+    </div>
+    <div class="users-table-wrap">
+      <table class="users-table" id="users-table">
+        <thead>
+          <tr>
+            <th>Utilisateur</th><th>Rôle</th><th>Statut</th><th>Créé le</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="users-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Modal création utilisateur -->
+<div id="create-user-modal" class="modal-overlay" style="display:none">
+  <div class="modal-card" style="max-width:520px">
+    <button class="modal-close" id="create-modal-close">&times;</button>
+
+    <!-- Étape 1 : infos -->
+    <div id="create-step-1">
+      <h3 style="margin-bottom:1.25rem">Nouveau compte</h3>
+      <div class="field" style="margin-bottom:.9rem">
+        <label>Nom d'utilisateur</label>
+        <input type="text" id="cu-username" class="input-sm" style="width:100%" autocomplete="off" placeholder="prenom.nom">
+      </div>
+      <div class="field" style="margin-bottom:.9rem">
+        <label>Email <span class="text-muted">(optionnel)</span></label>
+        <input type="email" id="cu-email" class="input-sm" style="width:100%" placeholder="prenom@exemple.fr">
+      </div>
+      <div class="field" style="margin-bottom:1.25rem">
+        <label>Rôle</label>
+        <select id="cu-role" class="select-input" style="width:100%">
+          <option value="viewer">Lecteur</option>
+          <option value="contributeur">Contributeur</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <div class="modal-footer" style="padding:0">
+        <button class="btn btn-ghost" id="create-step1-cancel">Annuler</button>
+        <button class="btn btn-primary" id="create-step1-next">Suivant →</button>
+      </div>
+    </div>
+
+    <!-- Étape 2 : méthode d'accès -->
+    <div id="create-step-2" style="display:none">
+      <button class="btn btn-ghost btn-sm" id="create-step2-back" style="margin-bottom:1rem;padding:.25rem .5rem">← Retour</button>
+      <h3 style="margin-bottom:.4rem">Accès au compte</h3>
+      <p class="text-muted" id="cu-step2-subtitle" style="font-size:.85rem;margin-bottom:1.25rem"></p>
+
+      <!-- Option email -->
+      <div id="cu-opt-email" class="cu-access-option" style="display:none">
+        <button type="button" class="cu-method-card" id="cu-choose-email">
+          <span class="cu-method-icon">📧</span>
+          <div>
+            <div class="cu-method-title">Envoyer par email</div>
+            <div class="cu-method-desc">Un lien et un mot de passe temporaire seront envoyés à l'adresse renseignée</div>
+          </div>
+        </button>
+      </div>
+
+      <!-- Option mot de passe manuel -->
+      <button type="button" class="cu-method-card" id="cu-choose-password">
+        <span class="cu-method-icon">🔑</span>
+        <div>
+          <div class="cu-method-title">Définir un mot de passe</div>
+          <div class="cu-method-desc">Vous choisissez le mot de passe et le transmettez vous-même</div>
+        </div>
+      </button>
+
+      <!-- Champ mot de passe (révélé au clic) -->
+      <div id="cu-password-block" style="display:none;margin-top:1rem">
+        <div class="field" style="margin-bottom:.5rem">
+          <label>Mot de passe</label>
+          <input type="password" id="cu-password" class="input-sm" style="width:100%" autocomplete="new-password">
+        </div>
+        <label class="checkbox-label" style="margin-bottom:1rem">
+          <input type="checkbox" id="cu-must-change" checked>
+          Forcer le changement à la première connexion
+        </label>
+        <div class="modal-footer" style="padding:0">
+          <button class="btn btn-ghost" id="cu-pw-cancel">Annuler</button>
+          <button class="btn btn-primary" id="cu-pw-submit">Créer le compte</button>
+        </div>
+      </div>
+
+      <div id="create-user-msg" class="edit-msg" style="margin-top:.75rem"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal édition utilisateur -->
+<div id="edit-modal" class="modal-overlay" style="display:none">
+  <div class="modal-card modal-card-sm">
+    <button class="modal-close" id="edit-modal-close">&times;</button>
+    <h3>Modifier l'utilisateur</h3>
+    <form id="edit-user-form" class="create-user-form">
+      <input type="hidden" id="edit-user-id">
+      <div class="field">
+        <label>Nom d'utilisateur</label>
+        <input type="text" id="edit-username" name="username" required>
+      </div>
+      <div class="field">
+        <label>Nouveau mot de passe <span class="text-muted">(laisser vide pour ne pas changer)</span></label>
+        <input type="password" id="edit-password" name="password" autocomplete="new-password">
+      </div>
+      <div class="field">
+        <label>Rôle</label>
+        <select id="edit-role" name="role">
+          <option value="viewer">Lecteur</option>
+          <option value="contributeur">Contributeur</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Email <span class="text-muted">(optionnel)</span></label>
+        <input type="email" id="edit-email" name="email" autocomplete="off">
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Enregistrer</button>
+      </div>
+      <div id="edit-user-msg" class="edit-msg"></div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  function escHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Tabs ──────────────────────────────────────────────────────────────────
+  document.querySelectorAll('.settings-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.settings-tab').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.settings-tab-panel').forEach(p => p.style.display = 'none');
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).style.display = 'block';
+      if (btn.dataset.tab === 'users') loadUsers();
+      if (btn.dataset.tab === 'email') loadEmailSettings();
+    });
+  });
+
+  // ── Sources ───────────────────────────────────────────────────────────────
+  const list = document.getElementById('sources-list');
+  const timeoutInput = document.getElementById('timeout-input');
+  const btnSave = document.getElementById('btn-save');
+  const saveMsg = document.getElementById('save-msg');
+  let sources = [];
+
+  async function loadSources() {
+    const res = await fetch('/api/settings');
+    const data = await res.json();
+    sources = data.lookup_sources || [];
+    timeoutInput.value = data.lookup_timeout ?? 3;
+    renderSources();
+  }
+
+  function renderSources() {
+    list.innerHTML = '';
+    sources.forEach((src, i) => {
+      const li = document.createElement('li');
+      li.className = 'source-item';
+      li.draggable = true;
+      li.dataset.index = i;
+      li.innerHTML = `
+        <span class="drag-handle" title="Glisser pour réordonner">⠿</span>
+        <label class="source-toggle">
+          <input type="checkbox" ${src.enabled ? 'checked' : ''} data-id="${src.id}">
+          <span class="source-label">${escHtml(src.label)}</span>
+        </label>
+        <label class="source-timeout-label">
+          <input type="number" class="input-sm source-timeout" data-id="${src.id}"
+            value="${src.timeout ?? 5}" min="1" max="30" step="1" style="width:4rem">
+          <span class="source-timeout-unit">s</span>
+        </label>
+      `;
+      list.appendChild(li);
+    });
+    initDrag();
+  }
+
+  let dragIdx = null;
+  function initDrag() {
+    list.querySelectorAll('.source-item').forEach(item => {
+      item.addEventListener('dragstart', () => { dragIdx = parseInt(item.dataset.index); item.classList.add('dragging'); });
+      item.addEventListener('dragend', () => { item.classList.remove('dragging'); dragIdx = null; });
+      item.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        const overIdx = parseInt(item.dataset.index);
+        if (dragIdx === null || dragIdx === overIdx) return;
+        const moved = sources.splice(dragIdx, 1)[0];
+        sources.splice(overIdx, 0, moved);
+        dragIdx = overIdx;
+        renderSources();
+      });
+    });
+  }
+
+  btnSave.addEventListener('click', async () => {
+    list.querySelectorAll('input[type=checkbox]').forEach(cb => {
+      const src = sources.find(s => s.id === cb.dataset.id);
+      if (src) src.enabled = cb.checked;
+    });
+    list.querySelectorAll('.source-timeout').forEach(inp => {
+      const src = sources.find(s => s.id === inp.dataset.id);
+      if (src) src.timeout = parseFloat(inp.value) || 5;
+    });
+    const timeout = parseFloat(timeoutInput?.value) || 5;
+    const [r1, r2] = await Promise.all([
+      fetch('/api/settings/lookup_sources', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ value: sources }) }),
+      fetch('/api/settings/lookup_timeout', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ value: timeout }) }),
+    ]);
+    saveMsg.textContent = (r1.ok && r2.ok) ? 'Enregistré !' : 'Erreur lors de la sauvegarde.';
+    saveMsg.className = 'save-msg ' + ((r1.ok && r2.ok) ? 'save-msg-ok' : 'save-msg-err');
+    setTimeout(() => saveMsg.textContent = '', 2500);
+  });
+
+  // ── Users ─────────────────────────────────────────────────────────────────
+  const tbody = document.getElementById('users-tbody');
+  const editModal = document.getElementById('edit-modal');
+  const editModalClose = document.getElementById('edit-modal-close');
+  const editForm = document.getElementById('edit-user-form');
+  const editMsg = document.getElementById('edit-user-msg');
+
+  function fmtDate(iso) { return iso ? new Date(iso).toLocaleDateString('fr-FR') : ''; }
+
+  async function loadUsers() {
+    const res = await fetch('/api/users');
+    if (!res.ok) return;
+    const users = await res.json();
+    tbody.innerHTML = '';
+    users.forEach(u => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><strong>${escHtml(u.username)}</strong>${u.email ? `<br><span style="font-size:.75rem;color:var(--color-text-muted)">${escHtml(u.email)}</span>` : ''}</td>
+        <td><span class="badge badge-role-${u.role}">${u.role === 'admin' ? 'Admin' : u.role === 'contributeur' ? 'Contributeur' : 'Lecteur'}</span></td>
+        <td><span class="badge ${u.is_active ? 'badge-active' : 'badge-inactive'}">${u.is_active ? 'Actif' : 'Inactif'}</span></td>
+        <td>${fmtDate(u.created_at)}</td>
+        <td class="user-actions">
+          <button class="btn btn-sm btn-ghost edit-btn" data-id="${u.id}" data-username="${escHtml(u.username)}" data-role="${u.role}" data-email="${escHtml(u.email||'')}">Modifier</button>
+          <button class="btn btn-sm btn-ghost toggle-btn" data-id="${u.id}" data-active="${u.is_active}">${u.is_active ? 'Désactiver' : 'Activer'}</button>
+          <button class="btn btn-sm btn-ghost reset-pw-btn" data-id="${u.id}" data-username="${escHtml(u.username)}">Réinitialiser MDP</button>
+          <button class="btn btn-sm btn-danger delete-btn" data-id="${u.id}">Supprimer</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    tbody.querySelectorAll('.edit-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.getElementById('edit-user-id').value = btn.dataset.id;
+        document.getElementById('edit-username').value = btn.dataset.username;
+        document.getElementById('edit-password').value = '';
+        document.getElementById('edit-role').value = btn.dataset.role;
+        document.getElementById('edit-email').value = btn.dataset.email || '';
+        editMsg.textContent = '';
+        editModal.style.display = 'flex';
+      });
+    });
+
+    tbody.querySelectorAll('.reset-pw-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm(`Réinitialiser le mot de passe de « ${btn.dataset.username} » ?\nUn mot de passe temporaire sera généré.`)) return;
+        const res = await fetch(`/api/users/${btn.dataset.id}/reset-password`, { method: 'POST' });
+        if (res.ok) {
+          const data = await res.json();
+          alert(`Mot de passe temporaire :\n\n${data.temp_password}\n\nL'utilisateur devra le changer à la prochaine connexion.`);
+        } else alert('Erreur lors de la réinitialisation.');
+      });
+    });
+
+    tbody.querySelectorAll('.toggle-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        await fetch(`/api/users/${btn.dataset.id}`, {
+          method: 'PUT', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ is_active: btn.dataset.active !== 'true' }),
+        });
+        loadUsers();
+      });
+    });
+
+    tbody.querySelectorAll('.delete-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('Supprimer cet utilisateur ?')) return;
+        const res = await fetch(`/api/users/${btn.dataset.id}`, { method: 'DELETE' });
+        if (res.ok) loadUsers();
+        else { const err = await res.json(); alert(err.detail || 'Erreur'); }
+      });
+    });
+  }
+
+  // ── Modale création ────────────────────────────────────────────────────────
+  const createModal = document.getElementById('create-user-modal');
+  const cuMsg = document.getElementById('create-user-msg');
+
+  function openCreateModal() {
+    document.getElementById('cu-username').value = '';
+    document.getElementById('cu-email').value = '';
+    document.getElementById('cu-role').value = 'contributeur';
+    document.getElementById('cu-password').value = '';
+    document.getElementById('cu-must-change').checked = true;
+    document.getElementById('cu-password-block').style.display = 'none';
+    document.getElementById('cu-opt-email').style.display = 'none';
+    document.getElementById('create-step-1').style.display = 'block';
+    document.getElementById('create-step-2').style.display = 'none';
+    cuMsg.textContent = '';
+    createModal.style.display = 'flex';
+    setTimeout(() => document.getElementById('cu-username').focus(), 50);
+  }
+
+  function closeCreateModal() { createModal.style.display = 'none'; }
+
+  document.getElementById('btn-open-create-user').addEventListener('click', openCreateModal);
+  document.getElementById('create-modal-close').addEventListener('click', closeCreateModal);
+  document.getElementById('create-step1-cancel').addEventListener('click', closeCreateModal);
+  createModal.addEventListener('click', e => { if (e.target === createModal) closeCreateModal(); });
+
+  document.getElementById('create-step1-next').addEventListener('click', () => {
+    const username = document.getElementById('cu-username').value.trim();
+    if (!username) { document.getElementById('cu-username').focus(); return; }
+    const email = document.getElementById('cu-email').value.trim();
+    document.getElementById('cu-step2-subtitle').textContent = email
+      ? `Compte : ${username} · ${email}`
+      : `Compte : ${username}`;
+    document.getElementById('cu-opt-email').style.display = email ? 'block' : 'none';
+    document.getElementById('cu-password-block').style.display = 'none';
+    document.getElementById('create-step-1').style.display = 'none';
+    document.getElementById('create-step-2').style.display = 'block';
+    cuMsg.textContent = '';
+  });
+
+  document.getElementById('create-step2-back').addEventListener('click', () => {
+    document.getElementById('create-step-2').style.display = 'none';
+    document.getElementById('create-step-1').style.display = 'block';
+  });
+
+  document.getElementById('cu-choose-email').addEventListener('click', async () => {
+    const username = document.getElementById('cu-username').value.trim();
+    const email    = document.getElementById('cu-email').value.trim();
+    const role     = document.getElementById('cu-role').value;
+    const tempPw   = Math.random().toString(36).slice(-10) + 'A1!';
+    cuMsg.textContent = 'Création en cours…';
+    cuMsg.className = 'edit-msg';
+    const res = await fetch('/api/users', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ username, password: tempPw, role, must_change_password: true, email }),
+    });
+    if (res.ok) {
+      cuMsg.textContent = `Compte créé — invitation envoyée à ${email}`;
+      cuMsg.className = 'edit-msg edit-msg-ok';
+      loadUsers();
+      setTimeout(closeCreateModal, 1800);
+    } else {
+      const err = await res.json();
+      cuMsg.textContent = err.detail || 'Erreur';
+      cuMsg.className = 'edit-msg edit-msg-err';
+    }
+  });
+
+  document.getElementById('cu-choose-password').addEventListener('click', () => {
+    document.getElementById('cu-password-block').style.display = 'block';
+    document.getElementById('cu-password').focus();
+  });
+
+  document.getElementById('cu-pw-cancel').addEventListener('click', () => {
+    document.getElementById('cu-password-block').style.display = 'none';
+  });
+
+  document.getElementById('cu-pw-submit').addEventListener('click', async () => {
+    const username   = document.getElementById('cu-username').value.trim();
+    const email      = document.getElementById('cu-email').value.trim() || null;
+    const role       = document.getElementById('cu-role').value;
+    const password   = document.getElementById('cu-password').value;
+    const mustChange = document.getElementById('cu-must-change').checked;
+    if (!password) { document.getElementById('cu-password').focus(); return; }
+    cuMsg.textContent = '';
+    const res = await fetch('/api/users', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ username, password, role, must_change_password: mustChange, email }),
+    });
+    if (res.ok) {
+      loadUsers();
+      closeCreateModal();
+    } else {
+      const err = await res.json();
+      cuMsg.textContent = err.detail || 'Erreur';
+      cuMsg.className = 'edit-msg edit-msg-err';
+    }
+  });
+
+  editForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('edit-user-id').value;
+    const payload = { username: document.getElementById('edit-username').value, role: document.getElementById('edit-role').value };
+    const pw = document.getElementById('edit-password').value;
+    if (pw) payload.password = pw;
+    payload.email = document.getElementById('edit-email').value.trim() || null;
+    const res = await fetch(`/api/users/${id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    if (res.ok) { editModal.style.display = 'none'; loadUsers(); }
+    else { const err = await res.json(); editMsg.textContent = err.detail || 'Erreur'; editMsg.className = 'edit-msg edit-msg-err'; }
+  });
+
+  editModalClose.addEventListener('click', () => { editModal.style.display = 'none'; });
+  editModal.addEventListener('click', (e) => { if (e.target === editModal) editModal.style.display = 'none'; });
+
+  // ── Google Books key ─────────────────────────────────────────────────────
+  const googlebooksInput  = document.getElementById('googlebooks-key-input');
+  const googlebooksToggle = document.getElementById('googlebooks-key-toggle');
+  const googlebooksStatus = document.getElementById('googlebooks-key-status');
+
+  googlebooksToggle.addEventListener('click', () => {
+    googlebooksInput.type = googlebooksInput.type === 'password' ? 'text' : 'password';
+  });
+
+  function updateGooglebooksStatus(key) {
+    if (key) {
+      googlebooksStatus.textContent = '✓ Configurée';
+      googlebooksStatus.className = 'api-key-status api-key-status-ok';
+    } else {
+      googlebooksStatus.textContent = 'Sans clé (limité)';
+      googlebooksStatus.className = 'api-key-status api-key-status-empty';
+    }
+  }
+
+  btnSave.addEventListener('click', async () => {
+    const key = googlebooksInput.value.trim();
+    await fetch('/api/settings/googlebooks_api_key', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: key }),
+    });
+    updateGooglebooksStatus(key);
+  });
+
+  // ── ISBNdb key ───────────────────────────────────────────────────────────
+  const isbndbInput = document.getElementById('isbndb-key-input');
+  const isbndbToggle = document.getElementById('isbndb-key-toggle');
+  const isbndbStatus = document.getElementById('isbndb-key-status');
+
+  isbndbToggle.addEventListener('click', () => {
+    isbndbInput.type = isbndbInput.type === 'password' ? 'text' : 'password';
+  });
+
+  async function loadIsbndbKey() {
+    const res = await fetch('/api/settings');
+    const data = await res.json();
+    const key = data.isbndb_api_key || '';
+    isbndbInput.value = key;
+    updateIsbndbStatus(key);
+  }
+
+  function updateIsbndbStatus(key) {
+    if (key) {
+      isbndbStatus.textContent = '✓ Configurée';
+      isbndbStatus.className = 'api-key-status api-key-status-ok';
+      // Auto-activer ISBNdb dans la liste si elle est désactivée
+      const src = sources.find(s => s.id === 'isbndb');
+      if (src && !src.enabled) {
+        const cb = list.querySelector('input[data-id="isbndb"]');
+        // Ne pas forcer — laisser l'utilisateur décider
+      }
+    } else {
+      isbndbStatus.textContent = 'Non configurée';
+      isbndbStatus.className = 'api-key-status api-key-status-empty';
+    }
+  }
+
+  // Intégrer la sauvegarde de la clé dans le bouton Enregistrer
+  const _origSave = btnSave.onclick;
+  btnSave.addEventListener('click', async () => {
+    const key = isbndbInput.value.trim();
+    await fetch('/api/settings/isbndb_api_key', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: key }),
+    });
+    updateIsbndbStatus(key);
+  });
+
+  // ── Import CSV ───────────────────────────────────────────────────────────
+  document.getElementById('csv-import-input').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = '';
+
+    const progress = document.getElementById('import-progress');
+    const result   = document.getElementById('import-result');
+    progress.style.display = 'block';
+    result.style.display   = 'none';
+
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch('/api/books/import/csv', { method: 'POST', body: fd });
+    progress.style.display = 'none';
+
+    if (!res.ok) {
+      const err = await res.json();
+      result.innerHTML = `<div class="io-import-error">Erreur : ${escHtml(err.detail || 'Import échoué')}</div>`;
+    } else {
+      const d = await res.json();
+      const errHtml = d.errors.length
+        ? `<ul class="io-import-errors">${d.errors.map(e => `<li>Ligne ${e.ligne} — ISBN ${escHtml(e.isbn)} : ${escHtml(e.erreur)}</li>`).join('')}</ul>`
+        : '';
+      const parts = [];
+      if (d.created) parts.push(`${d.created} importé(s) directement`);
+      if (d.queued)  parts.push(`${d.queued} en cours d'enrichissement`);
+      result.innerHTML = `
+        <div class="io-import-summary ${d.errors.length ? 'io-import-warn' : 'io-import-ok'}">
+          <strong>${parts.join(' · ') || 'Aucun livre importé'}</strong>
+          ${d.skipped ? `<span>${d.skipped} ignoré(s) (doublon ou ligne vide)</span>` : ''}
+          ${d.errors.length ? `<span>${d.errors.length} erreur(s)</span>` : ''}
+        </div>
+        ${d.queued ? `<p style="font-size:.8rem;color:var(--color-text-muted);margin-top:.5rem">Les informations sont récupérées en arrière-plan — consultez la bibliothèque dans quelques instants.</p>` : ''}
+        ${errHtml}`;
+    }
+    result.style.display = 'block';
+  });
+
+  // ── Email ────────────────────────────────────────────────────────────────
+  async function loadEmailSettings() {
+    const res = await fetch('/api/settings');
+    const data = await res.json();
+    const smtp = data.smtp || {};
+    document.getElementById('smtp-host').value     = smtp.host     || '';
+    document.getElementById('smtp-port').value     = smtp.port     ?? 587;
+    document.getElementById('smtp-user').value     = smtp.user     || '';
+    document.getElementById('smtp-password').value = smtp.password || '';
+    document.getElementById('smtp-from').value     = smtp.from_    || '';
+    document.getElementById('smtp-tls').checked    = smtp.tls      ?? true;
+    document.getElementById('site-url').value      = data.site_url || '';
+    document.getElementById('mail-overdue').checked        = !!data.mail_overdue;
+    document.getElementById('mail-new-account').checked    = !!data.mail_new_account;
+    document.getElementById('mail-reset-password').checked = !!data.mail_reset_password;
+  }
+
+  function smtpMsg(text, ok) {
+    const el = document.getElementById('smtp-msg');
+    el.textContent = text;
+    el.className = 'save-msg ' + (ok ? 'save-msg-ok' : 'save-msg-err');
+    if (ok) setTimeout(() => { el.textContent = ''; el.className = 'save-msg'; }, 3500);
+  }
+
+  document.getElementById('smtp-pw-toggle').addEventListener('click', () => {
+    const inp = document.getElementById('smtp-password');
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+  });
+
+  document.getElementById('btn-save-smtp').addEventListener('click', async () => {
+    const smtp = {
+      host:     document.getElementById('smtp-host').value.trim(),
+      port:     parseInt(document.getElementById('smtp-port').value) || 587,
+      user:     document.getElementById('smtp-user').value.trim(),
+      password: document.getElementById('smtp-password').value,
+      from_:    document.getElementById('smtp-from').value.trim(),
+      tls:      document.getElementById('smtp-tls').checked,
+    };
+    const siteUrl   = document.getElementById('site-url').value.trim();
+    const overdue   = document.getElementById('mail-overdue').checked;
+    const newAcc    = document.getElementById('mail-new-account').checked;
+    const resetPw   = document.getElementById('mail-reset-password').checked;
+
+    const saves = await Promise.all([
+      fetch('/api/settings/smtp',                 { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ value: smtp }) }),
+      fetch('/api/settings/site_url',             { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ value: siteUrl }) }),
+      fetch('/api/settings/mail_overdue',         { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ value: overdue }) }),
+      fetch('/api/settings/mail_new_account',     { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ value: newAcc }) }),
+      fetch('/api/settings/mail_reset_password',  { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ value: resetPw }) }),
+    ]);
+    smtpMsg(saves.every(r => r.ok) ? 'Enregistré !' : 'Erreur lors de la sauvegarde.', saves.every(r => r.ok));
+  });
+
+  document.getElementById('btn-test-smtp').addEventListener('click', async () => {
+    const to = document.getElementById('smtp-test-to').value.trim();
+    if (!to) { smtpMsg('Saisissez une adresse de test.', false); return; }
+    smtpMsg('Envoi en cours…', true);
+    const res = await fetch('/api/settings/email/test', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ to }),
+    });
+    if (res.ok) smtpMsg('Mail envoyé !', true);
+    else { const err = await res.json(); smtpMsg(err.detail || 'Erreur SMTP', false); }
+  });
+
+  // ── Affichage ─────────────────────────────────────────────────────────────
+  const PREFS = {
+    dark:          { key: 'bib_dark',          default: false },
+    badgeSeries:   { key: 'bib_badge_series',   default: true  },
+    badgeLocation: { key: 'bib_badge_location', default: true  },
+  };
+
+  function getPref(name) {
+    const p = PREFS[name];
+    const v = localStorage.getItem(p.key);
+    return v === null ? p.default : v === '1';
+  }
+  function setPref(name, val) {
+    localStorage.setItem(PREFS[name].key, val ? '1' : '0');
+  }
+
+  function applyDark(val) {
+    document.documentElement.classList.toggle('dark', val);
+  }
+
+  function initDisplayTab() {
+    const darkCb     = document.getElementById('pref-dark');
+    const seriesCb   = document.getElementById('pref-badge-series');
+    const locationCb = document.getElementById('pref-badge-location');
+    if (!darkCb) return;
+
+    darkCb.checked     = getPref('dark');
+    seriesCb.checked   = getPref('badgeSeries');
+    locationCb.checked = getPref('badgeLocation');
+
+    darkCb.addEventListener('change', () => {
+      setPref('dark', darkCb.checked);
+      applyDark(darkCb.checked);
+    });
+    seriesCb.addEventListener('change', () => setPref('badgeSeries', seriesCb.checked));
+    locationCb.addEventListener('change', () => setPref('badgeLocation', locationCb.checked));
+  }
+
+  initDisplayTab();
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  loadSources();
+  loadIsbndbKey();
+
+  // Charger la clé Google Books
+  (async () => {
+    const res = await fetch('/api/settings');
+    const data = await res.json();
+    const key = data.googlebooks_api_key || '';
+    googlebooksInput.value = key;
+    updateGooglebooksStatus(key);
+  })();
+})();
+</script>
+{% endblock %}

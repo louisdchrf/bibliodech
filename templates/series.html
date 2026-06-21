@@ -1,0 +1,304 @@
+{% extends "base.html" %}
+{% block title %}Séries – Bibliodech{% endblock %}
+
+{% block content %}
+<div class="series-page">
+  <div class="page-header">
+    <h2 class="page-title">Séries</h2>
+    <button id="btn-detect" class="btn btn-ghost btn-sm">🔍 Détecter les séries</button>
+    <button id="btn-new-series" class="btn btn-primary btn-sm">+ Nouvelle série</button>
+  </div>
+  <div id="new-series-form" style="display:none;margin-bottom:1rem;display:none">
+    <div style="display:flex;gap:.5rem;align-items:center">
+      <input type="text" id="new-series-name" class="search-input" placeholder="Nom de la série…" style="max-width:320px">
+      <button id="save-new-series" class="btn btn-primary btn-sm">Créer</button>
+      <button id="cancel-new-series" class="btn btn-ghost btn-sm">Annuler</button>
+    </div>
+    <div id="new-series-msg" style="font-size:.85rem;margin-top:.25rem"></div>
+  </div>
+  <div id="detect-msg" class="detect-msg" style="display:none"></div>
+
+  <div id="series-list" class="series-list"></div>
+
+  <div id="series-empty" class="empty-state" style="display:none">
+    <div class="empty-icon">📖</div>
+    <p>Aucune série pour l'instant</p>
+  </div>
+
+  <hr class="section-divider">
+
+  <h2 class="page-title">Suggestions de séries</h2>
+  <p class="section-hint">Livres du même auteur sans série assignée</p>
+  <div id="suggestions-list" class="suggestions-list"></div>
+  <div id="suggestions-empty" class="empty-state" style="display:none">
+    <p>Aucune suggestion disponible</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const seriesList = document.getElementById('series-list');
+  const seriesEmpty = document.getElementById('series-empty');
+  const suggestionsList = document.getElementById('suggestions-list');
+  const suggestionsEmpty = document.getElementById('suggestions-empty');
+  const isAdmin = {{ 'true' if user.role == 'admin' else 'false' }};
+
+  function escHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Nouvelle série manuelle ───────────────────────────────────────────────
+  const btnNew = document.getElementById('btn-new-series');
+  const newForm = document.getElementById('new-series-form');
+  const newInput = document.getElementById('new-series-name');
+  const newMsg = document.getElementById('new-series-msg');
+
+  btnNew.addEventListener('click', () => {
+    newForm.style.display = 'flex';
+    newInput.focus();
+  });
+  document.getElementById('cancel-new-series').addEventListener('click', () => {
+    newForm.style.display = 'none';
+    newInput.value = '';
+    newMsg.textContent = '';
+  });
+  document.getElementById('save-new-series').addEventListener('click', async () => {
+    const name = newInput.value.trim();
+    if (!name) return;
+    const res = await fetch('/api/series', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, source: 'manual' }),
+    });
+    if (res.ok) {
+      newForm.style.display = 'none';
+      newInput.value = '';
+      newMsg.textContent = '';
+      loadSeries();
+    } else {
+      const err = await res.json();
+      newMsg.textContent = err.detail || 'Erreur';
+      newMsg.style.color = 'var(--danger)';
+    }
+  });
+  newInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('save-new-series').click();
+    if (e.key === 'Escape') document.getElementById('cancel-new-series').click();
+  });
+
+  // ── Series list ──────────────────────────────────────────────────────────
+  async function loadSeries() {
+    const res = await fetch('/api/series');
+    const series = await res.json();
+
+    if (series.length === 0) {
+      seriesEmpty.style.display = 'flex';
+      return;
+    }
+    seriesEmpty.style.display = 'none';
+    seriesList.innerHTML = '';
+
+    series.forEach(s => {
+      const item = document.createElement('div');
+      item.className = 'series-item';
+      item.dataset.id = s.id;
+      item.innerHTML = `
+        <div class="series-header" data-id="${s.id}">
+          <div class="series-header-left">
+            <span class="series-arrow">▶</span>
+            <span class="series-name">${escHtml(s.name)}</span>
+            <span class="badge badge-count">${s.book_count} livre${s.book_count > 1 ? 's' : ''}</span>
+            <span class="badge badge-source">${escHtml(s.source)}</span>
+          </div>
+          <div class="series-actions">
+            <button class="btn btn-sm btn-ghost rename-btn" data-id="${s.id}" data-name="${escHtml(s.name)}">Renommer</button>
+            ${isAdmin ? `<button class="btn btn-sm btn-danger delete-series-btn" data-id="${s.id}">Supprimer</button>` : ''}
+          </div>
+        </div>
+        <div class="series-books" id="series-books-${s.id}" style="display:none"></div>
+        <div class="rename-form" id="rename-form-${s.id}" style="display:none">
+          <input type="text" class="rename-input" id="rename-input-${s.id}" value="${escHtml(s.name)}">
+          <button class="btn btn-primary btn-sm save-rename-btn" data-id="${s.id}">OK</button>
+          <button class="btn btn-ghost btn-sm cancel-rename-btn" data-id="${s.id}">Annuler</button>
+        </div>
+      `;
+      seriesList.appendChild(item);
+    });
+
+    // ── Accordion ────────────────────────────────────────────────────────
+    seriesList.querySelectorAll('.series-header').forEach(header => {
+      header.addEventListener('click', async (e) => {
+        if (e.target.closest('button')) return;
+        const id = header.dataset.id;
+        const booksDiv = document.getElementById(`series-books-${id}`);
+        const arrow = header.querySelector('.series-arrow');
+        if (booksDiv.style.display === 'none') {
+          if (!booksDiv.dataset.loaded) {
+            const res = await fetch(`/api/series/${id}`);
+            const data = await res.json();
+            booksDiv.innerHTML = data.books.length === 0
+              ? '<p class="series-no-books">Aucun livre</p>'
+              : data.books.map(b => bookRow(b)).join('');
+            booksDiv.dataset.loaded = '1';
+          }
+          booksDiv.style.display = 'block';
+          arrow.textContent = '▼';
+        } else {
+          booksDiv.style.display = 'none';
+          arrow.textContent = '▶';
+        }
+      });
+    });
+
+    // ── Rename ───────────────────────────────────────────────────────────
+    seriesList.querySelectorAll('.rename-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+        document.getElementById(`rename-form-${id}`).style.display = 'flex';
+        document.getElementById(`rename-input-${id}`).focus();
+      });
+    });
+
+    seriesList.querySelectorAll('.save-rename-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+        const newName = document.getElementById(`rename-input-${id}`).value.trim();
+        if (!newName) return;
+        const res = await fetch(`/api/series/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: newName }),
+        });
+        if (res.ok) loadSeries();
+      });
+    });
+
+    seriesList.querySelectorAll('.cancel-rename-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        document.getElementById(`rename-form-${btn.dataset.id}`).style.display = 'none';
+      });
+    });
+
+    // ── Delete ───────────────────────────────────────────────────────────
+    seriesList.querySelectorAll('.delete-series-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('Supprimer cette série ? Les livres seront détachés.')) return;
+        const res = await fetch(`/api/series/${btn.dataset.id}`, { method: 'DELETE' });
+        if (res.ok) loadSeries();
+      });
+    });
+  }
+
+  function bookRow(book) {
+    const authors = Array.isArray(book.authors) ? book.authors.join(', ') : '';
+    const cover = book.cover_url
+      ? `<img src="${escHtml(book.cover_url)}" alt="" class="series-book-cover" onerror="this.src='/static/img/no-cover.svg'">`
+      : `<img src="/static/img/no-cover.svg" alt="" class="series-book-cover">`;
+    return `
+      <div class="series-book-row">
+        ${cover}
+        <div class="series-book-info">
+          ${book.series_position !== null && book.series_position !== undefined ? `<span class="badge badge-pos">#${book.series_position}</span>` : ''}
+          <span class="series-book-title">${escHtml(book.title)}</span>
+          ${authors ? `<span class="series-book-author">${escHtml(authors)}</span>` : ''}
+        </div>
+        ${book.shelf ? `<span class="badge badge-shelf">${escHtml(book.shelf)}</span>` : ''}
+      </div>
+    `;
+  }
+
+  // ── Suggestions ──────────────────────────────────────────────────────────
+  async function loadSuggestions() {
+    const res = await fetch('/api/series/suggestions');
+    const groups = await res.json();
+
+    if (groups.length === 0) {
+      suggestionsEmpty.style.display = 'flex';
+      return;
+    }
+    suggestionsEmpty.style.display = 'none';
+    suggestionsList.innerHTML = '';
+
+    groups.forEach(group => {
+      const div = document.createElement('div');
+      div.className = 'suggestion-group';
+      const bookIds = group.books.map(b => b.id);
+      div.innerHTML = `
+        <div class="suggestion-author">
+          <strong>${escHtml(group.author)}</strong>
+          <span class="badge badge-count">${group.books.length} livres</span>
+        </div>
+        <div class="suggestion-books">
+          ${group.books.map(b => `<span class="suggestion-book-title">${escHtml(b.title)}</span>`).join('')}
+        </div>
+        <div class="suggestion-form">
+          <input type="text" class="rename-input series-name-input" placeholder="Nom de la série…" id="sug-name-${group.author.replace(/\s/g,'_')}">
+          <button class="btn btn-primary btn-sm create-series-btn" data-book-ids="${bookIds.join(',')}" data-input-id="sug-name-${group.author.replace(/\s/g,'_')}">Créer une série</button>
+        </div>
+      `;
+      suggestionsList.appendChild(div);
+    });
+
+    suggestionsList.querySelectorAll('.create-series-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const inputId = btn.dataset.inputId;
+        const seriesName = document.getElementById(inputId).value.trim();
+        if (!seriesName) { alert('Veuillez saisir un nom de série.'); return; }
+        const bookIds = btn.dataset.bookIds.split(',').map(Number);
+        const res = await fetch('/api/series/link-books', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ book_ids: bookIds, series_name: seriesName }),
+        });
+        if (res.ok) {
+          loadSeries();
+          loadSuggestions();
+        }
+      });
+    });
+  }
+
+  // ── Détection forcée ─────────────────────────────────────────────────────
+  const btnDetect = document.getElementById('btn-detect');
+  const detectMsg = document.getElementById('detect-msg');
+
+  btnDetect.addEventListener('click', async () => {
+    btnDetect.disabled = true;
+    btnDetect.textContent = '⏳ Analyse…';
+    detectMsg.style.display = 'none';
+    const res = await fetch('/api/series/detect-all', { method: 'POST' });
+    if (!res.ok) {
+      detectMsg.textContent = 'Erreur lors de la détection.';
+      detectMsg.className = 'detect-msg detect-msg-err';
+      detectMsg.style.display = '';
+      btnDetect.disabled = false;
+      btnDetect.textContent = '🔍 Détecter les séries';
+      return;
+    }
+    const data = await res.json();
+    const parts = [];
+    if (data.found_instant > 0) parts.push(`${data.found_instant} série${data.found_instant > 1 ? 's' : ''} trouvée${data.found_instant > 1 ? 's' : ''} par analyse du titre`);
+    if (data.queued_lookup > 0) parts.push(`${data.queued_lookup} livre${data.queued_lookup > 1 ? 's' : ''} en recherche en ligne…`);
+    if (!parts.length) parts.push('Aucune nouvelle série détectée');
+    detectMsg.textContent = parts.join(' · ');
+    detectMsg.className = 'detect-msg detect-msg-ok';
+    detectMsg.style.display = '';
+    btnDetect.disabled = false;
+    btnDetect.textContent = '🔍 Détecter les séries';
+    loadSeries();
+    loadSuggestions();
+  });
+
+  // ── Init ─────────────────────────────────────────────────────────────────
+  loadSeries();
+  loadSuggestions();
+})();
+</script>
+{% endblock %}

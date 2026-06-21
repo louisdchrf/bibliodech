@@ -1,0 +1,568 @@
+{% extends "base.html" %}
+{% block title %}Scanner – Bibliodech{% endblock %}
+
+{% block content %}
+<div class="scanner-page">
+
+  <!-- Localisation en cascade -->
+  <div class="location-bar">
+    <span class="location-bar-label">Localisation :</span>
+    <div class="location-bar-fields">
+      <div class="location-bar-field">
+        <label for="loc-site">Adresse</label>
+        <select id="loc-site">
+          <option value="">— Choisir —</option>
+        </select>
+      </div>
+      <span class="location-bar-sep">›</span>
+      <div class="location-bar-field">
+        <label for="loc-room">Pièce</label>
+        <select id="loc-room" disabled>
+          <option value="">— Choisir —</option>
+        </select>
+      </div>
+      <span class="location-bar-sep">›</span>
+      <div class="location-bar-field">
+        <label for="loc-shelf">Étagère</label>
+        <select id="loc-shelf" disabled>
+          <option value="">— Choisir —</option>
+        </select>
+      </div>
+
+    </div>
+    <a href="/locations" class="location-bar-manage" title="Gérer les localisations">⚙</a>
+  </div>
+
+  <!-- Caméra overlay (live scan) -->
+  <div id="cam-overlay" class="cam-overlay" style="display:none" aria-hidden="true">
+    <div id="quagga-viewport" class="quagga-viewport"></div>
+    <div class="cam-frame-overlay">
+      <div class="cam-laser"></div>
+    </div>
+    <div class="cam-live-feed" id="cam-live-feed"></div>
+    <button id="cam-close" class="btn cam-close-btn">✕ Fermer</button>
+  </div>
+  <!-- Fallback iOS : input fichier caméra -->
+  <input type="file" id="cam-file-input" accept="image/*" capture="environment" style="display:none">
+
+  <!-- ISBN input -->
+  <div class="scan-area">
+    <div class="scan-input-row">
+      <input
+        type="text"
+        id="isbn-input"
+        inputmode="numeric"
+        autocomplete="off"
+        placeholder="Saisir un ISBN…"
+        class="isbn-input"
+      >
+      <button id="cam-btn" class="btn btn-primary cam-btn" title="Scanner avec la caméra">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        <span class="cam-btn-label">Caméra</span>
+      </button>
+    </div>
+    <p class="scan-hint" id="scan-hint-text">Saisissez un ISBN ou utilisez la caméra</p>
+    <div id="scan-loading" class="scan-loading" style="display:none">
+      <span class="scan-spinner"></span>
+      <span id="scan-loading-isbn"></span>
+    </div>
+  </div>
+
+  <!-- Manual entry form (hidden by default) -->
+  <div id="manual-form-container" class="manual-form-container" style="display:none">
+    <div class="manual-form-card">
+      <h3>Saisie manuelle</h3>
+      <p class="manual-isbn-label">ISBN : <strong id="manual-isbn-display"></strong></p>
+      <form id="manual-form">
+        <div class="field">
+          <label for="manual-title">Titre <span class="required">*</span></label>
+          <input type="text" id="manual-title" name="title" required placeholder="Titre du livre">
+        </div>
+        <div class="field">
+          <label for="manual-authors">Auteurs</label>
+          <input type="text" id="manual-authors" name="authors" placeholder="Prénom Nom, Prénom Nom…">
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Ajouter</button>
+          <button type="button" class="btn btn-ghost" id="manual-cancel">Annuler</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Feed -->
+  <div id="scan-feed" class="scan-feed"></div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const isbnInput = document.getElementById('isbn-input');
+  const feed = document.getElementById('scan-feed');
+  const manualContainer = document.getElementById('manual-form-container');
+  const manualForm = document.getElementById('manual-form');
+  const manualIsbnDisplay = document.getElementById('manual-isbn-display');
+  const manualCancel = document.getElementById('manual-cancel');
+
+  const selSite      = document.getElementById('loc-site');
+  const selRoom      = document.getElementById('loc-room');
+  const selShelf = document.getElementById('loc-shelf');
+
+  let locTree = [];  // arbre complet sites→rooms→shelves
+
+  // ── Charger l'arbre et peupler les selects de premier niveau ─────────────
+  async function loadLocations() {
+    try {
+      const res = await fetch('/api/locations/tree');
+      locTree = await res.json();
+      selSite.innerHTML = '<option value="">— Choisir —</option>' +
+        locTree.map(s => `<option value="${s.id}">${escHtml(s.name)}</option>`).join('');
+    } catch (e) { /* ignore */ }
+  }
+
+  selSite.addEventListener('change', () => {
+    const siteId = parseInt(selSite.value) || null;
+    const site = locTree.find(s => s.id === siteId);
+    selRoom.innerHTML = '<option value="">— Choisir —</option>';
+    clearShelf();
+    if (site && site.rooms.length) {
+      selRoom.innerHTML += site.rooms.map(r => `<option value="${r.id}">${escHtml(r.name)}</option>`).join('');
+      selRoom.disabled = false;
+    } else {
+      selRoom.disabled = true;
+    }
+  });
+
+  selRoom.addEventListener('change', () => {
+    const siteId = parseInt(selSite.value) || null;
+    const roomId = parseInt(selRoom.value) || null;
+    const site   = locTree.find(s => s.id === siteId);
+    const room   = site && site.rooms.find(r => r.id === roomId);
+    selShelf.innerHTML = '<option value="">— Choisir —</option>';
+    if (room && room.shelves && room.shelves.length) {
+      selShelf.innerHTML += room.shelves.map(sh => `<option value="${sh.id}">${escHtml(sh.name)}</option>`).join('');
+      selShelf.disabled = false;
+    } else {
+      selShelf.disabled = true;
+    }
+  });
+
+  function resolveRoomId()     { return parseInt(selRoom.value)  || null; }
+  function resolveLocationId() { return parseInt(selShelf.value) || null; }
+
+  // ── Scan ─────────────────────────────────────────────────────────────────
+  let autoSubmitTimer = null;
+
+  isbnInput.addEventListener('input', () => {
+    clearTimeout(autoSubmitTimer);
+    const val = isbnInput.value.replace(/\D/g, '');
+    if (val.length === 13 || val.length === 10) {
+      autoSubmitTimer = setTimeout(() => {
+        const isbn = isbnInput.value.trim();
+        if (isbn) submitScan(isbn);
+      }, 80);
+    }
+  });
+
+  isbnInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      clearTimeout(autoSubmitTimer);
+      const isbn = isbnInput.value.trim();
+      if (isbn) submitScan(isbn);
+    }
+  });
+
+  async function submitScan(isbn) {
+    isbnInput.value = '';
+    isbnInput.focus();
+
+    const card = pendingCard(isbn);
+    prependCard(card);
+
+    const room_id     = resolveRoomId();
+    const location_id = resolveLocationId();
+
+    try {
+      const res = await fetch('/api/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isbn, room_id, location_id }),
+      });
+      const data = await res.json();
+
+      if (data.status === 'exists') {
+        replaceCard(card, existsCard(data.book));
+      } else if (data.status === 'pending') {
+        pollBook(data.book.id, card, isbn, 0, data.ean_warning);
+      } else if (data.status === 'ok') {
+        replaceCard(card, bookCard(data.book));
+      }
+    } catch (err) {
+      replaceCard(card, errorCard('Erreur réseau lors du scan.'));
+    }
+  }
+
+  // ── Polling ──────────────────────────────────────────────────────────────
+  async function pollBook(bookId, card, isbn, attempt = 0, eanWarning = null) {
+    if (attempt > 20) {
+      replaceCard(card, notFoundCard(isbn, bookId));
+      return;
+    }
+    await sleep(1500);
+    try {
+      const res = await fetch(`/api/scan/status/${bookId}`);
+      const data = await res.json();
+      if (data.enrichment_status === 'ok') {
+        replaceCard(card, bookCard(data.book));
+      } else if (data.enrichment_status === 'not_found') {
+        replaceCard(card, notFoundCard(isbn, bookId, eanWarning));
+      } else {
+        pollBook(bookId, card, isbn, attempt + 1, eanWarning);
+      }
+    } catch {
+      pollBook(bookId, card, isbn, attempt + 1);
+    }
+  }
+
+  // ── Manual form ──────────────────────────────────────────────────────────
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-manual-isbn]');
+    if (!btn) return;
+    const isbn = btn.dataset.manualIsbn;
+    manualIsbnDisplay.textContent = isbn;
+    manualContainer.dataset.bookId = btn.dataset.bookId || '';
+    manualContainer.style.display = 'block';
+    manualContainer.scrollIntoView({ behavior: 'smooth' });
+    document.getElementById('manual-title').focus();
+  });
+
+  manualForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const isbn = manualIsbnDisplay.textContent.trim();
+    const bookId = manualContainer.dataset.bookId;
+    const title = document.getElementById('manual-title').value.trim();
+    const authorsRaw = document.getElementById('manual-authors').value.trim();
+    const authors = authorsRaw ? authorsRaw.split(',').map(a => a.trim()).filter(Boolean) : [];
+
+    try {
+      const method = bookId ? 'PATCH' : 'POST';
+      const url = bookId ? `/api/books/${bookId}` : '/api/books';
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isbn: isbn || null, title, authors, room_id: resolveRoomId(), location_id: resolveLocationId(), source: 'manual', enrichment_status: 'ok' }),
+      });
+      if (res.ok) {
+        const book = await res.json();
+        manualContainer.style.display = 'none';
+        manualForm.reset();
+        const old = feed.querySelector(`[data-book-id="${bookId}"]`);
+        if (old) old.replaceWith(bookCard(book));
+        else prependCard(bookCard(book));
+        isbnInput.focus();
+      } else {
+        const err = await res.json();
+        alert(err.detail || 'Erreur lors de la création.');
+      }
+    } catch (err) {
+      alert('Erreur réseau.');
+    }
+  });
+
+  manualCancel.addEventListener('click', () => {
+    manualContainer.style.display = 'none';
+    manualForm.reset();
+    isbnInput.focus();
+  });
+
+  // ── Card builders ────────────────────────────────────────────────────────
+  function bookCard(book) {
+    const authors = Array.isArray(book.authors) ? book.authors.join(', ') : '';
+    const cover = book.cover_url
+      ? `<img src="${escHtml(book.cover_url)}" alt="couverture" class="card-cover" onerror="this.src='/static/img/no-cover.svg'">`
+      : `<img src="/static/img/no-cover.svg" alt="couverture" class="card-cover">`;
+    const seriesBadge = book.series_name
+      ? `<span class="badge badge-series">${escHtml(book.series_name)}${book.series_position ? ' #' + book.series_position : ''}</span>`
+      : '';
+    const locBadge = book.location
+      ? `<span class="badge badge-shelf">${escHtml(book.location.label)}</span>`
+      : '';
+    const div = document.createElement('div');
+    div.className = 'scan-card scan-card-ok slide-in';
+    div.dataset.bookId = book.id;
+    div.innerHTML = `
+      ${cover}
+      <div class="card-info">
+        <div class="card-title">${escHtml(book.title)}</div>
+        ${authors ? `<div class="card-authors">${escHtml(authors)}</div>` : ''}
+        <div class="card-badges">${seriesBadge}${locBadge}</div>
+      </div>
+      <div class="card-status card-status-ok">✓ Ajouté</div>
+    `;
+    return div;
+  }
+
+  function pendingCard(isbn) {
+    const div = document.createElement('div');
+    div.className = 'scan-card scan-card-pending slide-in';
+    div.innerHTML = `
+      <div class="card-cover-placeholder"><span class="scan-spinner"></span></div>
+      <div class="card-info">
+        <div class="card-title card-title-muted">${escHtml(isbn)}</div>
+        <div class="card-authors">Recherche en cours…</div>
+      </div>
+      <div class="card-status card-status-pending">⏳</div>
+    `;
+    return div;
+  }
+
+  function notFoundCard(isbn, bookId, eanWarning = null) {
+    const div = document.createElement('div');
+    div.className = 'scan-card scan-card-error slide-in';
+    div.dataset.bookId = bookId;
+    const warningHtml = eanWarning
+      ? `<div class="card-ean-warning">⚠ ${escHtml(eanWarning)}</div>`
+      : '';
+    div.innerHTML = `
+      <img src="/static/img/no-cover.svg" alt="" class="card-cover">
+      <div class="card-info">
+        <div class="card-title">${escHtml(isbn)}</div>
+        <div class="card-authors">Introuvable en ligne</div>
+        ${warningHtml}
+      </div>
+      <button class="btn btn-sm btn-ghost" data-manual-isbn="${escHtml(isbn)}" data-book-id="${bookId}">
+        Saisir manuellement
+      </button>
+    `;
+    return div;
+  }
+
+  function existsCard(book) {
+    const div = document.createElement('div');
+    div.className = 'scan-card scan-card-warn slide-in';
+    div.innerHTML = `
+      <div class="card-info">
+        <div class="card-title">${escHtml(book.title)}</div>
+        <div class="card-authors">Déjà dans la bibliothèque</div>
+      </div>
+      <div class="card-status card-status-warn">⚠ Existant</div>
+    `;
+    return div;
+  }
+
+  function errorCard(msg) {
+    const div = document.createElement('div');
+    div.className = 'scan-card scan-card-error slide-in';
+    div.innerHTML = `<div class="card-info"><div class="card-title">${escHtml(msg)}</div></div>`;
+    return div;
+  }
+
+  function prependCard(el) { feed.insertBefore(el, feed.firstChild); }
+  function replaceCard(old, next) {
+    if (old.parentNode) old.parentNode.replaceChild(next, old);
+    else prependCard(next);
+  }
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+  function escHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Caméra ───────────────────────────────────────────────────────────────
+  const camOverlay   = document.getElementById('cam-overlay');
+  const camVideo     = document.getElementById('cam-video');
+  const camBtn       = document.getElementById('cam-btn');
+  const camClose     = document.getElementById('cam-close');
+  const camFileInput = document.getElementById('cam-file-input');
+
+  let zxingReader   = null;
+  let lastScanned   = null;
+  let lastScannedAt = 0;
+  const DEBOUNCE_MS = 3000;
+
+  // ── Charger Quagga2 à la demande ─────────────────────────────────────────
+  function loadQuagga() {
+    if (window.Quagga) return Promise.resolve(window.Quagga);
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = '/static/js/quagga2.min.js';
+      s.onload  = () => resolve(window.Quagga);
+      s.onerror = () => reject(new Error('Quagga non chargé'));
+      document.head.appendChild(s);
+    });
+  }
+
+  // ── Scan live continu ─────────────────────────────────────────────────────
+  let liveActive = false;
+
+  async function startLive() {
+    try { await loadQuagga(); } catch { fallbackFileCapture(); return; }
+
+    camOverlay.style.display = 'flex';
+    camOverlay.removeAttribute('aria-hidden');
+    document.body.style.overflow = 'hidden';
+    document.getElementById('cam-live-feed').innerHTML = '';
+
+    Quagga.init({
+      inputStream: {
+        type: 'LiveStream',
+        target: document.getElementById('quagga-viewport'),
+        constraints: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+      },
+      decoder: { readers: ['ean_reader', 'ean_8_reader', 'upc_reader'] },
+      locate: true,
+      frequency: 10,
+    }, err => {
+      if (err) {
+        stopCamera();
+        fallbackFileCapture();
+        return;
+      }
+      liveActive = true;
+      Quagga.start();
+    });
+
+    Quagga.onDetected(onBarcodeDetected);
+  }
+
+  function onBarcodeDetected(result) {
+    const raw = (result.codeResult.code || '').replace(/\D/g, '');
+    if (!raw || (raw.length !== 13 && raw.length !== 10)) return;
+    const now = Date.now();
+    if (raw === lastScanned && now - lastScannedAt < DEBOUNCE_MS) return;
+    lastScanned = raw; lastScannedAt = now;
+
+    // Feedback visuel immédiat dans le mini-feed
+    const feed = document.getElementById('cam-live-feed');
+    const toast = document.createElement('div');
+    toast.className = 'cam-toast cam-toast-pending';
+    toast.innerHTML = `<span class="cam-toast-spinner"></span><span>${raw}</span>`;
+    feed.insertBefore(toast, feed.firstChild);
+
+    // Recherche en arrière-plan — caméra reste ouverte
+    const room_id     = resolveRoomId();
+    const location_id = resolveLocationId();
+    fetch('/api/scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isbn: raw, room_id, location_id }),
+    }).then(r => r.json()).then(data => {
+      if (data.status === 'exists') {
+        toast.className = 'cam-toast cam-toast-warn';
+        toast.innerHTML = `⚠ <strong>${escHtml(data.book.title)}</strong> <span>déjà dans la bibliothèque</span>`;
+      } else {
+        toast.className = 'cam-toast cam-toast-ok';
+        toast.innerHTML = `✓ <strong>${escHtml(data.book.title || raw)}</strong>`;
+        if (data.status === 'pending') pollToast(toast, data.book.id, raw);
+      }
+    }).catch(() => {
+      toast.className = 'cam-toast cam-toast-err';
+      toast.innerHTML = `✗ Erreur réseau — ${raw}`;
+    });
+  }
+
+  async function pollToast(toast, bookId, isbn, attempt = 0) {
+    if (attempt > 20) {
+      toast.className = 'cam-toast cam-toast-warn';
+      toast.innerHTML = `? <strong>${isbn}</strong> <span>introuvable</span>`;
+      return;
+    }
+    await new Promise(r => setTimeout(r, 1500));
+    try {
+      const res = await fetch(`/api/scan/status/${bookId}`);
+      const data = await res.json();
+      if (data.enrichment_status === 'ok') {
+        toast.className = 'cam-toast cam-toast-ok';
+        toast.innerHTML = `✓ <strong>${escHtml(data.book.title)}</strong>`;
+      } else if (data.enrichment_status === 'not_found') {
+        toast.className = 'cam-toast cam-toast-warn';
+        toast.innerHTML = `? <strong>${isbn}</strong> <span>introuvable</span>`;
+      } else {
+        pollToast(toast, bookId, isbn, attempt + 1);
+      }
+    } catch { pollToast(toast, bookId, isbn, attempt + 1); }
+  }
+
+  function stopCamera() {
+    if (liveActive) { try { Quagga.offDetected(onBarcodeDetected); Quagga.stop(); } catch(_){} liveActive = false; }
+    camOverlay.style.display = 'none';
+    camOverlay.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    // Verser les toasts dans le feed principal
+    const liveFeed = document.getElementById('cam-live-feed');
+    const cards = Array.from(liveFeed.querySelectorAll('.cam-toast'));
+    cards.reverse().forEach(t => {
+      const div = document.createElement('div');
+      div.className = 'scan-card slide-in ' +
+        (t.classList.contains('cam-toast-ok') ? 'scan-card-ok' : t.classList.contains('cam-toast-warn') ? 'scan-card-warn' : 'scan-card-pending');
+      div.innerHTML = `<div class="card-info">${t.innerHTML}</div>`;
+      prependCard(div);
+    });
+    isbnInput.focus();
+  }
+
+  // ── Fallback photo (HTTP / navigateur sans getUserMedia) ──────────────────
+  function fallbackFileCapture() { camFileInput.click(); }
+
+  camFileInput.addEventListener('change', async () => {
+    const file = camFileInput.files[0];
+    camFileInput.value = '';
+    if (!file) return;
+
+    camBtn.disabled = true;
+    const origHTML = camBtn.innerHTML;
+    camBtn.textContent = '⏳';
+
+    try { await loadQuagga(); } catch {
+      camBtn.disabled = false; camBtn.innerHTML = origHTML;
+      alert("Module de scan non disponible.");
+      return;
+    }
+
+    const url = URL.createObjectURL(file);
+    const img  = new Image();
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+    URL.revokeObjectURL(url);
+
+    const MAX = 1000;
+    const scale = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width  = Math.round(img.naturalWidth  * scale);
+    canvas.height = Math.round(img.naturalHeight * scale);
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+    const found = await new Promise(resolve => {
+      Quagga.decodeSingle({
+        decoder: { readers: ['ean_reader', 'ean_8_reader', 'upc_reader'] },
+        locate: true,
+        locator: { patchSize: 'medium', halfSample: false },
+        src: dataUrl,
+      }, r => resolve(r && r.codeResult ? r.codeResult.code : null));
+    });
+
+    camBtn.disabled = false; camBtn.innerHTML = origHTML;
+
+    if (found) {
+      const raw = found.replace(/\D/g, '');
+      if (raw.length === 13 || raw.length === 10) { submitScan(raw); return; }
+    }
+    alert("Aucun code-barres détecté. Cadrez bien le code-barres et recommencez.");
+  });
+
+  // ── Bouton caméra ─────────────────────────────────────────────────────────
+  camBtn.addEventListener('click', startLive);
+  camClose.addEventListener('click', stopCamera);
+  camOverlay.addEventListener('click', (e) => { if (e.target === camOverlay) stopCamera(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && liveActive) stopCamera(); });
+
+  // ── Init ─────────────────────────────────────────────────────────────────
+  loadLocations();
+  isbnInput.focus();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+{% block title %}Statistiques – Bibliodech{% endblock %}
+
+{% block content %}
+<div class="stats-page">
+  <h1 class="page-title" style="margin-bottom:1.5rem">Statistiques</h1>
+
+  <!-- Chiffres clés -->
+  <div class="stat-kpis" id="kpis"></div>
+
+  <div class="stats-grid">
+    <!-- Ajouts par mois -->
+    <div class="stat-card stat-card-wide">
+      <h2 class="stat-card-title">Ajouts par mois</h2>
+      <div id="chart-months"></div>
+    </div>
+
+    <!-- Langues -->
+    <div class="stat-card">
+      <h2 class="stat-card-title">Langues</h2>
+      <div id="chart-languages"></div>
+    </div>
+
+    <!-- Livres par localisation -->
+    <div class="stat-card">
+      <h2 class="stat-card-title">Par localisation</h2>
+      <div id="chart-locations"></div>
+    </div>
+
+    <!-- Top auteurs -->
+    <div class="stat-card">
+      <h2 class="stat-card-title">Top auteurs</h2>
+      <div id="chart-authors"></div>
+    </div>
+
+    <!-- Prêts -->
+    <div class="stat-card">
+      <h2 class="stat-card-title">Prêts</h2>
+      <div id="chart-loans"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const PRIMARY   = getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim()   || '#1e3a5f';
+  const ACCENT    = getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim()    || '#e07b39';
+  const SURFACE2  = getComputedStyle(document.documentElement).getPropertyValue('--color-surface-2').trim() || '#f0f4f8';
+  const BORDER    = getComputedStyle(document.documentElement).getPropertyValue('--color-border').trim()    || '#d1dbe6';
+  const MUTED     = getComputedStyle(document.documentElement).getPropertyValue('--color-text-muted').trim()|| '#64748b';
+  const TEXT      = getComputedStyle(document.documentElement).getPropertyValue('--color-text').trim()      || '#1a202c';
+
+  const PALETTE = ['#1e3a5f','#e07b39','#2d5282','#f5a469','#4a7fc1','#6ea8d8','#94c5e8','#b8daf0','#3a6aaa','#c56020'];
+
+  function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // ── KPIs ─────────────────────────────────────────────────────────────────
+  function renderKpis(t) {
+    const items = [
+      { value: t.books,        label: 'Livres',           icon: '📚' },
+      { value: t.authors,      label: 'Auteurs',          icon: '✍️' },
+      { value: t.series,       label: 'Séries',           icon: '📖' },
+      { value: t.active_loans, label: 'Prêts en cours',   icon: '🔖' },
+    ];
+    document.getElementById('kpis').innerHTML = items.map(i => `
+      <div class="stat-kpi">
+        <span class="stat-kpi-icon">${i.icon}</span>
+        <span class="stat-kpi-value">${i.value}</span>
+        <span class="stat-kpi-label">${i.label}</span>
+      </div>`).join('');
+  }
+
+  // ── Barres horizontales génériques ───────────────────────────────────────
+  function barChart(container, data, { color = PRIMARY, maxW = 400 } = {}) {
+    if (!data.length) { container.innerHTML = '<p class="stat-empty">Aucune donnée</p>'; return; }
+    const max = Math.max(...data.map(d => d.count));
+    const barH = 22, gap = 8, labelW = 140, numW = 36, padding = 12;
+    const h = data.length * (barH + gap) - gap + padding * 2;
+    const trackW = maxW - labelW - numW - 16;
+
+    let rows = data.map((d, i) => {
+      const bw = max ? Math.round((d.count / max) * trackW) : 0;
+      const y = padding + i * (barH + gap);
+      return `
+        <text x="${labelW - 8}" y="${y + barH/2 + 5}" text-anchor="end" font-size="12" fill="${MUTED}" font-family="inherit">
+          ${escHtml(d.name || d.label)}
+        </text>
+        <rect x="${labelW}" y="${y}" width="${trackW}" height="${barH}" rx="4" fill="${SURFACE2}"/>
+        <rect x="${labelW}" y="${y}" width="${bw}" height="${barH}" rx="4" fill="${color}"/>
+        <text x="${labelW + trackW + 8}" y="${y + barH/2 + 5}" font-size="12" fill="${TEXT}" font-weight="600" font-family="inherit">${d.count}</text>`;
+    }).join('');
+
+    container.innerHTML = `<svg width="100%" viewBox="0 0 ${maxW} ${h}" xmlns="http://www.w3.org/2000/svg">${rows}</svg>`;
+  }
+
+  // ── Courbe par mois ───────────────────────────────────────────────────────
+  function lineChart(container, data) {
+    if (!data.length) { container.innerHTML = '<p class="stat-empty">Aucune donnée</p>'; return; }
+    const W = 600, H = 180, padL = 36, padR = 16, padT = 16, padB = 40;
+    const max = Math.max(...data.map(d => d.count), 1);
+    const cW = W - padL - padR, cH = H - padT - padB;
+    const n = data.length;
+
+    const pts = data.map((d, i) => ({
+      x: padL + (i / (n - 1)) * cW,
+      y: padT + cH - (d.count / max) * cH,
+      d,
+    }));
+
+    // Lignes de grille
+    const gridLines = [0, 0.25, 0.5, 0.75, 1].map(f => {
+      const y = padT + cH - f * cH;
+      const val = Math.round(f * max);
+      return `<line x1="${padL}" x2="${W - padR}" y1="${y}" y2="${y}" stroke="${BORDER}" stroke-width="1"/>
+              <text x="${padL - 6}" y="${y + 4}" text-anchor="end" font-size="10" fill="${MUTED}" font-family="inherit">${val}</text>`;
+    }).join('');
+
+    // Aire sous la courbe
+    const areaPath = `M${pts[0].x},${padT + cH} ` +
+      pts.map(p => `L${p.x},${p.y}`).join(' ') +
+      ` L${pts[pts.length-1].x},${padT + cH} Z`;
+
+    // Ligne
+    const linePath = `M${pts.map(p => `${p.x},${p.y}`).join(' L')}`;
+
+    // Labels mois (afficher 1 sur 2 si trop dense)
+    const labels = pts.map((p, i) => {
+      if (n > 8 && i % 2 !== 0) return '';
+      return `<text x="${p.x}" y="${H - padB + 16}" text-anchor="middle" font-size="10" fill="${MUTED}" font-family="inherit">${p.d.label}</text>`;
+    }).join('');
+
+    // Points
+    const dots = pts.map(p =>
+      p.d.count > 0 ? `<circle cx="${p.x}" cy="${p.y}" r="3.5" fill="${PRIMARY}" stroke="white" stroke-width="1.5"/>` : ''
+    ).join('');
+
+    container.innerHTML = `<svg width="100%" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="area-grad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${PRIMARY}" stop-opacity="0.18"/>
+          <stop offset="100%" stop-color="${PRIMARY}" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      ${gridLines}
+      <path d="${areaPath}" fill="url(#area-grad)"/>
+      <polyline points="${pts.map(p=>`${p.x},${p.y}`).join(' ')}" fill="none" stroke="${PRIMARY}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+      ${dots}
+      ${labels}
+    </svg>`;
+  }
+
+  // ── Donut langues ─────────────────────────────────────────────────────────
+  function donutChart(container, data) {
+    if (!data.length) { container.innerHTML = '<p class="stat-empty">Aucune donnée</p>'; return; }
+    const total = data.reduce((s, d) => s + d.count, 0);
+    const R = 70, cx = 90, cy = 90, inner = 42;
+    let angle = -Math.PI / 2;
+
+    const slices = data.slice(0, 8).map((d, i) => {
+      const frac = d.count / total;
+      const a1 = angle, a2 = angle + frac * 2 * Math.PI;
+      angle = a2;
+      const x1 = cx + R * Math.cos(a1), y1 = cy + R * Math.sin(a1);
+      const x2 = cx + R * Math.cos(a2), y2 = cy + R * Math.sin(a2);
+      const xi1 = cx + inner * Math.cos(a1), yi1 = cy + inner * Math.sin(a1);
+      const xi2 = cx + inner * Math.cos(a2), yi2 = cy + inner * Math.sin(a2);
+      const large = frac > 0.5 ? 1 : 0;
+      const path = `M${xi1},${yi1} L${x1},${y1} A${R},${R} 0 ${large} 1 ${x2},${y2} L${xi2},${yi2} A${inner},${inner} 0 ${large} 0 ${xi1},${yi1} Z`;
+      return { path, color: PALETTE[i % PALETTE.length], d };
+    });
+
+    const legend = data.slice(0, 8).map((d, i) => {
+      const pct = Math.round((d.count / total) * 100);
+      return `<div class="donut-legend-row">
+        <span class="donut-swatch" style="background:${PALETTE[i % PALETTE.length]}"></span>
+        <span class="donut-legend-label">${escHtml(d.label)}</span>
+        <span class="donut-legend-val">${d.count} <span style="color:${MUTED}">(${pct}%)</span></span>
+      </div>`;
+    }).join('');
+
+    container.innerHTML = `
+      <div style="display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap">
+        <svg width="180" height="180" viewBox="0 0 180 180" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+          ${slices.map(s => `<path d="${s.path}" fill="${s.color}"/>`).join('')}
+          <text x="${cx}" y="${cy + 5}" text-anchor="middle" font-size="13" font-weight="700" fill="${TEXT}" font-family="inherit">${total}</text>
+          <text x="${cx}" y="${cy + 20}" text-anchor="middle" font-size="10" fill="${MUTED}" font-family="inherit">livres</text>
+        </svg>
+        <div class="donut-legend">${legend}</div>
+      </div>`;
+  }
+
+  // ── Section Prêts ─────────────────────────────────────────────────────────
+  function renderLoans(loans) {
+    const pct = loans.total ? Math.round((loans.returned / loans.total) * 100) : 0;
+    const borrowersHtml = loans.top_borrowers.length
+      ? loans.top_borrowers.map(b => `
+          <div class="stat-loan-row">
+            <span>${escHtml(b.name)}</span>
+            <span class="stat-loan-count">${b.count}</span>
+          </div>`).join('')
+      : '<p class="stat-empty">Aucun prêt enregistré</p>';
+
+    const loanedHtml = loans.top_loaned.length
+      ? loans.top_loaned.map(b => `
+          <div class="stat-loan-row">
+            <span class="stat-loan-title">${escHtml(b.title)}</span>
+            <span class="stat-loan-count">${b.count}×</span>
+          </div>`).join('')
+      : '';
+
+    document.getElementById('chart-loans').innerHTML = `
+      <div class="stat-loan-kpis">
+        <div class="stat-loan-kpi">
+          <span class="stat-loan-num">${loans.total}</span>
+          <span class="stat-loan-lbl">prêts total</span>
+        </div>
+        <div class="stat-loan-kpi">
+          <span class="stat-loan-num">${loans.active}</span>
+          <span class="stat-loan-lbl">en cours</span>
+        </div>
+        <div class="stat-loan-kpi">
+          <span class="stat-loan-num">${pct}%</span>
+          <span class="stat-loan-lbl">retournés</span>
+        </div>
+      </div>
+      ${loans.top_borrowers.length ? `<h3 class="stat-sub">Top emprunteurs</h3>${borrowersHtml}` : borrowersHtml}
+      ${loanedHtml ? `<h3 class="stat-sub" style="margin-top:1rem">Livres les plus prêtés</h3>${loanedHtml}` : ''}
+    `;
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  async function load() {
+    const res = await fetch('/api/stats');
+    if (!res.ok) return;
+    const d = await res.json();
+
+    renderKpis(d.totals);
+    lineChart(document.getElementById('chart-months'), d.by_month);
+    donutChart(document.getElementById('chart-languages'), d.languages);
+    barChart(document.getElementById('chart-locations'), d.by_location, { color: PRIMARY });
+    barChart(document.getElementById('chart-authors'),   d.top_authors,  { color: ACCENT });
+    renderLoans(d.loans);
+  }
+
+  load();
+})();
+</script>
+{% endblock %}

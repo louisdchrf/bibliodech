@@ -1,0 +1,496 @@
+import csv
+import io
+import json
+import os
+from fastapi import BackgroundTasks, FastAPI, Request, Depends
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from sqlalchemy.orm import Session
+
+from app.database import get_db, init_db
+from app.auth import (
+    get_current_user, verify_password, create_session, clear_session, bootstrap_admin
+)
+from app.models import User, Book
+from app.routers import scan, books, series, users, settings as settings_router, locations as locations_router, loans as loans_router
+from app.lookup import debug_isbn
+
+app = FastAPI(title="Bibliodech")
+
+BUILD_VERSION = os.environ.get("BUILD_VERSION", "dev")
+
+# ── Static files & templates ─────────────────────────────────────────────────
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+
+COVERS_DIR = "/app/data/covers"
+os.makedirs(COVERS_DIR, exist_ok=True)
+app.mount("/covers", StaticFiles(directory=COVERS_DIR), name="covers")
+templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+
+# ── Routers ───────────────────────────────────────────────────────────────────
+app.include_router(scan.router)
+app.include_router(books.router)
+app.include_router(series.router)
+app.include_router(users.router)
+app.include_router(settings_router.router)
+app.include_router(locations_router.router)
+app.include_router(loans_router.router)
+
+
+# ── Startup ───────────────────────────────────────────────────────────────────
+@app.on_event("startup")
+def on_startup():
+    # Ensure data directory exists for SQLite
+    db_url = os.environ.get("DATABASE_URL", "sqlite:////app/data/bibliodech.db")
+    if db_url.startswith("sqlite:///"):
+        path = db_url.replace("sqlite:///", "")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+    init_db()
+    from app.database import SessionLocal
+    db = SessionLocal()
+    try:
+        bootstrap_admin(db)
+    finally:
+        db.close()
+
+
+# ── Page routes ───────────────────────────────────────────────────────────────
+
+@app.get("/", response_class=RedirectResponse)
+def root():
+    return RedirectResponse(url="/library", status_code=302)
+
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request, error: str = ""):
+    return templates.TemplateResponse("login.html", {"request": request, "error": error, "build_version": BUILD_VERSION})
+
+
+@app.post("/login")
+async def login(request: Request, db: Session = Depends(get_db)):
+    form = await request.form()
+    username = form.get("username", "")
+    password = form.get("password", "")
+
+    user = db.query(User).filter(User.username == username, User.is_active == True).first()
+    if not user or not verify_password(password, user.password_hash):
+        return templates.TemplateResponse(
+            "login.html",
+            {"request": request, "error": "Identifiants incorrects"},
+            status_code=401,
+        )
+
+    dest = "/change-password" if user.must_change_password else "/scanner"
+    response = RedirectResponse(url=dest, status_code=302)
+    create_session(response, user.id)
+    return response
+
+
+@app.post("/logout")
+def logout():
+    response = RedirectResponse(url="/login", status_code=302)
+    clear_session(response)
+    return response
+
+
+def _require_pw_changed(user: User):
+    """Retourne une redirection si l'utilisateur doit changer son mot de passe."""
+    if user.must_change_password:
+        return RedirectResponse(url="/change-password", status_code=302)
+    return None
+
+
+@app.get("/change-password", response_class=HTMLResponse)
+def change_password_page(request: Request, db: Session = Depends(get_db)):
+    try:
+        user = get_current_user(request, db)
+    except Exception:
+        return RedirectResponse(url="/login", status_code=302)
+    return templates.TemplateResponse("change_password.html", {"request": request, "user": user, "build_version": BUILD_VERSION})
+
+
+@app.get("/scanner", response_class=HTMLResponse)
+def scanner_page(request: Request, db: Session = Depends(get_db)):
+    try:
+        user = get_current_user(request, db)
+    except Exception:
+        return RedirectResponse(url="/login", status_code=302)
+    if redir := _require_pw_changed(user): return redir
+    return templates.TemplateResponse("scanner.html", {"request": request, "user": user, "active": "scanner", "build_version": BUILD_VERSION})
+
+
+@app.get("/library", response_class=HTMLResponse)
+def library_page(request: Request, db: Session = Depends(get_db)):
+    try:
+        user = get_current_user(request, db)
+    except Exception:
+        return RedirectResponse(url="/login", status_code=302)
+    if redir := _require_pw_changed(user): return redir
+    from app import settings as settings_mod
+    sources_cfg = settings_mod.get(db, "lookup_sources") or []
+    return templates.TemplateResponse("library.html", {"request": request, "user": user, "active": "library", "build_version": BUILD_VERSION, "sources_cfg": sources_cfg})
+
+
+@app.get("/series", response_class=HTMLResponse)
+def series_page(request: Request, db: Session = Depends(get_db)):
+    try:
+        user = get_current_user(request, db)
+    except Exception:
+        return RedirectResponse(url="/login", status_code=302)
+    if redir := _require_pw_changed(user): return redir
+    return templates.TemplateResponse("series.html", {"request": request, "user": user, "active": "series", "build_version": BUILD_VERSION})
+
+
+@app.get("/api/books/export/csv")
+def export_books_csv(request: Request, db: Session = Depends(get_db)):
+    get_current_user(request, db)
+    books = db.query(Book).order_by(Book.title).all()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["ISBN", "Titre", "Sous-titre", "Auteurs", "Éditeur", "Date", "Langue",
+                     "Pages", "Série", "Position", "Localisation", "Ajouté le"])
+    for b in books:
+        authors = ", ".join(json.loads(b.authors)) if b.authors else ""
+        loc = b.location.label if b.location else (b.shelf or "")
+        series_name = b.series.name if b.series else ""
+        writer.writerow([
+            b.isbn or "", b.title, b.subtitle or "", authors, b.publisher or "",
+            b.publish_date or "", b.language or "", b.page_count or "",
+            series_name, b.series_position or "", loc,
+            b.added_at.strftime("%Y-%m-%d") if b.added_at else "",
+        ])
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=bibliodech.csv"},
+    )
+
+
+@app.get("/api/stats")
+def get_stats(request: Request, db: Session = Depends(get_db)):
+    from sqlalchemy import func, extract
+    from app.models import Series, Room, Loan, Borrower
+    get_current_user(request, db)
+
+    # ── Chiffres clés ─────────────────────────────────────────────────────────
+    total_books   = db.query(func.count(Book.id)).scalar()
+    active_loans  = db.query(func.count(Loan.id)).filter(Loan.return_date.is_(None)).scalar()
+    total_series  = db.query(func.count(Series.id)).scalar()
+
+    # Auteurs uniques (dédoublonnage via JSON)
+    all_authors_raw = db.query(Book.authors).filter(Book.authors.isnot(None)).all()
+    unique_authors = set()
+    for (a,) in all_authors_raw:
+        try:
+            for name in json.loads(a):
+                if name.strip():
+                    unique_authors.add(name.strip())
+        except Exception:
+            pass
+
+    # ── Livres par pièce ──────────────────────────────────────────────────────
+    rooms = db.query(Room).all()
+    by_location = []
+    for r in rooms:
+        count = db.query(func.count(Book.id)).filter(Book.room_id == r.id).scalar()
+        if count:
+            label = f"{r.site.name} › {r.name}" if r.site else r.name
+            by_location.append({"label": label, "count": count})
+    no_loc = db.query(func.count(Book.id)).filter(Book.room_id.is_(None)).scalar()
+    if no_loc:
+        by_location.append({"label": "Sans localisation", "count": no_loc})
+    by_location.sort(key=lambda x: x["count"], reverse=True)
+
+    # ── Top auteurs ───────────────────────────────────────────────────────────
+    author_counts: dict[str, int] = {}
+    for (a,) in all_authors_raw:
+        try:
+            for name in json.loads(a):
+                name = name.strip()
+                if name:
+                    author_counts[name] = author_counts.get(name, 0) + 1
+        except Exception:
+            pass
+    top_authors = sorted(author_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+    top_authors = [{"name": n, "count": c} for n, c in top_authors]
+
+    # ── Ajouts par mois (12 derniers mois) ───────────────────────────────────
+    from datetime import datetime, timedelta
+    now = datetime.utcnow()
+    months = []
+    for i in range(11, -1, -1):
+        d = now.replace(day=1) - timedelta(days=1)
+        # reculer i mois
+        month_dt = now.replace(day=1)
+        for _ in range(i):
+            month_dt = (month_dt.replace(day=1) - timedelta(days=1)).replace(day=1)
+        label = month_dt.strftime("%b %Y")
+        count = db.query(func.count(Book.id)).filter(
+            func.strftime("%Y-%m", Book.added_at) == month_dt.strftime("%Y-%m")
+        ).scalar()
+        months.append({"label": label, "count": count})
+
+    # ── Langues ───────────────────────────────────────────────────────────────
+    lang_rows = db.query(Book.language, func.count(Book.id))\
+        .filter(Book.language.isnot(None), Book.language != "")\
+        .group_by(Book.language).order_by(func.count(Book.id).desc()).all()
+    LANG_LABELS = {"fr": "Français", "en": "Anglais", "de": "Allemand", "es": "Espagnol",
+                   "it": "Italien", "pt": "Portugais", "nl": "Néerlandais", "ja": "Japonais"}
+    languages = [{"code": lang, "label": LANG_LABELS.get(lang, lang), "count": cnt}
+                 for lang, cnt in lang_rows]
+
+    # ── Prêts ─────────────────────────────────────────────────────────────────
+    total_loans    = db.query(func.count(Loan.id)).scalar()
+    returned_loans = db.query(func.count(Loan.id)).filter(Loan.return_date.isnot(None)).scalar()
+
+    # Top emprunteurs
+    borrow_counts = {}
+    for loan in db.query(Loan).all():
+        if loan.borrower:
+            name = loan.borrower.name
+        elif loan.user:
+            name = loan.user.username
+        else:
+            continue
+        borrow_counts[name] = borrow_counts.get(name, 0) + 1
+    top_borrowers = sorted(borrow_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+    top_borrowers = [{"name": n, "count": c} for n, c in top_borrowers]
+
+    # Livres les plus prêtés
+    book_loan_counts = db.query(Loan.book_id, func.count(Loan.id))\
+        .group_by(Loan.book_id).order_by(func.count(Loan.id).desc()).limit(5).all()
+    top_loaned = []
+    for book_id, cnt in book_loan_counts:
+        b = db.query(Book).filter(Book.id == book_id).first()
+        if b:
+            top_loaned.append({"title": b.title, "count": cnt})
+
+    return {
+        "totals": {
+            "books": total_books,
+            "authors": len(unique_authors),
+            "series": total_series,
+            "active_loans": active_loans,
+        },
+        "by_location": by_location,
+        "top_authors": top_authors,
+        "by_month": months,
+        "languages": languages,
+        "loans": {
+            "total": total_loans,
+            "returned": returned_loans,
+            "active": active_loans,
+            "top_borrowers": top_borrowers,
+            "top_loaned": top_loaned,
+        },
+    }
+
+
+@app.get("/api/books/import/template")
+def import_template(request: Request, db: Session = Depends(get_db)):
+    get_current_user(request, db)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["ISBN", "Localisation"])
+    writer.writerow(["9782070360024", "Maison > Salon"])
+    writer.writerow(["9782253004226", ""])
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=bibliodech_modele.csv"},
+    )
+
+
+@app.post("/api/books/import/csv")
+async def import_books_csv(request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    from fastapi import HTTPException
+    from app.models import Room
+    from app.auth import require_contributor
+    from app.routers.scan import _enrich_book
+    from datetime import datetime
+
+    user = get_current_user(request, db)
+    require_contributor(user)
+
+    form = await request.form()
+    upload = form.get("file")
+    if not upload:
+        raise HTTPException(status_code=400, detail="Fichier manquant")
+
+    raw = await upload.read()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = raw.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(text))
+
+    def norm(row: dict) -> dict:
+        return {k.strip().lower(): v.strip() for k, v in row.items()}
+
+    # Cache rooms
+    all_rooms = db.query(Room).all()
+    room_map: dict[str, int] = {}
+    for r in all_rooms:
+        site_name = r.site.name if r.site else None
+        if site_name:
+            room_map[f"{site_name} › {r.name}".lower()] = r.id
+            room_map[f"{site_name} > {r.name}".lower()] = r.id
+        room_map[r.name.lower()] = r.id
+
+    # Cache séries (pour import complet)
+    from app.models import Series
+    series_map: dict[str, int] = {s.name.lower(): s.id for s in db.query(Series).all()}
+
+    queued, created, skipped, errors = 0, 0, 0, []
+
+    for i, raw_row in enumerate(reader, start=2):
+        row = norm(raw_row)
+        isbn = row.get("isbn", "").strip().replace("-", "").replace(" ", "")
+        title = row.get("titre", "").strip()
+
+        if not isbn and not title:
+            skipped += 1
+            continue
+
+        # Doublon ISBN
+        if isbn and db.query(Book).filter(Book.isbn == isbn).first():
+            skipped += 1
+            continue
+
+        loc_label = row.get("localisation", "").strip()
+        room_id = room_map.get(loc_label.lower()) if loc_label else None
+
+        # ── Format complet (export Bibliodech) : colonne Titre présente ──────
+        if title:
+            authors_raw = row.get("auteurs", "")
+            authors = [a.strip() for a in authors_raw.split(",") if a.strip()]
+
+            series_id = None
+            sname = row.get("série", row.get("serie", "")).strip()
+            if sname:
+                key = sname.lower()
+                if key not in series_map:
+                    s = Series(name=sname, source="import")
+                    db.add(s)
+                    db.flush()
+                    series_map[key] = s.id
+                series_id = series_map[key]
+
+            spos = row.get("position", "")
+            try:
+                series_position = float(spos) if spos else None
+            except ValueError:
+                series_position = None
+
+            pages = row.get("pages", "")
+            try:
+                page_count = int(pages) if pages else None
+            except ValueError:
+                page_count = None
+
+            try:
+                book = Book(
+                    isbn=isbn or None,
+                    title=title,
+                    subtitle=row.get("sous-titre") or None,
+                    authors=json.dumps(authors),
+                    publisher=row.get("éditeur", row.get("editeur")) or None,
+                    publish_date=row.get("date") or None,
+                    language=row.get("langue") or None,
+                    page_count=page_count,
+                    source="import",
+                    series_id=series_id,
+                    series_position=series_position,
+                    room_id=room_id,
+                    added_at=datetime.utcnow(),
+                    enrichment_status="ok",
+                )
+                db.add(book)
+                created += 1
+            except Exception as e:
+                errors.append({"ligne": i, "isbn": isbn, "erreur": str(e)})
+
+        # ── Format minimal : ISBN seulement → enrichissement en arrière-plan ──
+        else:
+            try:
+                book = Book(
+                    isbn=isbn,
+                    title=isbn,
+                    authors=json.dumps([]),
+                    source="pending",
+                    room_id=room_id,
+                    added_at=datetime.utcnow(),
+                    enrichment_status="pending",
+                )
+                db.add(book)
+                db.flush()
+                background_tasks.add_task(_enrich_book, book.id, isbn)
+                queued += 1
+            except Exception as e:
+                errors.append({"ligne": i, "isbn": isbn, "erreur": str(e)})
+
+    db.commit()
+    return {"queued": queued, "created": created, "skipped": skipped, "errors": errors}
+
+
+@app.get("/api/debug/isbn/{isbn}")
+async def debug_isbn_endpoint(isbn: str, request: Request, db: Session = Depends(get_db)):
+    get_current_user(request, db)  # auth required
+    return await debug_isbn(isbn)
+
+
+@app.get("/locations", response_class=HTMLResponse)
+def locations_page(request: Request, db: Session = Depends(get_db)):
+    try:
+        user = get_current_user(request, db)
+    except Exception:
+        return RedirectResponse(url="/login", status_code=302)
+    if redir := _require_pw_changed(user): return redir
+    return templates.TemplateResponse("locations.html", {"request": request, "user": user, "active": "locations", "build_version": BUILD_VERSION})
+
+
+@app.get("/settings", response_class=HTMLResponse)
+def settings_page(request: Request, db: Session = Depends(get_db)):
+    try:
+        user = get_current_user(request, db)
+        if user.role != "admin":
+            return RedirectResponse(url="/library", status_code=302)
+    except Exception:
+        return RedirectResponse(url="/login", status_code=302)
+    return templates.TemplateResponse("settings.html", {"request": request, "user": user, "active": "settings", "build_version": BUILD_VERSION})
+
+
+@app.get("/users", response_class=HTMLResponse)
+def users_page(request: Request, db: Session = Depends(get_db)):
+    try:
+        user = get_current_user(request, db)
+        if user.role != "admin":
+            return RedirectResponse(url="/library", status_code=302)
+    except Exception:
+        return RedirectResponse(url="/login", status_code=302)
+    return templates.TemplateResponse("users.html", {"request": request, "user": user, "active": "users", "build_version": BUILD_VERSION})
+
+
+@app.get("/loans", response_class=HTMLResponse)
+def loans_page(request: Request, db: Session = Depends(get_db)):
+    try:
+        user = get_current_user(request, db)
+    except Exception:
+        return RedirectResponse(url="/login", status_code=302)
+    if redir := _require_pw_changed(user): return redir
+    return templates.TemplateResponse("loans.html", {"request": request, "user": user, "active": "loans", "build_version": BUILD_VERSION})
+
+
+@app.get("/stats", response_class=HTMLResponse)
+def stats_page(request: Request, db: Session = Depends(get_db)):
+    try:
+        user = get_current_user(request, db)
+    except Exception:
+        return RedirectResponse(url="/login", status_code=302)
+    if redir := _require_pw_changed(user): return redir
+    return templates.TemplateResponse("stats.html", {"request": request, "user": user, "active": "stats", "build_version": BUILD_VERSION})
