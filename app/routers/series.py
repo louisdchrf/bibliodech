@@ -206,10 +206,12 @@ def series_suggestions(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/api/series/analyze")
 async def analyze_series(request: Request, db: Session = Depends(get_db)):
-    """Propose des groupes de séries via :
+    """Propose des groupes de séries via 4 passes :
+    0. source_data existant (séries déjà trouvées par les sources d'enrichissement)
     1. Titre complet OL (work_key)
-    2. Recherche DuckDuckGo par livre
+    2. Recherche DuckDuckGo par livre (2 stratégies de requête)
     3. Clustering par préfixe commun (même auteur)
+    + Cross-référence co-auteurs : étend les séries trouvées aux livres du même auteur
     """
     from app.series_search import search_series_ddg
 
@@ -223,6 +225,27 @@ async def analyze_series(request: Request, db: Session = Depends(get_db)):
 
     proposals: dict[str, dict] = {}  # series_name.lower() → {source, books}
     claimed_ids: set[int] = set()
+
+    # Index auteur → {series_names} pour la cross-référence
+    # Inclut tous les auteurs connus (stockés + source_data)
+    author_to_series: dict[str, set[str]] = {}
+
+    def _all_authors(book: Book) -> set[str]:
+        """Collecte tous les auteurs d'un livre depuis toutes les sources."""
+        auths: set[str] = set()
+        try:
+            for a in (json.loads(book.authors) if book.authors else []):
+                auths.add(a.strip().lower())
+        except Exception:
+            pass
+        try:
+            for src_data in (json.loads(book.source_data) if book.source_data else {}).values():
+                for a in (src_data.get("authors") or []):
+                    if a:
+                        auths.add(a.strip().lower().rstrip(','))
+        except Exception:
+            pass
+        return auths
 
     def _book_dict(book: Book, work_title=None, position=None) -> dict:
         return {
@@ -241,8 +264,27 @@ async def analyze_series(request: Request, db: Session = Depends(get_db)):
         if not any(b["id"] == bdict["id"] for b in proposals[key]["books"]):
             proposals[key]["books"].append(bdict)
 
+    def _register_authors(book: Book, series_name: str):
+        """Associe tous les auteurs connus d'un livre à une série trouvée."""
+        for author in _all_authors(book):
+            author_to_series.setdefault(author, set()).add(series_name.lower())
+
+    # ── Passe 0 : miner source_data ─────────────────────────────────────────
+    for book in books_no_series:
+        try:
+            sd = json.loads(book.source_data) if book.source_data else {}
+        except Exception:
+            continue
+        for src_data in sd.values():
+            series_name = src_data.get("series_name")
+            if series_name:
+                _add_proposal(series_name, "source_data", _book_dict(book))
+                claimed_ids.add(book.id)
+                _register_authors(book, series_name)
+                break  # une seule série par livre suffit
+
     # ── Passe 1 : OL work title ──────────────────────────────────────────────
-    books_with_key = [b for b in books_no_series if b.work_key]
+    books_with_key = [b for b in books_no_series if b.work_key and b.id not in claimed_ids]
     if books_with_key:
         async with httpx.AsyncClient(timeout=8) as client:
             responses = await asyncio.gather(
@@ -259,6 +301,7 @@ async def analyze_series(request: Request, db: Session = Depends(get_db)):
                 _add_proposal(series_name, "openlibrary_work",
                               _book_dict(book, work_title=work_title, position=position))
                 claimed_ids.add(book.id)
+                _register_authors(book, series_name)
 
     # ── Passe 2 : DuckDuckGo par livre ──────────────────────────────────────
     to_search = [b for b in books_no_series if b.id not in claimed_ids]
@@ -270,6 +313,20 @@ async def analyze_series(request: Request, db: Session = Depends(get_db)):
             series_name = await search_series_ddg(book.title, authors, client)
             if series_name:
                 _add_proposal(series_name, "web_search", _book_dict(book))
+                claimed_ids.add(book.id)
+                _register_authors(book, series_name)
+
+    # ── Cross-référence co-auteurs ───────────────────────────────────────────
+    # Si un auteur connu d'un livre non réclamé est lié à une série déjà trouvée,
+    # proposer ce livre pour cette série.
+    still_unclaimed = [b for b in books_no_series if b.id not in claimed_ids]
+    for book in still_unclaimed:
+        matched_series: set[str] = set()
+        for author in _all_authors(book):
+            matched_series |= author_to_series.get(author, set())
+        for series_key in matched_series:
+            if series_key in proposals:
+                _add_proposal(proposals[series_key]["series_name"], "co_author", _book_dict(book))
                 claimed_ids.add(book.id)
 
     # ── Passe 3 : clustering par préfixe de titre (même auteur) ─────────────

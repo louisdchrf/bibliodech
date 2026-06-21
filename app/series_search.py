@@ -15,21 +15,14 @@ _HEADERS = {
     "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.5",
 }
 
-# Patterns pour extraire un nom de série du texte brut (snippets + titres DDG)
+# Patterns pour extraire un nom de série du texte brut
 _SERIES_PATTERNS = [
-    # "tome N de la série X" / "volume 3 de X"
     r'\btome\s+\d+\s+de\s+(?:la\s+série\s+)?([A-ZÀ-ÿ][^.!?,\n]{2,50})',
-    # "la série X" / "la série « X »"
-    r'\bla\s+série\s+[«"“]?\s*([A-ZÀ-ÿ][^.!?,«"”\n]{2,50})',
-    # "série : X" / "série X"
-    r'\bsérie\s*:?\s+[«"“]?\s*([A-ZÀ-ÿ][^.!?,«"”\n]{2,50})',
-    # Format Babelio/Goodreads : "(Série, #N)" ou "(Série T.3)"
+    r'\bla\s+série\s+[«""]?\s*([A-ZÀ-ÿ][^.!?,«""\n]{2,50})',
+    r'\bsérie\s*:?\s+[«""]?\s*([A-ZÀ-ÿ][^.!?,«""\n]{2,50})',
     r'\(([A-ZÀ-ÿ][^()]{2,50}),\s*(?:tome|vol\.?|#|t\.)\s*\d',
-    # Titre DDG type "Seuls - Tome 3 - ..."
     r'([A-ZÀ-ÿ][^–-]{3,50})\s*[-–]\s*(?:tome|vol\.?|t\.)\s*\d',
-    # "collection X" (romans)
-    r'\bcollection\s+[«"“]?\s*([A-ZÀ-ÿ][^.!?,«"”\n]{2,50})',
-    # "X, tome N" (virgule)
+    r'\bcollection\s+[«""]?\s*([A-ZÀ-ÿ][^.!?,«""\n]{2,50})',
     r'([A-ZÀ-ÿ][^,\n]{3,50}),\s*(?:tome|vol\.?|t\.)\s*\d',
 ]
 
@@ -65,7 +58,6 @@ def _extract_series_from_text(text: str, book_title: str) -> str | None:
     if not candidates:
         return None
 
-    # Choisir le candidat le plus fréquent (insensible à la casse)
     counter = Counter(c.lower() for c in candidates)
     best_lower, _ = counter.most_common(1)[0]
     for c in candidates:
@@ -74,15 +66,8 @@ def _extract_series_from_text(text: str, book_title: str) -> str | None:
     return candidates[0]
 
 
-async def search_series_ddg(
-    title: str,
-    authors: list[str],
-    client: httpx.AsyncClient,
-) -> str | None:
-    author = authors[0] if authors else ""
-    # Requête française orientée séries
-    query = f'"{title}" "{author}" série tome'
-
+async def _ddg_query(query: str, client: httpx.AsyncClient) -> str:
+    """Lance une requête DDG et retourne le texte brut des titres+snippets."""
     try:
         r = await client.get(
             _DDG_URL,
@@ -92,40 +77,30 @@ async def search_series_ddg(
             follow_redirects=True,
         )
         if r.status_code != 200:
-            return None
+            return ""
     except Exception:
-        return None
+        return ""
 
     html = r.text
-
-    # Extraire titres et snippets bruts
     raw_titles   = re.findall(r'class="result__a"[^>]*>(.*?)</a>', html, re.S)
     raw_snippets = re.findall(r'class="result__snippet"[^>]*>(.*?)</a>', html, re.S)
-
-    texts = [_clean_html(t) for t in raw_titles + raw_snippets]
-    full_text = " ".join(texts)
-
-    if not full_text.strip():
-        return None
-
-    return _extract_series_from_text(full_text, title)
+    return " ".join(_clean_html(t) for t in raw_titles + raw_snippets)
 
 
-async def search_series_batch(
-    books: list[dict],
-    delay: float = 1.5,
-) -> dict[int, str]:
-    """Cherche la série pour une liste de livres. Retourne {book_id: series_name}."""
-    results: dict[int, str] = {}
-    async with httpx.AsyncClient(timeout=15) as client:
-        for i, book in enumerate(books):
-            if i > 0:
-                await asyncio.sleep(delay)
-            name = await search_series_ddg(
-                title=book["title"],
-                authors=book["authors"],
-                client=client,
-            )
-            if name:
-                results[book["id"]] = name
-    return results
+async def search_series_ddg(
+    title: str,
+    authors: list[str],
+    client: httpx.AsyncClient,
+) -> str | None:
+    author = authors[0] if authors else ""
+
+    # Stratégie 1 : requête stricte avec guillemets
+    text = await _ddg_query(f'"{title}" "{author}" série tome')
+    result = _extract_series_from_text(text, title) if text.strip() else None
+    if result:
+        return result
+
+    # Stratégie 2 : sans guillemets (titres courts ou auteurs peu connus)
+    await asyncio.sleep(0.8)
+    text = await _ddg_query(f'{title} {author} série bd livre')
+    return _extract_series_from_text(text, title) if text.strip() else None
