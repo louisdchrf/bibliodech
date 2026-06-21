@@ -24,6 +24,53 @@ def _normalize_isbn(isbn: str) -> str:
 
 
 
+async def _resolve_cover(isbn: str, info: dict) -> str | None:
+    """Essaie les URLs de couverture dans l'ordre jusqu'à en trouver une valide."""
+    import app.settings as cfg_mod
+    from app.database import SessionLocal as _SL
+    _db = _SL()
+    try:
+        gb_key = cfg_mod.get(_db, "googlebooks_api_key") or ""
+    finally:
+        _db.close()
+
+    candidates = []
+
+    # 1. URL fournie par la source principale
+    if info.get("cover_url"):
+        candidates.append(info["cover_url"])
+
+    # 2. Open Library covers par ISBN (si pas déjà dedans)
+    ol_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg"
+    if ol_url not in candidates:
+        candidates.append(ol_url)
+
+    # 3. Google Books thumbnail
+    gb_api = f"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}"
+    if gb_key:
+        gb_api += f"&key={gb_key}"
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=6) as client:
+            gb_resp = await client.get(gb_api)
+            if gb_resp.status_code == 200:
+                items = gb_resp.json().get("items", [])
+                if items:
+                    links = items[0].get("volumeInfo", {}).get("imageLinks", {})
+                    gb_cover = (links.get("large") or links.get("medium") or links.get("thumbnail", "")).replace("http://", "https://")
+                    if gb_cover and gb_cover not in candidates:
+                        candidates.append(gb_cover)
+    except Exception:
+        pass
+
+    for url in candidates:
+        local = await fetch_and_save(isbn, url)
+        if local:
+            return local
+
+    return None
+
+
 async def _enrich_book(book_id: int, isbn: str) -> None:
     """Lookup + mise à jour du livre en arrière-plan."""
     db = SessionLocal()
@@ -43,17 +90,14 @@ async def _enrich_book(book_id: int, isbn: str) -> None:
         book.authors = json.dumps(info.get("authors") or [])
         book.publisher = info.get("publisher")
         book.publish_date = info.get("publish_date")
-        book.cover_url = info.get("cover_url")
         book.description = info.get("description")
         book.page_count = info.get("page_count")
         book.language = info.get("language")
         book.source = info.get("source", "openlibrary")
         book.work_key = info.get("work_key")
-        # Couverture — on est déjà dans un contexte async, await direct
-        if info.get("cover_url"):
-            local = await fetch_and_save(isbn, info["cover_url"])
-            if local:
-                book.cover_url = local
+
+        # Couverture — chaîne de fallback
+        book.cover_url = await _resolve_cover(isbn, info)
 
         book.enrichment_status = "ok"
         if info.get("_per_source"):
