@@ -7,7 +7,6 @@ import json
 import logging
 from datetime import datetime, timezone
 
-import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
@@ -91,14 +90,10 @@ async def _execute_task(task_id: str, db) -> str:
         return f"{result.get('found_instant', 0)} séries détectées"
 
     if task_id == "analyze-series":
-        # Appel HTTP interne pour réutiliser la logique complexe de l'endpoint
-        try:
-            async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=300) as client:
-                r = await client.post("/api/series/analyze", cookies={"internal_scheduler": "1"})
-                data = r.json()
-                return f"{len(data)} proposition{'s' if len(data) != 1 else ''}"
-        except Exception as e:
-            return f"erreur: {e}"
+        from app.routers.series import _analyze_series_logic
+        result = await _analyze_series_logic(db)
+        n = len(result)
+        return f"{n} proposition{'s' if n != 1 else ''}"
 
     if task_id == "match-library":
         from app.routers.missing import _find_library_matches, auto_assign_matches as _aa

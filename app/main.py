@@ -267,11 +267,7 @@ def get_stats(request: Request, db: Session = Depends(get_db)):
     # ── Par source d'enrichissement ───────────────────────────────────────────
     source_rows = db.query(Book.enrichment_source, func.count(Book.id))\
         .group_by(Book.enrichment_source).order_by(func.count(Book.id).desc()).all()
-    SOURCE_LABELS = {
-        "sudoc": "SUDOC", "bnf": "BnF", "decitre": "Decitre",
-        "isbndb": "ISBNdb", "openlibrary": "Open Library",
-        "openlibrary_search": "Open Library (search)", "googlebooks": "Google Books",
-    }
+    from app.routers.books import SOURCE_LABELS
     by_source = [
         {"id": src or "none", "label": SOURCE_LABELS.get(src, src or "Manuel / Import"), "count": cnt}
         for src, cnt in source_rows

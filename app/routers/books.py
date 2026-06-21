@@ -65,6 +65,26 @@ def list_books(
     }
 
 
+SOURCE_LABELS = {
+    "sudoc": "SUDOC", "bnf": "BnF", "decitre": "Decitre",
+    "isbndb": "ISBNdb", "openlibrary": "Open Library",
+    "openlibrary_search": "Open Library (search)", "googlebooks": "Google Books",
+}
+
+@router.get("/api/books/sources")
+def list_sources(request: Request, db: Session = Depends(get_db)):
+    """Retourne les sources d'enrichissement utilisées avec leur nombre de livres."""
+    from sqlalchemy import func
+    get_current_user(request, db)
+    rows = db.query(Book.enrichment_source, func.count(Book.id))\
+        .group_by(Book.enrichment_source)\
+        .order_by(func.count(Book.id).desc()).all()
+    return [
+        {"id": src or "none", "label": SOURCE_LABELS.get(src, src or "Manuel / Import"), "count": cnt}
+        for src, cnt in rows
+    ]
+
+
 @router.get("/api/books/{book_id}")
 def get_book(book_id: int, request: Request, db: Session = Depends(get_db)):
     get_current_user(request, db)

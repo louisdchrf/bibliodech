@@ -1112,10 +1112,9 @@
   });
 
   async function loadSourceFilter() {
-    const res = await fetch('/api/stats');
+    const res = await fetch('/api/books/sources');
     if (!res.ok) return;
-    const data = await res.json();
-    const sources = data.by_source || [];
+    const sources = await res.json();
     if (sources.length <= 1) return;
     filterSource.innerHTML = '<option value="">Toutes les sources</option>'
       + sources.map(s => `<option value="${s.id}">${escHtml(s.label)} (${s.count})</option>`).join('');

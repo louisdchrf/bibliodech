@@ -204,18 +204,9 @@ def series_suggestions(request: Request, db: Session = Depends(get_db)):
     return result
 
 
-@router.post("/api/series/analyze")
-async def analyze_series(request: Request, db: Session = Depends(get_db)):
-    """Propose des groupes de séries via 4 passes :
-    0. source_data existant (séries déjà trouvées par les sources d'enrichissement)
-    1. Titre complet OL (work_key)
-    2. Recherche DuckDuckGo par livre (2 stratégies de requête)
-    3. Clustering par préfixe commun (même auteur)
-    + Cross-référence co-auteurs : étend les séries trouvées aux livres du même auteur
-    """
+async def _analyze_series_logic(db: Session) -> list:
+    """Logique d'analyse de séries, utilisable depuis l'endpoint et le scheduler."""
     from app.series_search import search_series_ddg
-
-    get_current_user(request, db)
 
     books_no_series = (
         db.query(Book)
@@ -347,6 +338,12 @@ async def analyze_series(request: Request, db: Session = Depends(get_db)):
     result = [v for v in proposals.values() if len(v["books"]) >= 1]
     result.sort(key=lambda x: (-len(x["books"]), x["series_name"].lower()))
     return result
+
+
+@router.post("/api/series/analyze")
+async def analyze_series(request: Request, db: Session = Depends(get_db)):
+    get_current_user(request, db)
+    return await _analyze_series_logic(db)
 
 
 @router.get("/api/series/duplicates")
