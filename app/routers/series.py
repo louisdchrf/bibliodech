@@ -207,9 +207,12 @@ def series_suggestions(request: Request, db: Session = Depends(get_db)):
 @router.post("/api/series/analyze")
 async def analyze_series(request: Request, db: Session = Depends(get_db)):
     """Propose des groupes de séries via :
-    1. Titre complet de l'œuvre Open Library (contient souvent 'Série - Tome N - Titre')
-    2. Clustering par préfixe commun de titre (même auteur)
+    1. Titre complet OL (work_key)
+    2. Recherche DuckDuckGo par livre
+    3. Clustering par préfixe commun (même auteur)
     """
+    from app.series_search import search_series_ddg
+
     get_current_user(request, db)
 
     books_no_series = (
@@ -218,77 +221,74 @@ async def analyze_series(request: Request, db: Session = Depends(get_db)):
         .all()
     )
 
-    # ── Passe 1 : OL work title ──────────────────────────────────────────────
-    proposals: dict[str, dict] = {}  # series_name → {source, books}
+    proposals: dict[str, dict] = {}  # series_name.lower() → {source, books}
     claimed_ids: set[int] = set()
 
+    def _book_dict(book: Book, work_title=None, position=None) -> dict:
+        return {
+            "id": book.id,
+            "title": book.title,
+            "work_title": work_title,
+            "position": position,
+            "authors": json.loads(book.authors) if book.authors else [],
+            "cover_url": book.cover_url,
+        }
+
+    def _add_proposal(series_name: str, source: str, bdict: dict):
+        key = series_name.lower()
+        if key not in proposals:
+            proposals[key] = {"series_name": series_name, "source": source, "books": []}
+        if not any(b["id"] == bdict["id"] for b in proposals[key]["books"]):
+            proposals[key]["books"].append(bdict)
+
+    # ── Passe 1 : OL work title ──────────────────────────────────────────────
     books_with_key = [b for b in books_no_series if b.work_key]
     if books_with_key:
         async with httpx.AsyncClient(timeout=8) as client:
-            tasks = [
-                client.get(f"https://openlibrary.org/works/{b.work_key}.json")
-                for b in books_with_key
-            ]
-            responses = await asyncio.gather(*tasks, return_exceptions=True)
-
+            responses = await asyncio.gather(
+                *[client.get(f"https://openlibrary.org/works/{b.work_key}.json")
+                  for b in books_with_key],
+                return_exceptions=True,
+            )
         for book, resp in zip(books_with_key, responses):
             if isinstance(resp, Exception) or resp.status_code != 200:
                 continue
             work_title = resp.json().get("title", "")
             series_name, position = _extract_series_and_position(work_title, None)
-            if not series_name:
-                continue
-            key = series_name.lower()
-            if key not in proposals:
-                proposals[key] = {
-                    "series_name": series_name,
-                    "source": "openlibrary_work",
-                    "books": [],
-                }
-            proposals[key]["books"].append({
-                "id": book.id,
-                "title": book.title,
-                "work_title": work_title,
-                "position": position,
-                "authors": json.loads(book.authors) if book.authors else [],
-                "cover_url": book.cover_url,
-            })
-            claimed_ids.add(book.id)
+            if series_name:
+                _add_proposal(series_name, "openlibrary_work",
+                              _book_dict(book, work_title=work_title, position=position))
+                claimed_ids.add(book.id)
 
-    # ── Passe 2 : clustering par préfixe de titre (même auteur) ─────────────
+    # ── Passe 2 : DuckDuckGo par livre ──────────────────────────────────────
+    to_search = [b for b in books_no_series if b.id not in claimed_ids]
+    async with httpx.AsyncClient(timeout=15) as client:
+        for i, book in enumerate(to_search):
+            if i > 0:
+                await asyncio.sleep(1.2)
+            authors = json.loads(book.authors) if book.authors else []
+            series_name = await search_series_ddg(book.title, authors, client)
+            if series_name:
+                _add_proposal(series_name, "web_search", _book_dict(book))
+                claimed_ids.add(book.id)
+
+    # ── Passe 3 : clustering par préfixe de titre (même auteur) ─────────────
     unclaimed = [b for b in books_no_series if b.id not in claimed_ids]
-
-    # Grouper par premier auteur
     author_groups: dict[str, list[dict]] = {}
     for book in unclaimed:
         authors = json.loads(book.authors) if book.authors else []
         first_author = authors[0] if authors else "__unknown__"
-        bdict = {
-            "id": book.id,
-            "title": book.title,
-            "work_title": None,
-            "position": None,
-            "authors": authors,
-            "cover_url": book.cover_url,
-        }
-        author_groups.setdefault(first_author, []).append(bdict)
+        author_groups.setdefault(first_author, []).append(_book_dict(book))
 
-    for author, abooks in author_groups.items():
+    for abooks in author_groups.values():
         if len(abooks) < 2:
             continue
-        clusters = _cluster_books_by_prefix(abooks, min_words=2)
-        for cluster in clusters:
-            key = cluster["series_name"].lower()
-            if key not in proposals:
-                proposals[key] = {
-                    "series_name": cluster["series_name"],
-                    "source": "title_cluster",
-                    "books": cluster["books"],
-                }
+        for cluster in _cluster_books_by_prefix(abooks, min_words=2):
+            for bdict in cluster["books"]:
+                _add_proposal(cluster["series_name"], "title_cluster", bdict)
 
-    # Garder uniquement les groupes avec ≥ 2 livres
-    result = [v for v in proposals.values() if len(v["books"]) >= 2]
-    result.sort(key=lambda x: x["series_name"].lower())
+    result = [v for v in proposals.values() if len(v["books"]) >= 1]
+    result.sort(key=lambda x: (-len(x["books"]), x["series_name"].lower()))
     return result
 
 
