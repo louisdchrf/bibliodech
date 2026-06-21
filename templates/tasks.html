@@ -2,58 +2,29 @@
 {% block title %}Tâches — Bibliodech{% endblock %}
 {% block content %}
 <div class="settings-container">
-  <div class="settings-header">
-    <h1 class="settings-title">Tâches</h1>
-    <p class="settings-desc">Lancer manuellement les traitements de données.</p>
-  </div>
-
-  <!-- Planification automatique -->
-  <div class="task-card task-card-expand" style="margin-bottom:1.5rem;border-color:var(--color-primary);border-width:2px">
-    <div class="task-info">
-      <div class="task-name">Planification automatique</div>
-      <div class="task-desc">Activez les tâches qui doivent tourner régulièrement en arrière-plan.</div>
+  <div class="settings-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem">
+    <div>
+      <h1 class="settings-title">Tâches</h1>
+      <p class="settings-desc">Lancez manuellement ou planifiez les traitements automatiques.</p>
     </div>
-    <div class="task-actions">
+    <div style="display:flex;align-items:center;gap:.75rem">
       <span class="task-status" id="sched-save-status"></span>
-      <button class="btn btn-primary btn-sm" id="btn-save-schedules">Enregistrer</button>
-    </div>
-    <div id="schedule-config" style="width:100%;margin-top:1rem;display:none">
-      <!-- rempli par JS -->
+      <button class="btn btn-primary btn-sm" id="btn-save-schedules">Enregistrer la planification</button>
     </div>
   </div>
 
-  <div class="tasks-list">
+  <div class="tasks-list" id="tasks-list">
+    <!-- Tâches planifiables : générées par JS une fois les schedules chargés -->
 
-    <div class="task-card" data-schedulable="reenrich">
-      <div class="task-info">
-        <div class="task-name">Compléter les livres manquants</div>
-        <div class="task-desc">Relance l'enrichissement pour les livres sans titre ou non trouvés lors du scan initial.</div>
-      </div>
-      <div class="task-actions">
-        <span class="task-status" id="status-reenrich"></span>
-        <button class="btn btn-ghost btn-sm task-btn" data-task="reenrich">Lancer</button>
-      </div>
-    </div>
-
+    <!-- Tâches non planifiables (statiques) -->
     <div class="task-card">
       <div class="task-info">
         <div class="task-name">Recharger toute la bibliothèque</div>
-        <div class="task-desc">Ré-interroge toutes les sources pour chaque livre avec un ISBN. Peut prendre plusieurs minutes.</div>
+        <div class="task-desc">Ré-interroge toutes les sources pour chaque livre avec un ISBN.</div>
       </div>
       <div class="task-actions">
         <span class="task-status" id="status-reenrich-all"></span>
         <button class="btn btn-ghost btn-sm task-btn" data-task="reenrich-all">Lancer</button>
-      </div>
-    </div>
-
-    <div class="task-card" data-schedulable="detect-series">
-      <div class="task-info">
-        <div class="task-name">Détecter les séries (heuristiques)</div>
-        <div class="task-desc">Analyse les titres pour détecter des patterns "Tome N" et assigne automatiquement les séries trouvées.</div>
-      </div>
-      <div class="task-actions">
-        <span class="task-status" id="status-detect-series"></span>
-        <button class="btn btn-ghost btn-sm task-btn" data-task="detect-series">Lancer</button>
       </div>
     </div>
 
@@ -69,39 +40,16 @@
       </div>
     </div>
 
-    <div class="task-card" data-schedulable="search-missing">
-      <div class="task-info">
-        <div class="task-name">Chercher les tomes manquants (toutes les séries)</div>
-        <div class="task-desc">Lance une recherche web pour chaque série afin de détecter les nouvelles sorties et tomes manquants.</div>
-      </div>
-      <div class="task-actions">
-        <span class="task-status" id="status-search-missing"></span>
-        <a href="/missing" class="btn btn-ghost btn-sm" id="goto-missing" style="display:none">Voir les manquants →</a>
-        <button class="btn btn-ghost btn-sm task-btn" data-task="search-missing">Lancer</button>
-      </div>
-    </div>
-
     <div class="task-card task-card-expand">
       <div class="task-info">
         <div class="task-name">Trouver les tomes manquants dans la bibliothèque</div>
-        <div class="task-desc">Recherche dans toute la bibliothèque les livres dont le titre correspond à un tome manquant d'une série.</div>
+        <div class="task-desc">Recherche les livres dont le titre correspond à un tome manquant d'une série.</div>
       </div>
       <div class="task-actions">
         <span class="task-status" id="status-match-library"></span>
         <button class="btn btn-ghost btn-sm" id="btn-match-library">Analyser</button>
       </div>
-      <div id="match-library-results" style="display:none; margin-top:1rem;"></div>
-    </div>
-
-    <div class="task-card">
-      <div class="task-info">
-        <div class="task-name">Normaliser les auteurs</div>
-        <div class="task-desc">Convertit les auteurs "Nom, Prénom" → "Prénom Nom" pour tous les livres.</div>
-      </div>
-      <div class="task-actions">
-        <span class="task-status" id="status-clean-authors"></span>
-        <button class="btn btn-ghost btn-sm task-btn" data-task="clean-authors">Lancer</button>
-      </div>
+      <div id="match-library-results" style="display:none;margin-top:1rem;"></div>
     </div>
 
     <div class="task-card task-card-expand">
@@ -114,7 +62,6 @@
       </div>
       <div id="dupes-result" style="display:none;margin-top:1rem;width:100%"></div>
     </div>
-
   </div>
 </div>
 {% endblock %}
@@ -126,16 +73,9 @@
     return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  // ── Planification ──────────────────────────────────────────────────────────
-  const TASK_LABELS = {
-    'reenrich':       'Compléter les livres manquants',
-    'search-missing': 'Chercher les tomes manquants',
-    'detect-series':  'Détecter les séries',
-    'clean-authors':  'Normaliser les auteurs',
-  };
-
   const INTERVAL_PRESETS = [
-    { label: '30 min', value: 30 },
+    { label: '15 min',  value: 15 },
+    { label: '30 min',  value: 30 },
     { label: '1 heure', value: 60 },
     { label: '6 heures', value: 360 },
     { label: '12 heures', value: 720 },
@@ -143,60 +83,111 @@
     { label: '7 jours', value: 10080 },
   ];
 
+  // Tâches planifiables : définition complète ici
+  const SCHEDULABLE = [
+    { id: 'reenrich',       name: 'Compléter les livres manquants',           desc: 'Relance l\'enrichissement pour les livres sans titre ou non trouvés lors du scan initial.' },
+    { id: 'detect-series',  name: 'Détecter les séries (heuristiques)',        desc: 'Analyse les titres pour détecter des patterns "Tome N" et assigne automatiquement les séries.' },
+    { id: 'search-missing', name: 'Chercher les tomes manquants',              desc: 'Recherche web pour chaque série afin de détecter les nouvelles sorties et tomes manquants.', extraBtn: '<a href="/missing" class="btn btn-ghost btn-sm" id="goto-missing" style="display:none">Voir →</a>' },
+    { id: 'clean-authors',  name: 'Normaliser les auteurs',                    desc: 'Convertit les auteurs "Nom, Prénom" → "Prénom Nom" pour tous les livres.' },
+  ];
+
+  const TASKS = {
+    'reenrich': {
+      url: '/api/books/re-enrich-all', method: 'POST',
+      label: r => `${r.queued} livre${r.queued !== 1 ? 's' : ''} en cours…`,
+    },
+    'reenrich-all': {
+      url: '/api/books/re-enrich-all?force=true', method: 'POST',
+      label: r => `${r.queued} livre${r.queued !== 1 ? 's' : ''} en cours…`,
+    },
+    'detect-series': {
+      url: '/api/series/detect-all', method: 'POST',
+      label: r => {
+        const parts = [];
+        if (r.found_instant) parts.push(`${r.found_instant} série${r.found_instant > 1 ? 's' : ''} trouvée${r.found_instant > 1 ? 's' : ''}`);
+        if (r.queued_lookup) parts.push(`${r.queued_lookup} en recherche…`);
+        return parts.join(' · ') || 'Aucune nouvelle série';
+      },
+    },
+    'analyze-series': {
+      url: '/api/series/analyze', method: 'POST',
+      label: r => `${r.length} proposition${r.length !== 1 ? 's' : ''} — voir Séries`,
+      onSuccess: () => { document.getElementById('goto-series-proposals').style.display = ''; },
+    },
+    'clean-authors': {
+      url: '/api/books/clean-authors', method: 'POST',
+      label: r => `${r.updated} livre${r.updated !== 1 ? 's' : ''} mis à jour`,
+    },
+    'search-missing': {
+      url: '/api/missing/search-all-web', method: 'POST',
+      label: r => `${r.series_checked} série${r.series_checked !== 1 ? 's' : ''} · ${r.missing_added} manquant${r.missing_added !== 1 ? 's' : ''}`,
+      onSuccess: () => { document.getElementById('goto-missing')?.style && (document.getElementById('goto-missing').style.display = ''); },
+    },
+  };
+
   let _schedules = {};
+
+  // ── Injecter les cartes planifiables avant les cartes statiques ──────────
+  function renderSchedulableCards() {
+    const list = document.getElementById('tasks-list');
+    const firstStatic = list.querySelector('.task-card');
+    SCHEDULABLE.forEach(t => {
+      const cfg = _schedules[t.id] || { enabled: false, interval_minutes: 60, last_run: null, last_result: null };
+      const lastRun = cfg.last_run
+        ? new Date(cfg.last_run).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
+        : null;
+
+      const div = document.createElement('div');
+      div.className = 'task-card';
+      div.id = `card-${t.id}`;
+      div.innerHTML = `
+        <div class="task-info">
+          <div class="task-name">${escHtml(t.name)}</div>
+          <div class="task-desc">${escHtml(t.desc)}</div>
+          ${lastRun ? `<div style="font-size:.75rem;color:var(--color-text-muted);margin-top:.25rem">Dernier lancement : ${lastRun}${cfg.last_result ? ` — ${escHtml(cfg.last_result)}` : ''}</div>` : ''}
+        </div>
+        <div class="task-actions" style="gap:.5rem">
+          <span class="task-status" id="status-${t.id}"></span>
+          ${t.extraBtn || ''}
+          <label style="display:flex;align-items:center;gap:.35rem;font-size:.82rem;cursor:pointer;white-space:nowrap">
+            <input type="checkbox" id="sched-enabled-${t.id}" ${cfg.enabled ? 'checked' : ''}>
+            Auto
+          </label>
+          <select id="sched-interval-${t.id}" class="select-input" style="width:auto;font-size:.82rem">
+            ${INTERVAL_PRESETS.map(p => `<option value="${p.value}" ${cfg.interval_minutes === p.value ? 'selected' : ''}>${p.label}</option>`).join('')}
+          </select>
+          <button class="btn btn-ghost btn-sm task-btn" data-task="${t.id}">Lancer</button>
+        </div>`;
+      list.insertBefore(div, firstStatic);
+    });
+  }
 
   async function loadSchedules() {
     const res = await fetch('/api/tasks/schedules');
     _schedules = await res.json();
-    renderScheduleConfig();
+    renderSchedulableCards();
+    wireTaskBtns();
   }
 
-  function renderScheduleConfig() {
-    const el = document.getElementById('schedule-config');
-    el.style.display = 'block';
-    el.innerHTML = Object.entries(TASK_LABELS).map(([id, label]) => {
-      const cfg = _schedules[id] || { enabled: false, interval_minutes: 60, last_run: null, last_result: null };
-      const lastRun = cfg.last_run
-        ? new Date(cfg.last_run).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
-        : 'jamais';
-      return `
-        <div style="display:flex;align-items:center;gap:1rem;padding:.6rem 0;border-bottom:1px solid var(--color-border);flex-wrap:wrap">
-          <label style="display:flex;align-items:center;gap:.5rem;flex:1;min-width:180px;cursor:pointer">
-            <input type="checkbox" id="sched-enabled-${id}" ${cfg.enabled ? 'checked' : ''}>
-            <span style="font-size:.9rem;font-weight:500">${label}</span>
-          </label>
-          <select id="sched-interval-${id}" class="select-input" style="width:auto;font-size:.85rem">
-            ${INTERVAL_PRESETS.map(p =>
-              `<option value="${p.value}" ${cfg.interval_minutes === p.value ? 'selected' : ''}>${p.label}</option>`
-            ).join('')}
-          </select>
-          <span style="font-size:.78rem;color:var(--color-text-muted);white-space:nowrap">
-            Dernier lancement : ${lastRun}${cfg.last_result ? ` — ${escHtml(cfg.last_result)}` : ''}
-          </span>
-        </div>`;
-    }).join('');
-  }
-
+  // ── Sauvegarder la planification ─────────────────────────────────────────
   document.getElementById('btn-save-schedules').addEventListener('click', async () => {
     const btn = document.getElementById('btn-save-schedules');
     const statusEl = document.getElementById('sched-save-status');
     btn.disabled = true;
     const body = {};
-    for (const id of Object.keys(TASK_LABELS)) {
-      body[id] = {
-        enabled: document.getElementById(`sched-enabled-${id}`)?.checked ?? false,
-        interval_minutes: parseInt(document.getElementById(`sched-interval-${id}`)?.value ?? '60'),
+    for (const t of SCHEDULABLE) {
+      body[t.id] = {
+        enabled: document.getElementById(`sched-enabled-${t.id}`)?.checked ?? false,
+        interval_minutes: parseInt(document.getElementById(`sched-interval-${t.id}`)?.value ?? '60'),
       };
     }
     const res = await fetch('/api/tasks/schedules', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
     btn.disabled = false;
     if (res.ok) {
       _schedules = await res.json();
-      renderScheduleConfig();
       statusEl.textContent = '✓ Enregistré';
       statusEl.className = 'task-status task-status-ok';
     } else {
@@ -206,72 +197,29 @@
     setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'task-status'; }, 3000);
   });
 
-  loadSchedules();
-
-  // ── Tâches manuelles ───────────────────────────────────────────────────────
-  const TASKS = {
-    'reenrich': {
-      url: '/api/books/re-enrich-all',
-      method: 'POST',
-      label: r => `${r.queued} livre${r.queued !== 1 ? 's' : ''} en cours…`,
-    },
-    'reenrich-all': {
-      url: '/api/books/re-enrich-all?force=true',
-      method: 'POST',
-      label: r => `${r.queued} livre${r.queued !== 1 ? 's' : ''} en cours…`,
-    },
-    'detect-series': {
-      url: '/api/series/detect-all',
-      method: 'POST',
-      label: r => {
-        const parts = [];
-        if (r.found_instant) parts.push(`${r.found_instant} série${r.found_instant > 1 ? 's' : ''} trouvée${r.found_instant > 1 ? 's' : ''}`);
-        if (r.queued_lookup) parts.push(`${r.queued_lookup} en recherche…`);
-        return parts.join(' · ') || 'Aucune nouvelle série';
-      },
-    },
-    'analyze-series': {
-      url: '/api/series/analyze',
-      method: 'POST',
-      label: r => `${r.length} proposition${r.length !== 1 ? 's' : ''} — voir la page Séries`,
-      onSuccess: () => { document.getElementById('goto-series-proposals').style.display = ''; },
-    },
-    'clean-authors': {
-      url: '/api/books/clean-authors',
-      method: 'POST',
-      label: r => `${r.updated} livre${r.updated !== 1 ? 's' : ''} mis à jour`,
-    },
-    'search-missing': {
-      url: '/api/missing/search-all-web',
-      method: 'POST',
-      label: r => `${r.series_checked} série${r.series_checked !== 1 ? 's' : ''} vérifiée${r.series_checked !== 1 ? 's' : ''} · ${r.missing_added} manquant${r.missing_added !== 1 ? 's' : ''} trouvé${r.missing_added !== 1 ? 's' : ''}`,
-      onSuccess: () => { document.getElementById('goto-missing').style.display = ''; },
-    },
-  };
-
-  document.querySelectorAll('.task-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const task = TASKS[btn.dataset.task];
-      if (!task) return;
-      const statusEl = document.getElementById(`status-${btn.dataset.task}`);
-      btn.disabled = true; btn.textContent = '⏳';
-      statusEl.textContent = 'En cours…';
-      statusEl.className = 'task-status task-status-running';
-      try {
-        const res = await fetch(task.url, { method: task.method });
-        if (!res.ok) throw new Error(await res.text());
-        const data = await res.json();
-        statusEl.textContent = task.label(data);
-        statusEl.className = 'task-status task-status-ok';
-        if (task.onSuccess) task.onSuccess(data);
-      } catch {
-        statusEl.textContent = 'Erreur';
-        statusEl.className = 'task-status task-status-err';
-      } finally {
-        btn.disabled = false; btn.textContent = 'Lancer';
-      }
+  // ── Boutons Lancer ────────────────────────────────────────────────────────
+  function wireTaskBtns() {
+    document.querySelectorAll('.task-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const task = TASKS[btn.dataset.task];
+        if (!task) return;
+        const statusEl = document.getElementById(`status-${btn.dataset.task}`);
+        btn.disabled = true; btn.textContent = '⏳';
+        if (statusEl) { statusEl.textContent = 'En cours…'; statusEl.className = 'task-status task-status-running'; }
+        try {
+          const res = await fetch(task.url, { method: task.method });
+          if (!res.ok) throw new Error(await res.text());
+          const data = await res.json();
+          if (statusEl) { statusEl.textContent = task.label(data); statusEl.className = 'task-status task-status-ok'; }
+          if (task.onSuccess) task.onSuccess(data);
+        } catch {
+          if (statusEl) { statusEl.textContent = 'Erreur'; statusEl.className = 'task-status task-status-err'; }
+        } finally {
+          btn.disabled = false; btn.textContent = 'Lancer';
+        }
+      });
     });
-  });
+  }
 
   // ── Correspondances bibliothèque ─────────────────────────────────────────
   document.getElementById('btn-match-library').addEventListener('click', async () => {
@@ -295,8 +243,7 @@
     statusEl.textContent = `${matches.length} correspondance${matches.length > 1 ? 's' : ''} trouvée${matches.length > 1 ? 's' : ''}`;
 
     let html = `<div style="display:flex;justify-content:flex-end;margin-bottom:.75rem">
-      <button class="btn btn-primary btn-sm" id="btn-auto-assign">Tout assigner (non ambigus)</button>
-    </div>`;
+      <button class="btn btn-primary btn-sm" id="btn-auto-assign">Tout assigner (non ambigus)</button></div>`;
     for (const { name, items } of Object.values(bySeries)) {
       html += `<div style="margin-bottom:1rem"><div style="font-weight:600;margin-bottom:.4rem">${escHtml(name)}</div>`;
       for (const m of items) {
@@ -312,9 +259,7 @@
       }
       html += '</div>';
     }
-
-    resultEl.innerHTML = html;
-    resultEl.style.display = 'block';
+    resultEl.innerHTML = html; resultEl.style.display = 'block';
 
     resultEl.querySelectorAll('.assign-match-btn').forEach(b => {
       b.addEventListener('click', async () => {
@@ -342,23 +287,18 @@
     const resultEl = document.getElementById('dupes-result');
     btn.disabled = true; btn.textContent = '⏳';
     resultEl.style.display = 'none';
-
     const res = await fetch('/api/series/duplicates');
     btn.disabled = false; btn.textContent = 'Détecter';
     if (!res.ok) { resultEl.style.display = ''; resultEl.textContent = 'Erreur.'; return; }
     const pairs = await res.json();
     resultEl.style.display = '';
-
     if (!pairs.length) { resultEl.innerHTML = '<p class="task-status task-status-ok">Aucun doublon détecté.</p>'; return; }
-
     resultEl.innerHTML = pairs.map((p, i) => `
       <div class="dupe-pair" id="dupe-${i}">
         <div class="dupe-info">
-          <span class="dupe-name">${escHtml(p.a.name)}</span>
-          <span class="dupe-count">${p.a.book_count} livre${p.a.book_count !== 1 ? 's' : ''}</span>
+          <span class="dupe-name">${escHtml(p.a.name)}</span><span class="dupe-count">${p.a.book_count} livre${p.a.book_count !== 1 ? 's' : ''}</span>
           <span class="dupe-arrow">→</span>
-          <span class="dupe-name">${escHtml(p.b.name)}</span>
-          <span class="dupe-count">${p.b.book_count} livre${p.b.book_count !== 1 ? 's' : ''}</span>
+          <span class="dupe-name">${escHtml(p.b.name)}</span><span class="dupe-count">${p.b.book_count} livre${p.b.book_count !== 1 ? 's' : ''}</span>
         </div>
         <div class="dupe-actions">
           <button class="btn btn-sm btn-ghost merge-btn" data-from="${p.a.id}" data-into="${p.b.id}" data-pair="${i}">Garder "${escHtml(p.b.name)}"</button>
@@ -366,7 +306,6 @@
           <button class="btn btn-sm btn-ghost" onclick="document.getElementById('dupe-${i}').remove()">Ignorer</button>
         </div>
       </div>`).join('');
-
     resultEl.querySelectorAll('.merge-btn').forEach(b => {
       b.addEventListener('click', async () => {
         const pairEl = document.getElementById(`dupe-${b.dataset.pair}`);
@@ -380,6 +319,10 @@
       });
     });
   });
+
+  // Lancer les tâches non planifiables (statiques) + charger les schedules
+  wireTaskBtns();
+  loadSchedules();
 })();
 </script>
 {% endblock %}
