@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.models import Setting
 
 DEFAULTS = {
+    "timezone": "Europe/Paris",
     "lookup_sources": [
         {"id": "sudoc",       "label": "SUDOC",        "enabled": True,  "timeout": 5},
         {"id": "bnf",         "label": "BNF",          "enabled": True,  "timeout": 5},

@@ -78,7 +78,7 @@ def _series_to_dict(series: Series, book_count: int = 0) -> dict:
         "id": series.id,
         "name": series.name,
         "source": series.source,
-        "created_at": series.created_at.isoformat() if series.created_at else None,
+        "created_at": series.created_at.isoformat() + "Z" if series.created_at else None,
         "book_count": book_count,
     }
 

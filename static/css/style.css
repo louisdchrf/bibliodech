@@ -57,7 +57,11 @@ body {
   background: var(--color-bg);
   color: var(--color-text);
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
+
+.main-content { flex: 1; }
 
 a { color: inherit; text-decoration: none; }
 img { display: block; max-width: 100%; }

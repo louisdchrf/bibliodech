@@ -194,7 +194,7 @@ def _series_missing_data(series: Series, db: Session) -> dict:
             "id": m.id,
             "position": m.position,
             "title": m.title,
-            "detected_at": m.detected_at.isoformat() if m.detected_at else None,
+            "detected_at": m.detected_at.isoformat() + "Z" if m.detected_at else None,
         }
         for m in stored_missing
         if not any(b.series_position == m.position for b in books)

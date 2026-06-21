@@ -273,7 +273,7 @@ def get_all_logs(request: Request, db: Session = Depends(get_db), limit: int = 5
             "action": l.action,
             "username": l.user.username if l.user else None,
             "detail": json.loads(l.detail) if l.detail else None,
-            "created_at": l.created_at.isoformat() if l.created_at else None,
+            "created_at": l.created_at.isoformat() + "Z" if l.created_at else None,
         }
         for l in logs
     ]
@@ -296,7 +296,7 @@ def get_book_logs(book_id: int, request: Request, db: Session = Depends(get_db))
             "action": l.action,
             "username": l.user.username if l.user else None,
             "detail": json.loads(l.detail) if l.detail else None,
-            "created_at": l.created_at.isoformat() if l.created_at else None,
+            "created_at": l.created_at.isoformat() + "Z" if l.created_at else None,
         }
         for l in logs
     ]

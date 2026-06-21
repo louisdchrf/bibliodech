@@ -1,6 +1,16 @@
 import json
-from datetime import date
+from datetime import date, datetime
 from app.models import Book
+
+
+def utc_iso(dt: datetime | None) -> str | None:
+    """Sérialise un datetime UTC naïf en ISO 8601 avec suffixe Z."""
+    if dt is None:
+        return None
+    s = dt.isoformat()
+    if not s.endswith('Z') and '+' not in s:
+        s += 'Z'
+    return s
 
 
 def book_to_dict(book: Book, series_name: str | None = None) -> dict:
@@ -36,8 +46,8 @@ def book_to_dict(book: Book, series_name: str | None = None) -> dict:
             "id": active_loan.id,
             "borrower_name": borrower_name,
             "borrower_is_user": active_loan.user_id is not None,
-            "loan_date": active_loan.loan_date.isoformat() if active_loan.loan_date else None,
-            "due_date": active_loan.due_date.isoformat() if active_loan.due_date else None,
+            "loan_date": utc_iso(active_loan.loan_date),
+            "due_date": utc_iso(active_loan.due_date),
             "overdue": (
                 active_loan.due_date is not None
                 and active_loan.due_date.date() < date.today()
@@ -64,7 +74,7 @@ def book_to_dict(book: Book, series_name: str | None = None) -> dict:
         "series_position": book.series_position,
         "room_id": room.id if room else None,
         "location": loc,
-        "added_at": book.added_at.isoformat() if book.added_at else None,
+        "added_at": utc_iso(book.added_at),
         "series_name": series_name or (book.series.name if book.series else None),
         "enrichment_status": book.enrichment_status,
         "active_loan": loan_info,

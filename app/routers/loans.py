@@ -59,9 +59,9 @@ def _loan_dict(loan: Loan) -> dict:
         "user_id": loan.user_id,
         "borrower_name": _loan_borrower_name(loan),
         "borrower_is_user": loan.user_id is not None,
-        "loan_date": loan.loan_date.isoformat() if loan.loan_date else None,
-        "due_date": loan.due_date.isoformat() if loan.due_date else None,
-        "return_date": loan.return_date.isoformat() if loan.return_date else None,
+        "loan_date": loan.loan_date.isoformat() + "Z" if loan.loan_date else None,
+        "due_date": loan.due_date.isoformat() + "Z" if loan.due_date else None,
+        "return_date": loan.return_date.isoformat() + "Z" if loan.return_date else None,
         "overdue": (
             loan.due_date is not None
             and loan.return_date is None

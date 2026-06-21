@@ -44,7 +44,24 @@
         <span class="source-id">Affiché sur les cartes de la bibliothèque</span>
         <label class="toggle-switch"><input type="checkbox" id="pref-badge-location"><span class="toggle-slider"></span></label>
       </li>
+      <li class="source-item">
+        <span class="source-label">Fuseau horaire</span>
+        <span class="source-id">Utilisé pour l'affichage des dates et logs</span>
+        <input type="text" id="pref-timezone" class="input-sm" style="width:200px" placeholder="Europe/Paris" list="tz-list">
+        <datalist id="tz-list">
+          <option value="Europe/Paris">
+          <option value="Europe/London">
+          <option value="Europe/Brussels">
+          <option value="Europe/Zurich">
+          <option value="America/New_York">
+          <option value="America/Chicago">
+          <option value="America/Los_Angeles">
+          <option value="UTC">
+        </datalist>
+      </li>
     </ul>
+    <button id="btn-save-display" class="btn btn-primary" style="margin-top:.75rem">Enregistrer</button>
+    <span id="display-msg" class="save-msg"></span>
   </div>
 
   <!-- Onglet Email -->
@@ -804,12 +821,35 @@
     seriesCb.checked   = getPref('badgeSeries');
     locationCb.checked = getPref('badgeLocation');
 
+    const tzInput = document.getElementById('pref-timezone');
+    const btnSaveDisplay = document.getElementById('btn-save-display');
+    const displayMsg = document.getElementById('display-msg');
+
     darkCb.addEventListener('change', () => {
       setPref('dark', darkCb.checked);
       applyDark(darkCb.checked);
     });
     seriesCb.addEventListener('change', () => setPref('badgeSeries', seriesCb.checked));
     locationCb.addEventListener('change', () => setPref('badgeLocation', locationCb.checked));
+
+    // Charge le timezone depuis l'API
+    fetch('/api/settings').then(r => r.json()).then(d => {
+      if (tzInput && d.timezone) tzInput.value = d.timezone;
+    });
+
+    btnSaveDisplay && btnSaveDisplay.addEventListener('click', async () => {
+      const tz = tzInput ? tzInput.value.trim() : '';
+      if (tz) {
+        const r = await fetch('/api/settings/timezone', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(tz) });
+        if (r.ok) {
+          window.APP_TIMEZONE = tz;
+          displayMsg.textContent = 'Enregistré'; displayMsg.className = 'save-msg save-ok';
+        } else {
+          displayMsg.textContent = 'Erreur'; displayMsg.className = 'save-msg save-err';
+        }
+        setTimeout(() => { displayMsg.textContent = ''; displayMsg.className = 'save-msg'; }, 2500);
+      }
+    });
   }
 
   initDisplayTab();
