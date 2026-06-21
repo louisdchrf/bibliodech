@@ -65,7 +65,7 @@
     { id: 'detect-series',  name: 'Détecter les séries (heuristiques)',           desc: 'Analyse les titres pour détecter des patterns "Tome N" et assigne automatiquement les séries.' },
     { id: 'analyze-series', name: 'Analyser les séries (Open Library + Web)',     desc: 'Interroge Open Library et DuckDuckGo pour proposer des séries sur les livres non encore assignés.', extraBtn: '<a href="/series" class="btn btn-ghost btn-sm" id="goto-series-proposals" style="display:none">Voir →</a>' },
     { id: 'search-missing', name: 'Chercher les tomes manquants',                 desc: 'Recherche web pour chaque série afin de détecter les nouvelles sorties et tomes manquants.', extraBtn: '<a href="/missing" class="btn btn-ghost btn-sm" id="goto-missing" style="display:none">Voir →</a>' },
-    { id: 'match-library',  name: 'Assigner les tomes trouvés en bibliothèque',   desc: 'Recherche et assigne automatiquement les livres non groupés qui correspondent à des tomes manquants.' },
+    { id: 'match-library',  name: 'Trouver les tomes manquants dans la bibliothèque', desc: 'Recherche les livres dont le titre correspond à un tome manquant d\'une série. Auto = assigne les non-ambigus.', manualLabel: 'Analyser', expand: true },
     { id: 'clean-authors',  name: 'Normaliser les auteurs',                       desc: 'Convertit les auteurs "Nom, Prénom" → "Prénom Nom" pour tous les livres.' },
   ];
 
@@ -116,8 +116,10 @@
         : null;
 
       const div = document.createElement('div');
-      div.className = 'task-card';
+      div.className = 'task-card' + (t.expand ? ' task-card-expand' : '');
       div.id = `card-${t.id}`;
+      const btnLabel = t.manualLabel || 'Lancer';
+      const btnId = t.expand ? `btn-${t.id}` : '';
       div.innerHTML = `
         <div class="task-info">
           <div class="task-name">${escHtml(t.name)}</div>
@@ -134,10 +136,14 @@
           <select id="sched-interval-${t.id}" class="select-input" style="width:auto;font-size:.82rem">
             ${INTERVAL_PRESETS.map(p => `<option value="${p.value}" ${cfg.interval_minutes === p.value ? 'selected' : ''}>${p.label}</option>`).join('')}
           </select>
-          <button class="btn btn-ghost btn-sm task-btn" data-task="${t.id}">Lancer</button>
-        </div>`;
+          <button class="btn btn-ghost btn-sm ${t.expand ? '' : 'task-btn'}" ${btnId ? `id="${btnId}"` : ''} data-task="${t.id}">${btnLabel}</button>
+        </div>
+        ${t.expand ? `<div id="expand-${t.id}" style="display:none;margin-top:1rem;width:100%"></div>` : ''}`;
       list.insertBefore(div, firstStatic);
     });
+
+    // Wirer match-library après injection
+    wireMatchLibrary();
   }
 
   async function loadSchedules() {
@@ -200,10 +206,16 @@
   }
 
   // ── Correspondances bibliothèque ─────────────────────────────────────────
-  document.getElementById('btn-match-library').addEventListener('click', async () => {
+  function wireMatchLibrary() {
+    const btn = document.getElementById('btn-match-library');
+    if (!btn) return;
+    btn.addEventListener('click', matchLibraryClick);
+  }
+
+  async function matchLibraryClick() {
     const btn = document.getElementById('btn-match-library');
     const statusEl = document.getElementById('status-match-library');
-    const resultEl = document.getElementById('match-library-results');
+    const resultEl = document.getElementById('expand-match-library');
     btn.disabled = true; btn.textContent = '⏳';
     statusEl.textContent = 'Analyse en cours…';
     resultEl.style.display = 'none'; resultEl.innerHTML = '';
@@ -255,9 +267,9 @@
       ab.disabled = true; ab.textContent = '⏳';
       const data = await fetch('/api/missing/auto-assign', { method: 'POST' }).then(r => r.json());
       ab.textContent = `✓ ${data.assigned} assigné${data.assigned > 1 ? 's' : ''}${data.ambiguous ? ` · ${data.ambiguous} ambigus ignorés` : ''}`;
-      document.getElementById('btn-match-library').click();
+      matchLibraryClick();
     });
-  });
+  }
 
   // ── Fusion séries doublons ─────────────────────────────────────────────────
   document.getElementById('btn-find-dupes').addEventListener('click', async () => {
