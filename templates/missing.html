@@ -60,9 +60,12 @@
       </div>`).join('');
 
     const gapsHtml = item.gaps.map(pos => `
-      <div class="missing-vol missing-vol-gap">
+      <div class="missing-vol missing-vol-gap" id="gap-${s.id}-${pos}">
         <span class="missing-vol-pos">#${pos}</span>
         <span class="missing-vol-title missing-vol-unknown">Tome manquant</span>
+        <button class="btn btn-sm btn-ghost pick-book-btn" data-series-id="${s.id}" data-pos="${pos}" data-slot="gap-${s.id}-${pos}">
+          + Assigner un livre
+        </button>
       </div>`).join('');
 
     const candidatesHtml = item.candidates.map(b => `
@@ -84,6 +87,9 @@
       <div class="missing-vol missing-vol-tobuy" id="tobuy-${m.id}">
         <span class="missing-vol-pos">${m.position != null ? '#' + m.position : '?'}</span>
         <span class="missing-vol-title">${m.title ? escHtml(m.title) : 'Titre inconnu'}</span>
+        <button class="btn btn-sm btn-ghost pick-book-btn" data-series-id="${s.id}" data-pos="${m.position ?? ''}" data-missing-id="${m.id}" data-slot="tobuy-${m.id}">
+          + Assigner un livre
+        </button>
         <button class="btn btn-sm btn-ghost resolve-btn" data-missing-id="${m.id}">Acquis ✓</button>
       </div>`).join('');
 
@@ -139,6 +145,80 @@
         if (res.ok) {
           document.getElementById(`tobuy-${missingId}`)?.remove();
         } else { btn.disabled = false; }
+      });
+    });
+
+    // Picker "Assigner un livre"
+    section.querySelectorAll('.pick-book-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const slotId  = btn.dataset.slot;
+        const sid     = btn.dataset.seriesId;
+        const pos     = btn.dataset.pos;
+        const mId     = btn.dataset.missingId || null;
+        const slotEl  = document.getElementById(slotId);
+        if (!slotEl) return;
+
+        // Éviter d'ouvrir deux fois
+        if (slotEl.querySelector('.book-picker')) return;
+
+        const picker = document.createElement('div');
+        picker.className = 'book-picker';
+        picker.innerHTML = `
+          <input class="search-input picker-input" placeholder="Rechercher un titre…" autocomplete="off">
+          <div class="picker-results"></div>
+          <button class="btn btn-ghost btn-sm picker-cancel">Annuler</button>
+        `;
+        slotEl.appendChild(picker);
+
+        const input   = picker.querySelector('.picker-input');
+        const results = picker.querySelector('.picker-results');
+        input.focus();
+
+        picker.querySelector('.picker-cancel').addEventListener('click', () => picker.remove());
+
+        let debounce;
+        input.addEventListener('input', () => {
+          clearTimeout(debounce);
+          debounce = setTimeout(async () => {
+            const q = input.value.trim();
+            if (q.length < 2) { results.innerHTML = ''; return; }
+            const res = await fetch(`/api/books?search=${encodeURIComponent(q)}&limit=10`);
+            if (!res.ok) return;
+            const data = await res.json();
+            results.innerHTML = data.items.length
+              ? data.items.map(b => `
+                  <div class="picker-item" data-book-id="${b.id}">
+                    <span class="picker-item-title">${escHtml(b.title)}</span>
+                    <span class="picker-item-author">${escHtml((b.authors || []).join(', '))}</span>
+                    ${b.series_name ? `<span class="picker-item-series">${escHtml(b.series_name)}</span>` : ''}
+                  </div>`).join('')
+              : '<p class="picker-empty">Aucun résultat</p>';
+
+            results.querySelectorAll('.picker-item').forEach(item => {
+              item.addEventListener('click', async () => {
+                const bookId = item.dataset.bookId;
+                const body = { series_id: Number(sid) };
+                if (pos) body.position = parseFloat(pos);
+
+                const r = await fetch(`/api/books/${bookId}/assign-series`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(body),
+                });
+                if (r.ok) {
+                  // Résoudre le manquant stocké si applicable
+                  if (mId) await fetch(`/api/missing/${mId}/resolve`, { method: 'POST' });
+                  // Transformer la ligne en "possédé"
+                  slotEl.className = 'missing-vol missing-vol-owned';
+                  slotEl.innerHTML = `
+                    <span class="missing-vol-pos">${pos ? '#' + pos : '?'}</span>
+                    <span class="missing-vol-title">${escHtml(item.querySelector('.picker-item-title').textContent)}</span>
+                  `;
+                }
+              });
+            });
+          }, 250);
+        });
       });
     });
 
