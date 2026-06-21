@@ -19,6 +19,10 @@
       </select>
       <button id="btn-reenrich" class="btn btn-ghost" title="Relancer la recherche pour les livres non trouvés">🔄 <span id="reenrich-label">Compléter</span></button>
       <button id="btn-reenrich-all" class="btn btn-ghost" title="Recharger les infos de tous les livres depuis les sources">♻️ Tout recharger</button>
+      <button id="btn-view-toggle" class="btn btn-ghost btn-icon" title="Changer l'affichage" aria-label="Vue liste / grille">
+        <svg id="icon-grid" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <svg id="icon-list" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3" cy="6" r="1" fill="currentColor" stroke="none"/><circle cx="3" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="3" cy="18" r="1" fill="currentColor" stroke="none"/></svg>
+      </button>
       <button id="btn-select" class="btn btn-ghost">Sélectionner</button>
     </div>
   </div>
@@ -114,6 +118,25 @@
     return v === null ? def : v === '1';
   }
   const isAdmin = {{ 'true' if user.role == 'admin' else 'false' }};
+
+  // ── Vue grille / liste ────────────────────────────────────────────────────
+  let listView = localStorage.getItem('bib_list_view') === '1';
+  const btnViewToggle = document.getElementById('btn-view-toggle');
+  const iconGrid = document.getElementById('icon-grid');
+  const iconList = document.getElementById('icon-list');
+
+  function applyViewMode() {
+    grid.classList.toggle('list-view', listView);
+    iconGrid.style.display = listView ? '' : 'none';
+    iconList.style.display = listView ? 'none' : '';
+  }
+  applyViewMode();
+
+  btnViewToggle.addEventListener('click', () => {
+    listView = !listView;
+    localStorage.setItem('bib_list_view', listView ? '1' : '0');
+    applyViewMode();
+  });
 
   function escHtml(str) {
     if (!str) return '';

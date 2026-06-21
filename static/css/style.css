@@ -1487,3 +1487,79 @@ body.modal-open { overflow: hidden; }
   font-style: italic;
   margin-top: .1rem;
 }
+
+/* ── Vue liste bibliothèque ─────────────────────────────────────────────── */
+.book-grid.list-view {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+}
+
+.book-grid.list-view .book-card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: .75rem;
+  padding: .45rem .6rem;
+  min-height: unset;
+  border-radius: var(--radius-sm);
+}
+
+.book-grid.list-view .book-cover-wrap {
+  flex-shrink: 0;
+  width: 36px;
+  height: 50px;
+}
+
+.book-grid.list-view .book-cover {
+  width: 36px;
+  height: 50px;
+  object-fit: cover;
+  border-radius: 2px;
+}
+
+.book-grid.list-view .book-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: .6rem;
+  flex-wrap: wrap;
+}
+
+.book-grid.list-view .book-title {
+  font-size: .92rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 340px;
+}
+
+.book-grid.list-view .book-author {
+  font-size: .82rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.book-grid.list-view .book-badges {
+  margin-left: auto;
+  display: flex;
+  gap: .3rem;
+  flex-shrink: 0;
+}
+
+.book-grid.list-view .book-status-pending,
+.book-grid.list-view .book-status-not-found {
+  font-size: .75rem;
+  align-self: center;
+}
+
+/* icône toggle vue */
+.btn-icon {
+  padding: .45rem .6rem;
+  line-height: 0;
+}
