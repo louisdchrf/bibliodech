@@ -53,8 +53,16 @@ def on_startup():
     db = SessionLocal()
     try:
         bootstrap_admin(db)
+        from app import scheduler as sched
+        sched.start(db)
     finally:
         db.close()
+
+
+@app.on_event("shutdown")
+def on_shutdown():
+    from app import scheduler as sched
+    sched.stop()
 
 
 # ── Page routes ───────────────────────────────────────────────────────────────

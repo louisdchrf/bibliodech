@@ -294,11 +294,7 @@ def _store_missing_volumes(series_id: int, volumes: list[dict], owned_positions:
     return added
 
 
-@router.post("/api/missing/search-all-web")
-async def search_all_missing_web(request: Request, db: Session = Depends(get_db)):
-    """Lance la recherche Babelio/DDG de tomes manquants pour toutes les séries."""
-    user = get_current_user(request, db)
-    require_contributor(user)
+async def search_all_missing_web_logic(db: Session) -> dict:
     series_list = db.query(Series).order_by(Series.name).all()
     total_added = 0
     series_checked = 0
@@ -316,6 +312,13 @@ async def search_all_missing_web(request: Request, db: Session = Depends(get_db)
             series_checked += 1
     db.commit()
     return {"series_checked": series_checked, "missing_added": total_added}
+
+
+@router.post("/api/missing/search-all-web")
+async def search_all_missing_web(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user(request, db)
+    require_contributor(user)
+    return await search_all_missing_web_logic(db)
 
 
 @router.post("/api/missing/{series_id}/search-web")

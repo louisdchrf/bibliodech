@@ -300,3 +300,30 @@ def list_shelves(request: Request, db: Session = Depends(get_db)):
         .all()
     )
     return [r[0] for r in rows]
+
+
+@router.get("/api/tasks/schedules")
+def get_task_schedules(request: Request, db: Session = Depends(get_db)):
+    from app.auth import require_admin
+    user = get_current_user(request, db)
+    require_admin(user)
+    from app import scheduler as sched
+    return sched.get_schedules(db)
+
+
+@router.post("/api/tasks/schedules")
+def update_task_schedules(body: dict, request: Request, db: Session = Depends(get_db)):
+    from app.auth import require_admin
+    user = get_current_user(request, db)
+    require_admin(user)
+    from app import scheduler as sched
+    schedules = sched.get_schedules(db)
+    for task_id, cfg in body.items():
+        if task_id in schedules:
+            if "enabled" in cfg:
+                schedules[task_id]["enabled"] = bool(cfg["enabled"])
+            if "interval_minutes" in cfg:
+                schedules[task_id]["interval_minutes"] = max(1, int(cfg["interval_minutes"]))
+    sched.save_schedules(db, schedules)
+    sched.reload(db)
+    return schedules

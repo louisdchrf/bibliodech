@@ -7,9 +7,24 @@
     <p class="settings-desc">Lancer manuellement les traitements de données.</p>
   </div>
 
+  <!-- Planification automatique -->
+  <div class="task-card task-card-expand" style="margin-bottom:1.5rem;border-color:var(--color-primary);border-width:2px">
+    <div class="task-info">
+      <div class="task-name">Planification automatique</div>
+      <div class="task-desc">Activez les tâches qui doivent tourner régulièrement en arrière-plan.</div>
+    </div>
+    <div class="task-actions">
+      <span class="task-status" id="sched-save-status"></span>
+      <button class="btn btn-primary btn-sm" id="btn-save-schedules">Enregistrer</button>
+    </div>
+    <div id="schedule-config" style="width:100%;margin-top:1rem;display:none">
+      <!-- rempli par JS -->
+    </div>
+  </div>
+
   <div class="tasks-list">
 
-    <div class="task-card">
+    <div class="task-card" data-schedulable="reenrich">
       <div class="task-info">
         <div class="task-name">Compléter les livres manquants</div>
         <div class="task-desc">Relance l'enrichissement pour les livres sans titre ou non trouvés lors du scan initial.</div>
@@ -31,7 +46,7 @@
       </div>
     </div>
 
-    <div class="task-card">
+    <div class="task-card" data-schedulable="detect-series">
       <div class="task-info">
         <div class="task-name">Détecter les séries (heuristiques)</div>
         <div class="task-desc">Analyse les titres pour détecter des patterns "Tome N" et assigne automatiquement les séries trouvées.</div>
@@ -54,7 +69,7 @@
       </div>
     </div>
 
-    <div class="task-card">
+    <div class="task-card" data-schedulable="search-missing">
       <div class="task-info">
         <div class="task-name">Chercher les tomes manquants (toutes les séries)</div>
         <div class="task-desc">Lance une recherche web pour chaque série afin de détecter les nouvelles sorties et tomes manquants.</div>
@@ -111,6 +126,89 @@
     return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
+  // ── Planification ──────────────────────────────────────────────────────────
+  const TASK_LABELS = {
+    'reenrich':       'Compléter les livres manquants',
+    'search-missing': 'Chercher les tomes manquants',
+    'detect-series':  'Détecter les séries',
+    'clean-authors':  'Normaliser les auteurs',
+  };
+
+  const INTERVAL_PRESETS = [
+    { label: '30 min', value: 30 },
+    { label: '1 heure', value: 60 },
+    { label: '6 heures', value: 360 },
+    { label: '12 heures', value: 720 },
+    { label: '24 heures', value: 1440 },
+    { label: '7 jours', value: 10080 },
+  ];
+
+  let _schedules = {};
+
+  async function loadSchedules() {
+    const res = await fetch('/api/tasks/schedules');
+    _schedules = await res.json();
+    renderScheduleConfig();
+  }
+
+  function renderScheduleConfig() {
+    const el = document.getElementById('schedule-config');
+    el.style.display = 'block';
+    el.innerHTML = Object.entries(TASK_LABELS).map(([id, label]) => {
+      const cfg = _schedules[id] || { enabled: false, interval_minutes: 60, last_run: null, last_result: null };
+      const lastRun = cfg.last_run
+        ? new Date(cfg.last_run).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
+        : 'jamais';
+      return `
+        <div style="display:flex;align-items:center;gap:1rem;padding:.6rem 0;border-bottom:1px solid var(--color-border);flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:.5rem;flex:1;min-width:180px;cursor:pointer">
+            <input type="checkbox" id="sched-enabled-${id}" ${cfg.enabled ? 'checked' : ''}>
+            <span style="font-size:.9rem;font-weight:500">${label}</span>
+          </label>
+          <select id="sched-interval-${id}" class="select-input" style="width:auto;font-size:.85rem">
+            ${INTERVAL_PRESETS.map(p =>
+              `<option value="${p.value}" ${cfg.interval_minutes === p.value ? 'selected' : ''}>${p.label}</option>`
+            ).join('')}
+          </select>
+          <span style="font-size:.78rem;color:var(--color-text-muted);white-space:nowrap">
+            Dernier lancement : ${lastRun}${cfg.last_result ? ` — ${escHtml(cfg.last_result)}` : ''}
+          </span>
+        </div>`;
+    }).join('');
+  }
+
+  document.getElementById('btn-save-schedules').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-save-schedules');
+    const statusEl = document.getElementById('sched-save-status');
+    btn.disabled = true;
+    const body = {};
+    for (const id of Object.keys(TASK_LABELS)) {
+      body[id] = {
+        enabled: document.getElementById(`sched-enabled-${id}`)?.checked ?? false,
+        interval_minutes: parseInt(document.getElementById(`sched-interval-${id}`)?.value ?? '60'),
+      };
+    }
+    const res = await fetch('/api/tasks/schedules', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    btn.disabled = false;
+    if (res.ok) {
+      _schedules = await res.json();
+      renderScheduleConfig();
+      statusEl.textContent = '✓ Enregistré';
+      statusEl.className = 'task-status task-status-ok';
+    } else {
+      statusEl.textContent = 'Erreur';
+      statusEl.className = 'task-status task-status-err';
+    }
+    setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'task-status'; }, 3000);
+  });
+
+  loadSchedules();
+
+  // ── Tâches manuelles ───────────────────────────────────────────────────────
   const TASKS = {
     'reenrich': {
       url: '/api/books/re-enrich-all',
