@@ -20,10 +20,6 @@
 
     <ul id="sources-list" class="sources-list"></ul>
 
-    <div class="settings-row">
-      <label>Timeout (secondes)</label>
-      <input type="number" id="timeout-input" min="1" max="15" step="1" class="input-sm" style="width:5rem">
-    </div>
     <div class="settings-actions">
       <button id="btn-save" class="btn btn-primary">Enregistrer</button>
       <span id="save-msg" class="save-msg"></span>
@@ -354,7 +350,6 @@
 
   // ── Sources ───────────────────────────────────────────────────────────────
   const list = document.getElementById('sources-list');
-  const timeoutInput = document.getElementById('timeout-input');
   const btnSave = document.getElementById('btn-save');
   const saveMsg = document.getElementById('save-msg');
   let sources = [];
@@ -363,7 +358,6 @@
     const res = await fetch('/api/settings');
     const data = await res.json();
     sources = data.lookup_sources || [];
-    timeoutInput.value = data.lookup_timeout ?? 3;
     renderSources();
   }
 
@@ -483,13 +477,9 @@
       const src = sources.find(s => s.id === inp.dataset.id);
       if (src) src.timeout = parseFloat(inp.value) || 5;
     });
-    const timeout = parseFloat(timeoutInput?.value) || 5;
-    const [r1, r2] = await Promise.all([
-      fetch('/api/settings/lookup_sources', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ value: sources }) }),
-      fetch('/api/settings/lookup_timeout', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ value: timeout }) }),
-    ]);
-    saveMsg.textContent = (r1.ok && r2.ok) ? 'Enregistré !' : 'Erreur lors de la sauvegarde.';
-    saveMsg.className = 'save-msg ' + ((r1.ok && r2.ok) ? 'save-msg-ok' : 'save-msg-err');
+    const r1 = await fetch('/api/settings/lookup_sources', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ value: sources }) });
+    saveMsg.textContent = r1.ok ? 'Enregistré !' : 'Erreur lors de la sauvegarde.';
+    saveMsg.className = 'save-msg ' + (r1.ok ? 'save-msg-ok' : 'save-msg-err');
     setTimeout(() => saveMsg.textContent = '', 2500);
   });
 
