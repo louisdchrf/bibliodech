@@ -155,6 +155,39 @@ def patch_book(
     return book_to_dict(book)
 
 
+@router.post("/api/books/clean-authors")
+def clean_authors(request: Request, db: Session = Depends(get_db)):
+    """Normalise les auteurs en format 'Nom, Prénom' → 'Prénom Nom' pour tous les livres."""
+    user = get_current_user(request, db)
+    require_contributor(user)
+
+    def _normalize(author: str) -> str:
+        # Institution ou format complexe : laisser tel quel
+        if '(' in author or author.count(',') != 1:
+            return author
+        nom, prenom = author.split(',', 1)
+        prenom = prenom.strip()
+        nom = nom.strip()
+        if not prenom:
+            return author
+        return f"{prenom} {nom}"
+
+    updated = 0
+    books = db.query(Book).filter(Book.authors.isnot(None)).all()
+    for book in books:
+        try:
+            authors = json.loads(book.authors)
+        except Exception:
+            continue
+        cleaned = [_normalize(a) for a in authors]
+        if cleaned != authors:
+            book.authors = json.dumps(cleaned, ensure_ascii=False)
+            updated += 1
+
+    db.commit()
+    return {"updated": updated}
+
+
 @router.post("/api/books/bulk")
 def bulk_books(
     body: BulkActionRequest,

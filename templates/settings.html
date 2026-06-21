@@ -245,6 +245,17 @@
         </div>
       </div>
 
+      <div class="task-card">
+        <div class="task-info">
+          <div class="task-name">Normaliser les auteurs</div>
+          <div class="task-desc">Convertit les auteurs en format bibliographique inversé "Nom, Prénom" vers "Prénom Nom" pour tous les livres. Les institutions sont ignorées.</div>
+        </div>
+        <div class="task-actions">
+          <span class="task-status" id="status-clean-authors"></span>
+          <button class="btn btn-ghost btn-sm task-btn" data-task="clean-authors">Lancer</button>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -1025,6 +1036,11 @@
       method: 'POST',
       label: result => `${result.length} proposition${result.length !== 1 ? 's' : ''} — voir la page Séries`,
       onSuccess: () => { document.getElementById('goto-series-proposals').style.display = ''; },
+    },
+    'clean-authors': {
+      url: '/api/books/clean-authors',
+      method: 'POST',
+      label: result => `${result.updated} livre${result.updated !== 1 ? 's' : ''} mis à jour`,
     },
   };
 
