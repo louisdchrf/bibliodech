@@ -40,6 +40,7 @@
       <div class="cam-laser"></div>
     </div>
     <div class="cam-live-feed" id="cam-live-feed"></div>
+    <button id="cam-torch" class="btn cam-torch-btn" style="display:none" title="Flash">🔦</button>
     <button id="cam-close" class="btn cam-close-btn">✕ Fermer</button>
   </div>
   <!-- Fallback iOS : input fichier caméra -->
@@ -377,7 +378,9 @@
   const camVideo     = document.getElementById('cam-video');
   const camBtn       = document.getElementById('cam-btn');
   const camClose     = document.getElementById('cam-close');
+  const camTorch     = document.getElementById('cam-torch');
   const camFileInput = document.getElementById('cam-file-input');
+  let torchOn = false;
 
   let zxingReader   = null;
   let lastScanned   = null;
@@ -424,6 +427,17 @@
       }
       liveActive = true;
       Quagga.start();
+
+      // Vérifier si le torch est supporté sur ce device
+      const track = Quagga.CameraAccess.getActiveTrack();
+      if (track) {
+        const caps = track.getCapabilities ? track.getCapabilities() : {};
+        if (caps.torch) {
+          camTorch.style.display = 'block';
+          torchOn = false;
+          camTorch.classList.remove('cam-torch-on');
+        }
+      }
     });
 
     Quagga.onDetected(onBarcodeDetected);
@@ -555,8 +569,26 @@
   });
 
   // ── Bouton caméra ─────────────────────────────────────────────────────────
+  camTorch.addEventListener('click', async () => {
+    const track = Quagga.CameraAccess.getActiveTrack();
+    if (!track) return;
+    torchOn = !torchOn;
+    try {
+      await track.applyConstraints({ advanced: [{ torch: torchOn }] });
+      camTorch.classList.toggle('cam-torch-on', torchOn);
+      camTorch.title = torchOn ? 'Éteindre le flash' : 'Flash';
+    } catch (e) {
+      torchOn = !torchOn; // rollback
+    }
+  });
+
   camBtn.addEventListener('click', startLive);
-  camClose.addEventListener('click', stopCamera);
+  camClose.addEventListener('click', () => {
+    torchOn = false;
+    camTorch.style.display = 'none';
+    camTorch.classList.remove('cam-torch-on');
+    stopCamera();
+  });
   camOverlay.addEventListener('click', (e) => { if (e.target === camOverlay) stopCamera(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && liveActive) stopCamera(); });
 

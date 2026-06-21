@@ -1441,3 +1441,23 @@ body.modal-open { overflow: hidden; }
   padding: .1rem .4rem;
 }
 .log-field em { color: var(--color-text); font-style: normal; }
+
+/* ── Torch button ───────────────────────────────────────────────────────── */
+.cam-torch-btn {
+  position: absolute;
+  bottom: 1.2rem;
+  left: 1.2rem;
+  z-index: 4;
+  background: rgba(0,0,0,.55);
+  border: 1.5px solid rgba(255,255,255,.25);
+  color: #fff;
+  font-size: 1.3rem;
+  width: 2.8rem; height: 2.8rem;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  transition: background var(--transition), border-color var(--transition);
+}
+.cam-torch-btn.cam-torch-on {
+  background: rgba(255, 220, 60, .85);
+  border-color: rgba(255,220,60,.9);
+}

@@ -37,6 +37,12 @@
 
 ## Améliorations envisagées (backlog)
 
+- **Alertes nouvelles parutions** : pour les séries présentes en bibliothèque, surveiller les nouvelles sorties et notifier (email ou bandeau dans l'app). Nécessite une source de données de sorties (ex: Babelio, Goodreads, ou scraping éditeur).
+
+- **Logs globaux** : onglet dans Paramètres listant tous les événements récents (créations, modifications, enrichissements) sur tous les livres — pour un aperçu d'activité sans devoir ouvrir chaque fiche.
+
+
+
 - Compilation/fusion des métadonnées entre sources (ex : prendre le titre BNF + la couverture Google + la série SUDOC)
 - Support Rakuten Books pour les codes JAN japonais (nécessite clé API)
 - Recherche textuelle dans la bibliothèque (titre partiel, auteur)
