@@ -11,6 +11,7 @@
     <button class="settings-tab" data-tab="io">Import / Export</button>
     <button class="settings-tab" data-tab="display">Affichage</button>
     <button class="settings-tab" data-tab="email">Email</button>
+    <button class="settings-tab" data-tab="activity">Activité</button>
   </div>
 
   <!-- Onglet Sources -->
@@ -192,6 +193,23 @@
 
   </div>
 
+  <!-- Onglet Activité -->
+  <div id="tab-activity" class="settings-tab-panel" style="display:none">
+    <div class="activity-toolbar">
+      <select id="activity-filter-action" class="select-input">
+        <option value="">Toutes les actions</option>
+        <option value="created">Créations</option>
+        <option value="updated">Modifications</option>
+        <option value="enriched">Enrichissements</option>
+      </select>
+      <select id="activity-filter-user" class="select-input">
+        <option value="">Tous les utilisateurs</option>
+      </select>
+      <span id="activity-count" class="activity-count"></span>
+    </div>
+    <div id="activity-list" class="activity-list">Chargement…</div>
+  </div>
+
   <!-- Onglet Comptes -->
   <div id="tab-users" class="settings-tab-panel" style="display:none">
     <div style="display:flex;justify-content:flex-end;margin-bottom:1rem">
@@ -340,6 +358,7 @@
       document.getElementById('tab-' + btn.dataset.tab).style.display = 'block';
       if (btn.dataset.tab === 'users') loadUsers();
       if (btn.dataset.tab === 'email') loadEmailSettings();
+      if (btn.dataset.tab === 'activity') loadActivity();
     });
   });
 
@@ -835,6 +854,93 @@
     googlebooksInput.value = key;
     updateGooglebooksStatus(key);
   })();
+
+  // ── Activité ──────────────────────────────────────────────────────────────
+  const ACTION_LABELS = {
+    created:  { label: 'Créé',      cls: 'log-created'  },
+    updated:  { label: 'Modifié',   cls: 'log-updated'  },
+    enriched: { label: 'Enrichi',   cls: 'log-enriched' },
+  };
+  const FIELD_LABELS = {
+    title: 'Titre', subtitle: 'Sous-titre', authors: 'Auteurs',
+    publisher: 'Éditeur', publish_date: 'Date', language: 'Langue',
+    page_count: 'Pages', series_id: 'Série', series_position: 'Position',
+    location_id: 'Localisation', room_id: 'Salle',
+  };
+
+  let allLogs = [];
+
+  async function loadActivity() {
+    const el = document.getElementById('activity-list');
+    el.textContent = 'Chargement…';
+    const res = await fetch('/api/logs');
+    if (!res.ok) { el.textContent = 'Erreur de chargement.'; return; }
+    allLogs = await res.json();
+
+    // Peupler le filtre utilisateurs
+    const userSel = document.getElementById('activity-filter-user');
+    const users = [...new Set(allLogs.map(l => l.username).filter(Boolean))].sort();
+    userSel.innerHTML = '<option value="">Tous les utilisateurs</option>'
+      + users.map(u => `<option value="${u}">${u}</option>`).join('');
+
+    renderActivity();
+  }
+
+  function renderActivity() {
+    const action = document.getElementById('activity-filter-action').value;
+    const user   = document.getElementById('activity-filter-user').value;
+    const filtered = allLogs.filter(l =>
+      (!action || l.action === action) &&
+      (!user   || l.username === user)
+    );
+
+    document.getElementById('activity-count').textContent =
+      `${filtered.length} événement${filtered.length !== 1 ? 's' : ''}`;
+
+    if (!filtered.length) {
+      document.getElementById('activity-list').innerHTML =
+        '<p class="stat-empty" style="margin:2rem 0">Aucun événement.</p>';
+      return;
+    }
+
+    document.getElementById('activity-list').innerHTML = filtered.map(l => {
+      const meta = ACTION_LABELS[l.action] || { label: l.action, cls: '' };
+      const date = l.created_at ? new Date(l.created_at).toLocaleString('fr-FR') : '';
+      const bookLink = l.book_id
+        ? `<a href="/library#book-${l.book_id}" class="activity-book-link">${escHtml(l.book_title || '#' + l.book_id)}</a>`
+        : '';
+
+      let detail = '';
+      if (l.action === 'updated' && l.detail) {
+        const fields = Object.entries(l.detail)
+          .filter(([k]) => !['source_data'].includes(k))
+          .map(([k, v]) => {
+            const label = FIELD_LABELS[k] || k;
+            const to = typeof v === 'object' && v !== null ? v.to : v;
+            return `<span class="log-field">${label} → <em>${escHtml(String(to ?? ''))}</em></span>`;
+          });
+        if (fields.length) detail = `<div class="log-detail">${fields.join('')}</div>`;
+      } else if (l.action === 'enriched' && l.detail?.source) {
+        detail = `<div class="log-detail"><span class="log-field">via ${escHtml(l.detail.source)}</span></div>`;
+      }
+
+      return `<div class="log-entry">
+        <span class="log-badge ${meta.cls}">${meta.label}</span>
+        <span class="log-who">${l.username ? escHtml(l.username) : 'système'}</span>
+        <span class="activity-book">${bookLink}</span>
+        <span class="log-date">${date}</span>
+        ${detail}
+      </div>`;
+    }).join('');
+  }
+
+  function escHtml(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  document.getElementById('activity-filter-action').addEventListener('change', renderActivity);
+  document.getElementById('activity-filter-user').addEventListener('change', renderActivity);
+
 })();
 </script>
 {% endblock %}

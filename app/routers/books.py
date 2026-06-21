@@ -194,6 +194,30 @@ def bulk_books(
     raise HTTPException(status_code=400, detail="Action inconnue")
 
 
+@router.get("/api/logs")
+def get_all_logs(request: Request, db: Session = Depends(get_db), limit: int = 500):
+    get_current_user(request, db)
+    from app.models import AuditLog
+    logs = (
+        db.query(AuditLog)
+        .order_by(AuditLog.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "id": l.id,
+            "book_id": l.book_id,
+            "book_title": l.book.title if l.book else None,
+            "action": l.action,
+            "username": l.user.username if l.user else None,
+            "detail": json.loads(l.detail) if l.detail else None,
+            "created_at": l.created_at.isoformat() if l.created_at else None,
+        }
+        for l in logs
+    ]
+
+
 @router.get("/api/books/{book_id}/logs")
 def get_book_logs(book_id: int, request: Request, db: Session = Depends(get_db)):
     get_current_user(request, db)

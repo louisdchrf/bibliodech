@@ -1464,3 +1464,17 @@ body.modal-open { overflow: hidden; }
   background: rgba(255, 220, 60, .85);
   border-color: rgba(255,220,60,.9);
 }
+
+/* ── Activité (logs globaux) ────────────────────────────────────────────── */
+.activity-toolbar {
+  display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+.activity-count { color: var(--color-text-muted); font-size: .85rem; margin-left: auto; }
+.activity-list { display: flex; flex-direction: column; }
+.activity-book { font-size: .85rem; flex: 1; min-width: 0; }
+.activity-book-link {
+  color: var(--color-primary); text-decoration: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;
+}
+.activity-book-link:hover { text-decoration: underline; }
