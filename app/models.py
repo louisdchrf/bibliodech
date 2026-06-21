@@ -133,6 +133,18 @@ class AuditLog(Base):
     user = relationship("User", foreign_keys=[user_id])
 
 
+class SeriesMissingVolume(Base):
+    __tablename__ = "series_missing_volumes"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    series_id  = Column(Integer, ForeignKey("series.id", ondelete="CASCADE"), nullable=False, index=True)
+    position   = Column(Float, nullable=True)
+    title      = Column(String, nullable=True)   # titre connu via DDG
+    detected_at = Column(DateTime, default=datetime.utcnow)
+
+    series = relationship("Series")
+
+
 class Setting(Base):
     __tablename__ = "settings"
 

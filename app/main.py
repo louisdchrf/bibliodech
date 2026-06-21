@@ -13,7 +13,7 @@ from app.auth import (
     get_current_user, verify_password, create_session, clear_session, bootstrap_admin
 )
 from app.models import User, Book
-from app.routers import scan, books, series, users, settings as settings_router, locations as locations_router, loans as loans_router
+from app.routers import scan, books, series, users, settings as settings_router, locations as locations_router, loans as loans_router, missing as missing_router
 from app.lookup import debug_isbn
 
 app = FastAPI(title="Bibliodech")
@@ -37,6 +37,7 @@ app.include_router(users.router)
 app.include_router(settings_router.router)
 app.include_router(locations_router.router)
 app.include_router(loans_router.router)
+app.include_router(missing_router.router)
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────
@@ -141,6 +142,16 @@ def series_page(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse(url="/login", status_code=302)
     if redir := _require_pw_changed(user): return redir
     return templates.TemplateResponse("series.html", {"request": request, "user": user, "active": "series", "build_version": BUILD_VERSION})
+
+
+@app.get("/missing", response_class=HTMLResponse)
+def missing_page(request: Request, db: Session = Depends(get_db)):
+    try:
+        user = get_current_user(request, db)
+    except Exception:
+        return RedirectResponse(url="/login", status_code=302)
+    if redir := _require_pw_changed(user): return redir
+    return templates.TemplateResponse("missing.html", {"request": request, "user": user, "active": "missing", "build_version": BUILD_VERSION})
 
 
 @app.get("/api/books/export/csv")
