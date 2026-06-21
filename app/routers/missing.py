@@ -3,7 +3,6 @@ Tomes manquants dans les séries.
 """
 import asyncio
 import json
-import re
 from datetime import datetime
 
 import httpx
@@ -13,29 +12,10 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_user, require_contributor
 from app.database import get_db
 from app.models import Book, Series, SeriesMissingVolume
-from app.series_search import _ddg_query, _clean_html
+from app.series_search import search_complete_volume_list
 
 router = APIRouter()
 
-
-# ── Patterns pour extraire des numéros de tomes depuis du texte web ─────────
-_VOLUME_PATTERNS = [
-    r'\btome\s+(\d+(?:\.\d+)?)',
-    r'\bvol(?:ume)?\.?\s*(\d+(?:\.\d+)?)',
-    r'\bt\.?\s*(\d+(?:\.\d+)?)\b',
-    r'#\s*(\d+(?:\.\d+)?)',
-]
-
-
-def _extract_volume_numbers(text: str) -> set[float]:
-    nums: set[float] = set()
-    for pat in _VOLUME_PATTERNS:
-        for m in re.finditer(pat, text, re.IGNORECASE):
-            try:
-                nums.add(float(m.group(1)))
-            except ValueError:
-                pass
-    return nums
 
 
 def _series_missing_data(series: Series, db: Session) -> dict:
@@ -140,33 +120,42 @@ def get_series_missing(series_id: int, request: Request, db: Session = Depends(g
     return _series_missing_data(series, db)
 
 
+def _store_missing_volumes(series_id: int, volumes: list[dict], owned_positions: set, db) -> list:
+    """Persiste les volumes trouvés en ligne qui ne sont pas déjà possédés."""
+    db.query(SeriesMissingVolume).filter(SeriesMissingVolume.series_id == series_id).delete()
+    added = []
+    for v in volumes:
+        pos = v.get("position")
+        if pos is not None and pos not in owned_positions:
+            db.add(SeriesMissingVolume(
+                series_id=series_id,
+                position=pos,
+                title=v.get("title"),
+                detected_at=datetime.utcnow(),
+            ))
+            added.append(pos)
+    return added
+
+
 @router.post("/api/missing/search-all-web")
 async def search_all_missing_web(request: Request, db: Session = Depends(get_db)):
-    """Lance la recherche DDG de tomes manquants pour toutes les séries."""
+    """Lance la recherche Babelio/DDG de tomes manquants pour toutes les séries."""
     user = get_current_user(request, db)
     require_contributor(user)
     series_list = db.query(Series).order_by(Series.name).all()
     total_added = 0
     series_checked = 0
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with httpx.AsyncClient(timeout=20) as client:
         for i, series in enumerate(series_list):
             if i > 0:
-                await asyncio.sleep(1.5)
+                await asyncio.sleep(2.0)
             owned = db.query(Book).filter(Book.series_id == series.id).all()
             owned_positions = {b.series_position for b in owned if b.series_position is not None}
             if not owned_positions:
                 continue
-
-            text1 = await _ddg_query(f'"{series.name}" liste tomes bd livre série', client)
-            await asyncio.sleep(0.8)
-            text2 = await _ddg_query(f'{series.name} intégrale nombre tomes', client)
-            found_positions = _extract_volume_numbers(text1 + " " + text2)
-
-            db.query(SeriesMissingVolume).filter(SeriesMissingVolume.series_id == series.id).delete()
-            for pos in sorted(found_positions):
-                if pos not in owned_positions and 1 <= pos <= 500:
-                    db.add(SeriesMissingVolume(series_id=series.id, position=pos, detected_at=datetime.utcnow()))
-                    total_added += 1
+            volumes = await search_complete_volume_list(series.name, client)
+            added = _store_missing_volumes(series.id, volumes, owned_positions, db)
+            total_added += len(added)
             series_checked += 1
     db.commit()
     return {"series_checked": series_checked, "missing_added": total_added}
@@ -174,40 +163,24 @@ async def search_all_missing_web(request: Request, db: Session = Depends(get_db)
 
 @router.post("/api/missing/{series_id}/search-web")
 async def search_missing_web(series_id: int, request: Request, db: Session = Depends(get_db)):
-    """Cherche sur DDG le nombre total de tomes de la série et stocke les manquants."""
+    """Cherche via Babelio/DDG la liste complète des tomes de la série."""
     user = get_current_user(request, db)
     require_contributor(user)
     series = db.query(Series).filter(Series.id == series_id).first()
     if not series:
         raise HTTPException(status_code=404)
 
-    async with httpx.AsyncClient(timeout=15) as client:
-        text1 = await _ddg_query(f'"{series.name}" liste tomes bd livre série', client)
-        await asyncio.sleep(1.0)
-        text2 = await _ddg_query(f'{series.name} intégrale nombre tomes', client)
-
-    full_text = text1 + " " + text2
-    found_positions = _extract_volume_numbers(full_text)
+    async with httpx.AsyncClient(timeout=20) as client:
+        volumes = await search_complete_volume_list(series.name, client)
 
     owned = db.query(Book).filter(Book.series_id == series_id).all()
     owned_positions = {b.series_position for b in owned if b.series_position is not None}
 
-    # Stocker uniquement les positions trouvées en ligne qui ne sont pas possédées
-    db.query(SeriesMissingVolume).filter(SeriesMissingVolume.series_id == series_id).delete()
-    added = []
-    for pos in sorted(found_positions):
-        if pos not in owned_positions and 1 <= pos <= 500:
-            mv = SeriesMissingVolume(
-                series_id=series_id,
-                position=pos,
-                detected_at=datetime.utcnow(),
-            )
-            db.add(mv)
-            added.append(pos)
+    added = _store_missing_volumes(series_id, volumes, owned_positions, db)
     db.commit()
 
     return {
-        "found_positions": sorted(found_positions),
+        "found_volumes": volumes,
         "owned_positions": sorted(owned_positions),
         "missing_added": added,
     }
