@@ -28,30 +28,6 @@
       </div>
     </div>
 
-    <div class="task-card">
-      <div class="task-info">
-        <div class="task-name">Analyser les séries (Open Library + Web)</div>
-        <div class="task-desc">Interroge Open Library et DuckDuckGo pour proposer des séries sur les livres non encore assignés.</div>
-      </div>
-      <div class="task-actions">
-        <span class="task-status" id="status-analyze-series"></span>
-        <a href="/series" class="btn btn-ghost btn-sm" id="goto-series-proposals" style="display:none">Voir les propositions →</a>
-        <button class="btn btn-ghost btn-sm task-btn" data-task="analyze-series">Lancer</button>
-      </div>
-    </div>
-
-    <div class="task-card task-card-expand">
-      <div class="task-info">
-        <div class="task-name">Trouver les tomes manquants dans la bibliothèque</div>
-        <div class="task-desc">Recherche les livres dont le titre correspond à un tome manquant d'une série.</div>
-      </div>
-      <div class="task-actions">
-        <span class="task-status" id="status-match-library"></span>
-        <button class="btn btn-ghost btn-sm" id="btn-match-library">Analyser</button>
-      </div>
-      <div id="match-library-results" style="display:none;margin-top:1rem;"></div>
-    </div>
-
     <div class="task-card task-card-expand">
       <div class="task-info">
         <div class="task-name">Fusionner les séries en doublon</div>
@@ -85,10 +61,12 @@
 
   // Tâches planifiables : définition complète ici
   const SCHEDULABLE = [
-    { id: 'reenrich',       name: 'Compléter les livres manquants',           desc: 'Relance l\'enrichissement pour les livres sans titre ou non trouvés lors du scan initial.' },
-    { id: 'detect-series',  name: 'Détecter les séries (heuristiques)',        desc: 'Analyse les titres pour détecter des patterns "Tome N" et assigne automatiquement les séries.' },
-    { id: 'search-missing', name: 'Chercher les tomes manquants',              desc: 'Recherche web pour chaque série afin de détecter les nouvelles sorties et tomes manquants.', extraBtn: '<a href="/missing" class="btn btn-ghost btn-sm" id="goto-missing" style="display:none">Voir →</a>' },
-    { id: 'clean-authors',  name: 'Normaliser les auteurs',                    desc: 'Convertit les auteurs "Nom, Prénom" → "Prénom Nom" pour tous les livres.' },
+    { id: 'reenrich',       name: 'Compléter les livres manquants',              desc: 'Relance l\'enrichissement pour les livres sans titre ou non trouvés lors du scan initial.' },
+    { id: 'detect-series',  name: 'Détecter les séries (heuristiques)',           desc: 'Analyse les titres pour détecter des patterns "Tome N" et assigne automatiquement les séries.' },
+    { id: 'analyze-series', name: 'Analyser les séries (Open Library + Web)',     desc: 'Interroge Open Library et DuckDuckGo pour proposer des séries sur les livres non encore assignés.', extraBtn: '<a href="/series" class="btn btn-ghost btn-sm" id="goto-series-proposals" style="display:none">Voir →</a>' },
+    { id: 'search-missing', name: 'Chercher les tomes manquants',                 desc: 'Recherche web pour chaque série afin de détecter les nouvelles sorties et tomes manquants.', extraBtn: '<a href="/missing" class="btn btn-ghost btn-sm" id="goto-missing" style="display:none">Voir →</a>' },
+    { id: 'match-library',  name: 'Assigner les tomes trouvés en bibliothèque',   desc: 'Recherche et assigne automatiquement les livres non groupés qui correspondent à des tomes manquants.' },
+    { id: 'clean-authors',  name: 'Normaliser les auteurs',                       desc: 'Convertit les auteurs "Nom, Prénom" → "Prénom Nom" pour tous les livres.' },
   ];
 
   const TASKS = {

@@ -22,6 +22,8 @@ SCHEDULABLE_TASKS = {
     "reenrich":       "Compléter les livres manquants",
     "search-missing": "Chercher les tomes manquants",
     "detect-series":  "Détecter les séries",
+    "analyze-series": "Analyser les séries (Open Library + Web)",
+    "match-library":  "Trouver les tomes manquants dans la bibliothèque",
     "clean-authors":  "Normaliser les auteurs",
 }
 
@@ -87,6 +89,35 @@ async def _execute_task(task_id: str, db) -> str:
         from app.routers.series import _detect_all_series
         result = await _detect_all_series(db)
         return f"{result.get('found_instant', 0)} séries détectées"
+
+    if task_id == "analyze-series":
+        # Appel HTTP interne pour réutiliser la logique complexe de l'endpoint
+        try:
+            async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=300) as client:
+                r = await client.post("/api/series/analyze", cookies={"internal_scheduler": "1"})
+                data = r.json()
+                return f"{len(data)} proposition{'s' if len(data) != 1 else ''}"
+        except Exception as e:
+            return f"erreur: {e}"
+
+    if task_id == "match-library":
+        from app.routers.missing import _find_library_matches, auto_assign_matches as _aa
+        from collections import defaultdict
+        matches = _find_library_matches(db)
+        by_slot: dict = defaultdict(list)
+        for m in matches:
+            by_slot[(m["series_id"], m["suggested_position"])].append(m)
+        assigned = 0
+        for (series_id, pos), candidates in by_slot.items():
+            if len(candidates) == 1:
+                from app.models import Book
+                book = db.query(Book).filter(Book.id == candidates[0]["book_id"]).first()
+                if book:
+                    book.series_id = series_id
+                    book.series_position = pos
+                    assigned += 1
+        db.commit()
+        return f"{assigned} livre{'s' if assigned != 1 else ''} assigné{'s' if assigned != 1 else ''}"
 
     if task_id == "clean-authors":
         from app.routers.books import _clean_authors_logic
