@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Logs — Bibliodech{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Logs système</h1>
+  <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+    <select id="filter-category" class="input-sm" style="width:160px">
+      <option value="">Toutes catégories</option>
+      <option value="task">Tâches</option>
+      <option value="scan">Scan / Enrichissement</option>
+      <option value="settings">Paramètres</option>
+      <option value="system">Système</option>
+    </select>
+    <select id="filter-level" class="input-sm" style="width:130px">
+      <option value="">Tous niveaux</option>
+      <option value="info">Info</option>
+      <option value="warning">Warning</option>
+      <option value="error">Erreur</option>
+    </select>
+    <button id="btn-refresh" class="btn btn-ghost btn-sm">↺ Actualiser</button>
+    <label style="display:flex;align-items:center;gap:.4rem;font-size:.82rem;color:var(--color-text-muted)">
+      <input type="checkbox" id="auto-refresh"> Auto (5s)
+    </label>
+  </div>
+</div>
+
+<div id="log-list" style="font-size:.82rem;line-height:1.5"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const categoryEl = document.getElementById('filter-category');
+  const levelEl    = document.getElementById('filter-level');
+  const listEl     = document.getElementById('log-list');
+  const autoEl     = document.getElementById('auto-refresh');
+  let _timer = null;
+
+  const LEVEL_CLS = { info: 'log-enriched', warning: 'log-updated', error: 'log-err-row' };
+  const LEVEL_BADGE = { info: 'info', warning: '⚠', error: '✕' };
+  const CAT_LABEL = { task: 'Tâche', scan: 'Scan', settings: 'Paramètres', system: 'Système' };
+
+  async function load() {
+    const params = new URLSearchParams();
+    if (categoryEl.value) params.set('category', categoryEl.value);
+    if (levelEl.value)    params.set('level', levelEl.value);
+    params.set('limit', '300');
+    const res = await fetch('/api/applogs?' + params);
+    if (!res.ok) { listEl.textContent = 'Erreur de chargement'; return; }
+    const logs = await res.json();
+
+    if (!logs.length) {
+      listEl.innerHTML = '<p style="color:var(--color-text-muted);padding:1rem 0">Aucun log.</p>';
+      return;
+    }
+
+    let html = '<table style="width:100%;border-collapse:collapse">';
+    html += '<colgroup><col style="width:140px"><col style="width:70px"><col style="width:90px"><col><col style="width:180px"></colgroup>';
+    html += '<thead><tr style="border-bottom:1px solid var(--color-border);color:var(--color-text-muted);font-size:.75rem">'
+          + '<th style="text-align:left;padding:.3rem .5rem">Date</th>'
+          + '<th style="text-align:left;padding:.3rem .5rem">Niveau</th>'
+          + '<th style="text-align:left;padding:.3rem .5rem">Catégorie</th>'
+          + '<th style="text-align:left;padding:.3rem .5rem">Message</th>'
+          + '<th style="text-align:left;padding:.3rem .5rem">Détail</th>'
+          + '</tr></thead><tbody>';
+
+    for (const l of logs) {
+      const dt = l.created_at ? new Date(l.created_at).toLocaleString('fr-FR', { timeZone: window.APP_TIMEZONE || 'Europe/Paris' }) : '';
+      const lvlCls = l.level === 'error' ? 'color:var(--color-danger)' : l.level === 'warning' ? 'color:var(--color-warning,#f59e0b)' : 'color:var(--color-text-muted)';
+      const detail = l.detail ? JSON.stringify(l.detail).replace(/"/g,'') : '';
+      html += `<tr style="border-bottom:1px solid var(--color-border-light,var(--color-border))">
+        <td style="padding:.3rem .5rem;white-space:nowrap;color:var(--color-text-muted)">${dt}</td>
+        <td style="padding:.3rem .5rem;${lvlCls};font-weight:600">${l.level}</td>
+        <td style="padding:.3rem .5rem"><span class="badge">${CAT_LABEL[l.category] || l.category}</span></td>
+        <td style="padding:.3rem .5rem">${escHtml(l.message)}</td>
+        <td style="padding:.3rem .5rem;color:var(--color-text-muted);font-size:.75rem;word-break:break-all">${escHtml(detail)}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    listEl.innerHTML = html;
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  document.getElementById('btn-refresh').addEventListener('click', load);
+  categoryEl.addEventListener('change', load);
+  levelEl.addEventListener('change', load);
+
+  autoEl.addEventListener('change', () => {
+    clearInterval(_timer);
+    if (autoEl.checked) _timer = setInterval(load, 5000);
+  });
+
+  load();
+</script>
+{% endblock %}

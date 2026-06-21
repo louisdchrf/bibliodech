@@ -535,3 +535,9 @@ def stats_page(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse(url="/login", status_code=302)
     if redir := _require_pw_changed(user): return redir
     return templates.TemplateResponse("stats.html", {"request": request, "user": user, "active": "stats", "build_version": BUILD_VERSION})
+
+
+@app.get("/logs", response_class=HTMLResponse)
+async def page_logs(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user(request, db)
+    return templates.TemplateResponse("applogs.html", {"request": request, "user": user, "active": "logs", "build_version": BUILD_VERSION})

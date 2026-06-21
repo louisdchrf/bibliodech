@@ -83,6 +83,8 @@ async def _enrich_book(book_id: int, isbn: str) -> None:
         if info is None:
             book.enrichment_status = "not_found"
             db.commit()
+            from app.applog import log_error
+            log_error(db, f"ISBN introuvable dans toutes les sources : {isbn}", category="scan", detail={"isbn": isbn, "book_id": book_id})
             return
 
         book.title = info["title"]

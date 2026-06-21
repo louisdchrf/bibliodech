@@ -302,6 +302,35 @@ def get_book_logs(book_id: int, request: Request, db: Session = Depends(get_db))
     ]
 
 
+@router.get("/api/applogs")
+def get_app_logs(
+    request: Request,
+    db: Session = Depends(get_db),
+    limit: int = 200,
+    category: str | None = None,
+    level: str | None = None,
+):
+    get_current_user(request, db)
+    from app.models import AppLog
+    q = db.query(AppLog).order_by(AppLog.created_at.desc())
+    if category:
+        q = q.filter(AppLog.category == category)
+    if level:
+        q = q.filter(AppLog.level == level)
+    logs = q.limit(limit).all()
+    return [
+        {
+            "id": l.id,
+            "level": l.level,
+            "category": l.category,
+            "message": l.message,
+            "detail": json.loads(l.detail) if l.detail else None,
+            "created_at": l.created_at.isoformat() + "Z" if l.created_at else None,
+        }
+        for l in logs
+    ]
+
+
 @router.delete("/api/books/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_book(book_id: int, request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
@@ -350,18 +379,24 @@ async def run_task_manual(task_id: str, request: Request, db: Session = Depends(
     user = get_current_user(request, db)
     require_contributor(user)
     from app import scheduler as sched
+    from app.applog import log_task, log_error
     from datetime import datetime, timezone
     sched._running[task_id] = {
         "label": sched.SCHEDULABLE_TASKS.get(task_id, task_id),
         "started_at": datetime.now(timezone.utc).isoformat(),
     }
+    started = datetime.now(timezone.utc)
+    log_task(db, task_id, "started", {"triggered_by": user.username})
     try:
         result = await sched._execute_task(task_id, db)
     except Exception as e:
         sched._running.pop(task_id, None)
+        log_error(db, f"Tâche '{task_id}' échouée : {e}", category="task", detail={"task_id": task_id})
         from fastapi import HTTPException
         raise HTTPException(status_code=500, detail=str(e))
     sched._running.pop(task_id, None)
+    elapsed = round((datetime.now(timezone.utc) - started).total_seconds())
+    log_task(db, task_id, "done", {"result": result, "elapsed_s": elapsed, "triggered_by": user.username})
     return {"result": result}
 
 

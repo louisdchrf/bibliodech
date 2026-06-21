@@ -53,6 +53,20 @@ def init_db():
             conn.execute(text("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0"))
         if "email" not in user_cols:
             conn.execute(text("ALTER TABLE users ADD COLUMN email TEXT"))
+
+        if "app_logs" not in tables:
+            conn.execute(text("""
+                CREATE TABLE app_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    level TEXT NOT NULL DEFAULT 'info',
+                    category TEXT NOT NULL DEFAULT 'system',
+                    message TEXT NOT NULL,
+                    detail TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            conn.execute(text("CREATE INDEX ix_app_logs_created_at ON app_logs (created_at)"))
+
         conn.commit()
 
         # ── Migration localisations plates → hiérarchie sites/rooms/shelves ──

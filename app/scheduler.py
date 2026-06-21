@@ -74,22 +74,28 @@ def save_schedules(db, schedules: dict):
 async def _run_task(task_id: str):
     """Exécute une tâche planifiée et met à jour last_run / last_result."""
     from app.database import SessionLocal
+    from app.applog import log_task, log_error
     db = SessionLocal()
     _running[task_id] = {
         "label": SCHEDULABLE_TASKS.get(task_id, task_id),
         "started_at": datetime.now(timezone.utc).isoformat(),
     }
+    started = datetime.now(timezone.utc)
     try:
         log.info(f"[scheduler] Lancement de la tâche '{task_id}'")
+        log_task(db, task_id, "started")
         result = await _execute_task(task_id, db)
+        elapsed = round((datetime.now(timezone.utc) - started).total_seconds())
         schedules = get_schedules(db)
         if task_id in schedules:
             schedules[task_id]["last_run"] = datetime.now(timezone.utc).isoformat()
             schedules[task_id]["last_result"] = result
             save_schedules(db, schedules)
         log.info(f"[scheduler] Tâche '{task_id}' terminée : {result}")
+        log_task(db, task_id, "done", {"result": result, "elapsed_s": elapsed})
     except Exception as e:
         log.error(f"[scheduler] Erreur tâche '{task_id}': {e}")
+        log_error(db, f"Tâche '{task_id}' échouée : {e}", category="task", detail={"task_id": task_id})
     finally:
         _running.pop(task_id, None)
         db.close()

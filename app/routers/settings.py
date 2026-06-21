@@ -16,12 +16,15 @@ def read_settings(request: Request, db: Session = Depends(get_db)):
 
 
 @router.put("/api/settings/{key}")
-def write_setting(key: str, body: dict, request: Request, db: Session = Depends(get_db)):
+def write_setting(key: str, body, request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     require_admin(user)
     if key not in cfg.DEFAULTS:
         raise HTTPException(status_code=400, detail="Clé inconnue")
-    cfg.set_(db, key, body.get("value"))
+    value = body if not isinstance(body, dict) else body.get("value")
+    cfg.set_(db, key, value)
+    from app.applog import log
+    log(db, f"Paramètre modifié : {key}", category="settings", detail={"key": key, "by": user.username})
     return cfg.get_all(db)
 
 

@@ -164,3 +164,14 @@ class User(Base):
     must_change_password = Column(Boolean, default=False, nullable=False)
     email = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AppLog(Base):
+    __tablename__ = "app_logs"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    level      = Column(String, nullable=False, default="info")     # info | warning | error
+    category   = Column(String, nullable=False, default="system")   # task | scan | settings | system
+    message    = Column(String, nullable=False)
+    detail     = Column(Text, nullable=True)   # JSON optionnel
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
