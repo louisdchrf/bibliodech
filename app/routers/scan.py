@@ -5,6 +5,7 @@ from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from sqlalchemy.orm import Session
 
+from app.audit import log as audit_log
 from app.auth import get_current_user, require_contributor
 from app.book_utils import book_to_dict
 from app.covers import fetch_and_save
@@ -64,6 +65,7 @@ async def _enrich_book(book_id: int, isbn: str) -> None:
         if info.get("series_position"):
             book.series_position = info["series_position"]
 
+        audit_log(db, book.id, "enriched", detail={"source": info.get("source"), "title": info.get("title")})
         db.commit()
 
     finally:
@@ -103,6 +105,8 @@ async def scan_isbn(
     db.add(book)
     db.commit()
     db.refresh(book)
+    audit_log(db, book.id, "created", user_id=user.id, detail={"isbn": isbn})
+    db.commit()
 
     background_tasks.add_task(_enrich_book, book.id, isbn)
 

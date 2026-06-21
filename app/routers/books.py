@@ -5,6 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
+from app.audit import log as audit_log
 from app.auth import get_current_user, require_admin, require_contributor
 from app.book_utils import book_to_dict
 from app.database import get_db
@@ -91,6 +92,8 @@ def create_book(body: BookCreate, request: Request, db: Session = Depends(get_db
     db.add(book)
     db.commit()
     db.refresh(book)
+    audit_log(db, book.id, "created", user_id=user.id, detail={"title": book.title, "isbn": book.isbn})
+    db.commit()
     return book_to_dict(book)
 
 
@@ -109,12 +112,21 @@ def update_book(
         raise HTTPException(status_code=404, detail="Livre introuvable")
 
     update_data = body.model_dump(exclude_unset=True)
+    changed = {}
     for field, value in update_data.items():
+        old = getattr(book, field, None)
         if field == "authors" and isinstance(value, list):
-            setattr(book, field, json.dumps(value))
+            new_val = json.dumps(value)
+            if new_val != old:
+                changed[field] = {"from": old, "to": new_val}
+            setattr(book, field, new_val)
         else:
+            if value != old:
+                changed[field] = {"from": str(old) if old is not None else None, "to": str(value) if value is not None else None}
             setattr(book, field, value)
 
+    if changed:
+        audit_log(db, book.id, "updated", user_id=user.id, detail=changed)
     db.commit()
     db.refresh(book)
     return book_to_dict(book)
@@ -180,6 +192,29 @@ def bulk_books(
         return {"updated": len(books)}
 
     raise HTTPException(status_code=400, detail="Action inconnue")
+
+
+@router.get("/api/books/{book_id}/logs")
+def get_book_logs(book_id: int, request: Request, db: Session = Depends(get_db)):
+    get_current_user(request, db)
+    from app.models import AuditLog, User
+    logs = (
+        db.query(AuditLog)
+        .filter(AuditLog.book_id == book_id)
+        .order_by(AuditLog.created_at.desc())
+        .limit(100)
+        .all()
+    )
+    return [
+        {
+            "id": l.id,
+            "action": l.action,
+            "username": l.user.username if l.user else None,
+            "detail": json.loads(l.detail) if l.detail else None,
+            "created_at": l.created_at.isoformat() if l.created_at else None,
+        }
+        for l in logs
+    ]
 
 
 @router.delete("/api/books/{book_id}", status_code=status.HTTP_204_NO_CONTENT)

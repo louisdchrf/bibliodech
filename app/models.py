@@ -119,6 +119,20 @@ class Loan(Base):
     user = relationship("User", foreign_keys=[user_id])
 
 
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    book_id    = Column(Integer, ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id    = Column(Integer, ForeignKey("users.id"), nullable=True)
+    action     = Column(String, nullable=False)   # created | updated | enriched | relocated | deleted
+    detail     = Column(Text, nullable=True)       # JSON des champs modifiés
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    book = relationship("Book")
+    user = relationship("User", foreign_keys=[user_id])
+
+
 class Setting(Base):
     __tablename__ = "settings"
 

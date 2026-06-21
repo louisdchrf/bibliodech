@@ -622,6 +622,7 @@
       <div class="modal-tabs">
         <button class="modal-tab active" data-tab="edit">Édition</button>
         <button class="modal-tab" data-tab="sources">Sources <span class="modal-tab-count">${book.source_data ? Object.keys(book.source_data).length : 0}</span></button>
+        <button class="modal-tab" data-tab="logs">Historique</button>
       </div>
 
       <!-- Onglet Édition -->
@@ -688,15 +689,69 @@
       <div class="modal-tab-panel" id="tab-sources" style="display:none">
         ${renderSourcesTab(book)}
       </div>
+
+      <!-- Onglet Historique -->
+      <div class="modal-tab-panel" id="tab-logs" style="display:none">
+        <div id="logs-content" class="logs-loading">Chargement…</div>
+      </div>
     `;
 
     // ── Onglets ───────────────────────────────────────────────────────────
+    const ACTION_LABELS = {
+      created:  { label: 'Créé',       cls: 'log-created'  },
+      updated:  { label: 'Modifié',    cls: 'log-updated'  },
+      enriched: { label: 'Enrichi',    cls: 'log-enriched' },
+      deleted:  { label: 'Supprimé',   cls: 'log-deleted'  },
+    };
+    const FIELD_LABELS = {
+      title: 'Titre', subtitle: 'Sous-titre', authors: 'Auteurs',
+      publisher: 'Éditeur', publish_date: 'Date', language: 'Langue',
+      page_count: 'Pages', series_id: 'Série', series_position: 'Position',
+      location_id: 'Localisation', room_id: 'Salle', cover_url: 'Couverture',
+    };
+
+    function renderLogs(logs) {
+      if (!logs.length) return '<p class="stat-empty" style="margin:2rem 0">Aucun historique disponible.</p>';
+      return logs.map(l => {
+        const meta = ACTION_LABELS[l.action] || { label: l.action, cls: '' };
+        const date = l.created_at ? new Date(l.created_at).toLocaleString('fr-FR') : '';
+        let detail = '';
+        if (l.action === 'updated' && l.detail) {
+          const fields = Object.entries(l.detail)
+            .filter(([k]) => !['source_data'].includes(k))
+            .map(([k, v]) => {
+              const label = FIELD_LABELS[k] || k;
+              const to = typeof v === 'object' && v !== null ? v.to : v;
+              return `<span class="log-field">${escHtml(label)} → <em>${escHtml(String(to ?? ''))}</em></span>`;
+            });
+          if (fields.length) detail = `<div class="log-detail">${fields.join('')}</div>`;
+        } else if (l.action === 'enriched' && l.detail?.source) {
+          detail = `<div class="log-detail"><span class="log-field">via ${escHtml(l.detail.source)}</span></div>`;
+        } else if (l.action === 'created' && l.detail?.isbn) {
+          detail = `<div class="log-detail"><span class="log-field">ISBN ${escHtml(l.detail.isbn)}</span></div>`;
+        }
+        return `<div class="log-entry">
+          <span class="log-badge ${meta.cls}">${meta.label}</span>
+          <span class="log-who">${l.username ? escHtml(l.username) : 'système'}</span>
+          <span class="log-date">${date}</span>
+          ${detail}
+        </div>`;
+      }).join('');
+    }
+
+    let logsLoaded = false;
     modalContent.querySelectorAll('.modal-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
+      tab.addEventListener('click', async () => {
         modalContent.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
         modalContent.querySelectorAll('.modal-tab-panel').forEach(p => p.style.display = 'none');
         tab.classList.add('active');
         document.getElementById('tab-' + tab.dataset.tab).style.display = '';
+        if (tab.dataset.tab === 'logs' && !logsLoaded) {
+          logsLoaded = true;
+          const res = await fetch(`/api/books/${book.id}/logs`);
+          const logs = await res.json();
+          document.getElementById('logs-content').innerHTML = renderLogs(logs);
+        }
       });
     });
 
