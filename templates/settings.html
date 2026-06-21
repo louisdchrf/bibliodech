@@ -11,6 +11,7 @@
     <button class="settings-tab" data-tab="io">Import / Export</button>
     <button class="settings-tab" data-tab="display">Affichage</button>
     <button class="settings-tab" data-tab="email">Email</button>
+    <button class="settings-tab" data-tab="tasks">Tâches</button>
     <button class="settings-tab" data-tab="activity">Activité</button>
   </div>
 
@@ -194,6 +195,59 @@
   </div>
 
   <!-- Onglet Activité -->
+  <!-- Onglet Tâches -->
+  <div id="tab-tasks" class="settings-tab-panel" style="display:none">
+    <p class="settings-desc">Lancer manuellement les traitements de données. Chaque tâche s'exécute en arrière-plan.</p>
+    <div class="tasks-list">
+
+      <div class="task-card">
+        <div class="task-info">
+          <div class="task-name">Compléter les livres manquants</div>
+          <div class="task-desc">Relance l'enrichissement pour les livres sans titre ou non trouvés lors du scan initial.</div>
+        </div>
+        <div class="task-actions">
+          <span class="task-status" id="status-reenrich"></span>
+          <button class="btn btn-ghost btn-sm task-btn" data-task="reenrich">Lancer</button>
+        </div>
+      </div>
+
+      <div class="task-card">
+        <div class="task-info">
+          <div class="task-name">Recharger toute la bibliothèque</div>
+          <div class="task-desc">Ré-interroge toutes les sources pour chaque livre avec un ISBN. Peut prendre plusieurs minutes.</div>
+        </div>
+        <div class="task-actions">
+          <span class="task-status" id="status-reenrich-all"></span>
+          <button class="btn btn-ghost btn-sm task-btn" data-task="reenrich-all">Lancer</button>
+        </div>
+      </div>
+
+      <div class="task-card">
+        <div class="task-info">
+          <div class="task-name">Détecter les séries (heuristiques)</div>
+          <div class="task-desc">Analyse les titres pour détecter des patterns "Tome N" et assigne automatiquement les séries trouvées.</div>
+        </div>
+        <div class="task-actions">
+          <span class="task-status" id="status-detect-series"></span>
+          <button class="btn btn-ghost btn-sm task-btn" data-task="detect-series">Lancer</button>
+        </div>
+      </div>
+
+      <div class="task-card">
+        <div class="task-info">
+          <div class="task-name">Analyser les séries (Open Library + Web)</div>
+          <div class="task-desc">Interroge Open Library et DuckDuckGo pour proposer des séries sur les livres non encore assignés. Retourne des propositions à valider.</div>
+        </div>
+        <div class="task-actions">
+          <span class="task-status" id="status-analyze-series"></span>
+          <a href="/series" class="btn btn-ghost btn-sm" id="goto-series-proposals" style="display:none">Voir les propositions →</a>
+          <button class="btn btn-ghost btn-sm task-btn" data-task="analyze-series">Lancer</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
   <div id="tab-activity" class="settings-tab-panel" style="display:none">
     <div class="activity-toolbar">
       <select id="activity-filter-action" class="select-input">
@@ -359,6 +413,7 @@
       if (btn.dataset.tab === 'users') loadUsers();
       if (btn.dataset.tab === 'email') loadEmailSettings();
       if (btn.dataset.tab === 'activity') loadActivity();
+      if (btn.dataset.tab === 'tasks') initTasks();
     });
   });
 
@@ -940,6 +995,70 @@
 
   document.getElementById('activity-filter-action').addEventListener('change', renderActivity);
   document.getElementById('activity-filter-user').addEventListener('change', renderActivity);
+
+  // ── Tâches ────────────────────────────────────────────────────────────────
+  let tasksInited = false;
+
+  const TASKS = {
+    'reenrich': {
+      url: '/api/books/re-enrich-all',
+      method: 'POST',
+      label: result => `${result.queued} livre${result.queued !== 1 ? 's' : ''} en cours…`,
+    },
+    'reenrich-all': {
+      url: '/api/books/re-enrich-all?force=true',
+      method: 'POST',
+      label: result => `${result.queued} livre${result.queued !== 1 ? 's' : ''} en cours…`,
+    },
+    'detect-series': {
+      url: '/api/series/detect-all',
+      method: 'POST',
+      label: result => {
+        const parts = [];
+        if (result.found_instant) parts.push(`${result.found_instant} série${result.found_instant > 1 ? 's' : ''} trouvée${result.found_instant > 1 ? 's' : ''}`);
+        if (result.queued_lookup) parts.push(`${result.queued_lookup} en recherche…`);
+        return parts.join(' · ') || 'Aucune nouvelle série';
+      },
+    },
+    'analyze-series': {
+      url: '/api/series/analyze',
+      method: 'POST',
+      label: result => `${result.length} proposition${result.length !== 1 ? 's' : ''} — voir la page Séries`,
+      onSuccess: () => { document.getElementById('goto-series-proposals').style.display = ''; },
+    },
+  };
+
+  function initTasks() {
+    if (tasksInited) return;
+    tasksInited = true;
+
+    document.querySelectorAll('.task-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const task = TASKS[btn.dataset.task];
+        if (!task) return;
+        const statusEl = document.getElementById(`status-${btn.dataset.task}`);
+        btn.disabled = true;
+        btn.textContent = '⏳';
+        statusEl.textContent = 'En cours…';
+        statusEl.className = 'task-status task-status-running';
+
+        try {
+          const res = await fetch(task.url, { method: task.method });
+          if (!res.ok) throw new Error(await res.text());
+          const data = await res.json();
+          statusEl.textContent = task.label(data);
+          statusEl.className = 'task-status task-status-ok';
+          if (task.onSuccess) task.onSuccess(data);
+        } catch (e) {
+          statusEl.textContent = 'Erreur';
+          statusEl.className = 'task-status task-status-err';
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Lancer';
+        }
+      });
+    });
+  }
 
 })();
 </script>
