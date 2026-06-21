@@ -932,13 +932,8 @@ async def lookup_isbn(isbn: str, db=None) -> dict | None:
     for other in ordered[1:]:
         result = _merge(result, other)
 
-    sudoc   = results.get("sudoc")
-    ol      = results.get("openlibrary")
-    decitre = results.get("decitre")
-    gb      = results.get("googlebooks")
-
-    # Priorité série : SUDOC (225 UNIMARC) > Decitre (isPartOf JSON-LD) > OL > Google Books > heuristique titre
-    for src in (sudoc, decitre, ol, gb):
+    # Priorité série : ordre configuré dans les paramètres
+    for src in ordered:
         if src and src.get("series_name") and not result.get("series_name"):
             result["series_name"] = src["series_name"]
             print(f"[lookup] series from {src.get('source')}: {src['series_name']!r}", file=sys.stderr, flush=True)
