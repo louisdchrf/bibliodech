@@ -28,85 +28,117 @@ def _title_words(title: str) -> list[str]:
 
 def _find_library_matches(db: Session) -> list[dict]:
     """
-    Pour chaque tome manquant stocké (SeriesMissingVolume avec un titre),
-    cherche dans la bibliothèque les livres dont le titre correspond.
-    Fallback sur le nom de série + position pour les tomes sans titre.
+    Charge tout en mémoire en 3 requêtes, puis match en O(n) sans DB supplémentaire.
     """
+    from collections import defaultdict
+
     missing_vols = db.query(SeriesMissingVolume).all()
     if not missing_vols:
         return []
 
+    # Tout charger une fois
     all_books = db.query(Book).all()
+    series_map = {s.id: s for s in db.query(Series).all()}
+
+    # owned_ids et owned_positions par série (depuis all_books)
+    owned_ids_by_series: dict[int, set] = defaultdict(set)
+    owned_pos_by_series: dict[int, set] = defaultdict(set)
+    series_name_by_book: dict[int, str | None] = {}
+    for b in all_books:
+        if b.series_id:
+            owned_ids_by_series[b.series_id].add(b.id)
+            if b.series_position is not None:
+                owned_pos_by_series[b.series_id].add(b.series_position)
+        s = series_map.get(b.series_id) if b.series_id else None
+        series_name_by_book[b.id] = s.name if s else None
+
+    # Index inversé : mot → set de book_ids
+    word_index: dict[str, set[int]] = defaultdict(set)
+    book_words_cache: dict[int, set[str]] = {}
+    for b in all_books:
+        words = set(_title_words(b.title or ""))
+        book_words_cache[b.id] = words
+        for w in words:
+            word_index[w].add(b.id)
+
     matches = []
-    seen: set[tuple] = set()  # (book_id, series_id)
+    seen: set[tuple] = set()
 
     for mv in missing_vols:
-        series = mv.series
-        owned_ids = {b.id for b in db.query(Book).filter(Book.series_id == series.id).all()}
+        series = series_map.get(mv.series_id)
+        if not series:
+            continue
+        owned_ids = owned_ids_by_series[mv.series_id]
 
         if mv.title:
-            # Chercher par titre du tome manquant
             mv_words = _title_words(mv.title)
             if not mv_words:
                 continue
-            for book in all_books:
-                if book.id in owned_ids:
+            # Candidats = livres qui partagent au moins 1 mot clé (via index)
+            threshold = min(2, len(mv_words))
+            candidate_ids = None
+            for w in mv_words:
+                hits = word_index.get(w, set())
+                candidate_ids = hits if candidate_ids is None else candidate_ids & hits
+                if not candidate_ids and threshold == 1:
+                    candidate_ids = word_index.get(mv_words[0], set())
+                    break
+
+            for bid in (candidate_ids or set()):
+                if bid in owned_ids:
                     continue
-                book_words = _title_words(book.title or "")
-                # Au moins 2 mots significatifs en commun
-                common = sum(1 for w in mv_words if w in book_words)
-                if common < min(2, len(mv_words)):
+                common = sum(1 for w in mv_words if w in book_words_cache[bid])
+                if common < threshold:
                     continue
-                key = (book.id, series.id)
+                key = (bid, mv.series_id)
                 if key in seen:
                     continue
                 seen.add(key)
+                book = next(b for b in all_books if b.id == bid)
                 matches.append({
                     "series_id": series.id,
                     "series_name": series.name,
-                    "book_id": book.id,
+                    "book_id": bid,
                     "book_title": book.title,
                     "book_authors": json.loads(book.authors) if book.authors else [],
                     "book_cover": book.cover_url,
                     "current_series_id": book.series_id,
-                    "current_series_name": book.series.name if book.series else None,
+                    "current_series_name": series_name_by_book.get(bid),
                     "suggested_position": mv.position,
                     "missing_title": mv.title,
                 })
         else:
-            # Fallback : série + numéro de tome dans le titre du livre
-            owned_positions = {b.series_position for b in db.query(Book).filter(Book.series_id == series.id).all()
-                               if b.series_position is not None}
-            s_words = [w for w in series.name.lower().split() if len(w) >= 3]
+            # Fallback sans titre : série + numéro dans le titre du livre
+            s_words = [w for w in series.name.lower().split() if len(w) >= 3][:2]
             if not s_words:
                 continue
-            for book in all_books:
-                if book.id in owned_ids:
+            owned_pos = owned_pos_by_series[mv.series_id]
+            if mv.position in owned_pos:
+                continue
+            for b in all_books:
+                if b.id in owned_ids:
                     continue
-                title_lower = (book.title or "").lower()
-                if not all(w in title_lower for w in s_words[:2]):
+                tl = (b.title or "").lower()
+                if not all(w in tl for w in s_words):
                     continue
-                m = _re.search(r'(?:tome|vol\.?)\s*(\d+)', title_lower) \
-                    or _re.search(r'[-–\s](\d{1,2})\s*$', title_lower)
-                if not m:
+                m = _re.search(r'(?:tome|vol\.?)\s*(\d+)', tl) \
+                    or _re.search(r'[-–\s](\d{1,2})\s*$', tl)
+                if not m or float(m.group(1)) != mv.position:
                     continue
-                pos = float(m.group(1))
-                if pos != mv.position or pos in owned_positions:
-                    continue
-                key = (book.id, series.id)
+                key = (b.id, mv.series_id)
                 if key in seen:
                     continue
                 seen.add(key)
                 matches.append({
                     "series_id": series.id,
                     "series_name": series.name,
-                    "book_id": book.id,
-                    "book_title": book.title,
-                    "book_authors": json.loads(book.authors) if book.authors else [],
-                    "book_cover": book.cover_url,
-                    "current_series_id": book.series_id,
-                    "current_series_name": book.series.name if book.series else None,
-                    "suggested_position": pos,
+                    "book_id": b.id,
+                    "book_title": b.title,
+                    "book_authors": json.loads(b.authors) if b.authors else [],
+                    "book_cover": b.cover_url,
+                    "current_series_id": b.series_id,
+                    "current_series_name": series_name_by_book.get(b.id),
+                    "suggested_position": mv.position,
                     "missing_title": None,
                 })
 
