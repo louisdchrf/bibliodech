@@ -1492,28 +1492,28 @@ body.modal-open { overflow: hidden; }
 .book-grid.list-view {
   display: flex;
   flex-direction: column;
-  gap: .35rem;
+  gap: 2px;
 }
 
 .book-grid.list-view .book-card {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: .75rem;
-  padding: .45rem .6rem;
+  gap: .5rem;
+  padding: .2rem .4rem;
   min-height: unset;
   border-radius: var(--radius-sm);
 }
 
 .book-grid.list-view .book-cover-wrap {
   flex-shrink: 0;
-  width: 36px;
-  height: 50px;
+  width: 22px;
+  height: 30px;
 }
 
 .book-grid.list-view .book-cover {
-  width: 36px;
-  height: 50px;
+  width: 22px;
+  height: 30px;
   object-fit: cover;
   border-radius: 2px;
 }

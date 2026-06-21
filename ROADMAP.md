@@ -43,6 +43,8 @@
 
 
 
+- **Détection de séries par recherche web** : l'analyse des titres OL fonctionne mais est limitée à une seule source. Piste : lancer une recherche web (`"[titre] [auteur] série"`) pour identifier la série depuis plusieurs sources (Babelio, Wikipedia, Goodreads, BDGest...). À coupler avec un LLM pour extraire nom de série + position depuis le texte retourné.
+
 - Compilation/fusion des métadonnées entre sources (ex : prendre le titre BNF + la couverture Google + la série SUDOC)
 - Support Rakuten Books pour les codes JAN japonais (nécessite clé API)
 - Recherche textuelle dans la bibliothèque (titre partiel, auteur)
