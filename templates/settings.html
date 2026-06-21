@@ -257,6 +257,18 @@
         </div>
       </div>
 
+      <div class="task-card task-card-expand">
+        <div class="task-info">
+          <div class="task-name">Trouver les tomes manquants dans la bibliothèque</div>
+          <div class="task-desc">Recherche dans toute la bibliothèque les livres dont le titre correspond à un tome manquant d'une série (ex : "Lady S. - Tome 4" non rattaché à la série Lady S.).</div>
+        </div>
+        <div class="task-actions">
+          <span class="task-status" id="status-match-library"></span>
+          <button class="btn btn-ghost btn-sm" id="btn-match-library">Analyser</button>
+        </div>
+        <div id="match-library-results" style="display:none; margin-top:1rem;"></div>
+      </div>
+
       <div class="task-card">
         <div class="task-info">
           <div class="task-name">Normaliser les auteurs</div>
@@ -1072,6 +1084,90 @@
       onSuccess: () => { document.getElementById('goto-missing').style.display = ''; },
     },
   };
+
+  // ── Correspondances bibliothèque ─────────────────────────────────────────
+  document.getElementById('btn-match-library').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-match-library');
+    const statusEl = document.getElementById('status-match-library');
+    const resultEl = document.getElementById('match-library-results');
+    btn.disabled = true; btn.textContent = '⏳';
+    statusEl.textContent = 'Analyse en cours…';
+    resultEl.style.display = 'none'; resultEl.innerHTML = '';
+
+    const res = await fetch('/api/missing/library-matches');
+    const matches = await res.json();
+
+    btn.disabled = false; btn.textContent = 'Analyser';
+
+    if (!matches.length) {
+      statusEl.textContent = 'Aucune correspondance trouvée';
+      return;
+    }
+
+    // Grouper par série
+    const bySeries = {};
+    for (const m of matches) {
+      if (!bySeries[m.series_id]) bySeries[m.series_id] = { name: m.series_name, items: [] };
+      bySeries[m.series_id].items.push(m);
+    }
+
+    statusEl.textContent = `${matches.length} correspondance${matches.length > 1 ? 's' : ''} trouvée${matches.length > 1 ? 's' : ''}`;
+
+    let html = '';
+    for (const { name, items } of Object.values(bySeries)) {
+      html += `<div style="margin-bottom:1rem">
+        <div style="font-weight:600;margin-bottom:.4rem">${escHtml(name)}</div>`;
+      for (const m of items) {
+        html += `<div class="dupe-row" id="match-${m.book_id}-${m.series_id}" style="display:flex;align-items:center;gap:.75rem;padding:.5rem 0;border-bottom:1px solid var(--color-border)">
+          ${m.book_cover ? `<img src="${escHtml(m.book_cover)}" style="width:32px;height:44px;object-fit:cover;border-radius:2px">` : '<div style="width:32px;height:44px;background:var(--color-surface-2);border-radius:2px"></div>'}
+          <div style="flex:1;min-width:0">
+            <div style="font-size:.9rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(m.book_title)}</div>
+            <div style="font-size:.78rem;color:var(--color-text-muted)">${m.current_series_name ? `Actuellement dans "${escHtml(m.current_series_name)}"` : 'Non assigné'}</div>
+          </div>
+          <span style="font-size:.8rem;color:var(--color-text-muted);white-space:nowrap">→ tome ${m.suggested_position}</span>
+          <button class="btn btn-primary btn-sm assign-match-btn"
+            data-book-id="${m.book_id}" data-series-id="${m.series_id}" data-pos="${m.suggested_position}"
+            data-slot="match-${m.book_id}-${m.series_id}">
+            Rattacher
+          </button>
+        </div>`;
+      }
+      html += '</div>';
+    }
+
+    // Bouton tout assigner (non ambigus)
+    html = `<div style="display:flex;justify-content:flex-end;margin-bottom:.75rem">
+      <button class="btn btn-primary btn-sm" id="btn-auto-assign">Tout assigner (non ambigus)</button>
+    </div>` + html;
+
+    resultEl.innerHTML = html;
+    resultEl.style.display = 'block';
+
+    // Rattacher individuel
+    resultEl.querySelectorAll('.assign-match-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const { bookId, seriesId, pos, slot } = btn.dataset;
+        btn.disabled = true;
+        await fetch(`/api/books/${btn.dataset.bookId}/assign-series`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ series_id: parseInt(btn.dataset.seriesId), position: parseFloat(btn.dataset.pos) }),
+        });
+        document.getElementById(btn.dataset.slot)?.remove();
+      });
+    });
+
+    // Tout assigner
+    document.getElementById('btn-auto-assign')?.addEventListener('click', async () => {
+      const autoBtn = document.getElementById('btn-auto-assign');
+      autoBtn.disabled = true; autoBtn.textContent = '⏳';
+      const r = await fetch('/api/missing/auto-assign', { method: 'POST' });
+      const data = await r.json();
+      autoBtn.textContent = `✓ ${data.assigned} assigné${data.assigned > 1 ? 's' : ''}${data.ambiguous ? ` · ${data.ambiguous} ambigus ignorés` : ''}`;
+      // Recharger les résultats
+      document.getElementById('btn-match-library').click();
+    });
+  });
 
   // ── Fusion séries doublons ────────────────────────────────────────────────
   document.getElementById('btn-find-dupes').addEventListener('click', async () => {

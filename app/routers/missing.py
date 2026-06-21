@@ -16,6 +16,62 @@ from app.series_search import search_complete_volume_list
 
 router = APIRouter()
 
+import re as _re
+
+
+def _find_library_matches(db: Session) -> list[dict]:
+    """
+    Pour chaque série, cherche dans toute la bibliothèque les livres
+    dont le titre correspond à un tome manquant (pas encore assigné à la série).
+    Retourne une liste de correspondances {series, book, suggested_position}.
+    """
+    series_list = db.query(Series).order_by(Series.name).all()
+    matches = []
+
+    for series in series_list:
+        owned = db.query(Book).filter(Book.series_id == series.id).all()
+        owned_ids = {b.id for b in owned}
+        owned_positions = {b.series_position for b in owned if b.series_position is not None}
+
+        # Mots significatifs du nom de série (≥ 3 chars)
+        words = [w for w in series.name.lower().split() if len(w) >= 3]
+        if not words:
+            continue
+
+        # Chercher dans tous les livres qui ne sont pas dans cette série
+        candidates = db.query(Book).filter(Book.id.notin_(owned_ids)).all()
+        for book in candidates:
+            title_lower = (book.title or "").lower()
+            # Le titre doit contenir les 2 premiers mots significatifs de la série
+            if not all(w in title_lower for w in words[:2]):
+                continue
+
+            # Extraire le numéro de tome du titre du livre
+            m = _re.search(r'(?:tome|vol\.?|t\.)\s*(\d+)', title_lower)
+            if not m:
+                # Essayer un numéro seul en fin de titre : "Lady S 4" ou "Lady S. - 4"
+                m = _re.search(r'[-–\s](\d{1,2})\s*$', title_lower)
+            if not m:
+                continue
+
+            pos = float(m.group(1))
+            if pos in owned_positions:
+                continue  # Déjà dans la série à cette position
+
+            matches.append({
+                "series_id": series.id,
+                "series_name": series.name,
+                "book_id": book.id,
+                "book_title": book.title,
+                "book_authors": json.loads(book.authors) if book.authors else [],
+                "book_cover": book.cover_url,
+                "current_series_id": book.series_id,
+                "current_series_name": book.series.name if book.series else None,
+                "suggested_position": pos,
+            })
+
+    return matches
+
 
 
 def _series_missing_data(series: Series, db: Session) -> dict:
@@ -96,6 +152,39 @@ def _series_missing_data(series: Series, db: Session) -> dict:
         "missing_to_buy": missing_to_buy,
         "has_issues": bool(gaps or candidates or missing_to_buy),
     }
+
+
+@router.get("/api/missing/library-matches")
+def get_library_matches(request: Request, db: Session = Depends(get_db)):
+    """Retourne tous les livres de la bibliothèque qui correspondent à des tomes manquants."""
+    get_current_user(request, db)
+    return _find_library_matches(db)
+
+
+@router.post("/api/missing/auto-assign")
+def auto_assign_matches(request: Request, db: Session = Depends(get_db)):
+    """Assigne automatiquement les correspondances évidentes (1 seul candidat par position)."""
+    user = get_current_user(request, db)
+    require_contributor(user)
+    matches = _find_library_matches(db)
+
+    # Grouper par (series_id, position) — assigner uniquement si 1 seul candidat
+    from collections import defaultdict
+    by_slot: dict[tuple, list] = defaultdict(list)
+    for m in matches:
+        by_slot[(m["series_id"], m["suggested_position"])].append(m)
+
+    assigned = 0
+    for (series_id, pos), candidates in by_slot.items():
+        if len(candidates) == 1:
+            book = db.query(Book).filter(Book.id == candidates[0]["book_id"]).first()
+            if book:
+                book.series_id = series_id
+                book.series_position = pos
+                assigned += 1
+
+    db.commit()
+    return {"assigned": assigned, "ambiguous": sum(1 for c in by_slot.values() if len(c) > 1)}
 
 
 @router.get("/api/missing")
