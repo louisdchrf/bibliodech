@@ -247,6 +247,18 @@
 
       <div class="task-card">
         <div class="task-info">
+          <div class="task-name">Chercher les tomes manquants (toutes les séries)</div>
+          <div class="task-desc">Lance une recherche web pour chaque série afin de détecter les nouvelles sorties et tomes manquants. Peut prendre plusieurs minutes selon le nombre de séries.</div>
+        </div>
+        <div class="task-actions">
+          <span class="task-status" id="status-search-missing"></span>
+          <a href="/missing" class="btn btn-ghost btn-sm" id="goto-missing" style="display:none">Voir les manquants →</a>
+          <button class="btn btn-ghost btn-sm task-btn" data-task="search-missing">Lancer</button>
+        </div>
+      </div>
+
+      <div class="task-card">
+        <div class="task-info">
           <div class="task-name">Normaliser les auteurs</div>
           <div class="task-desc">Convertit les auteurs en format bibliographique inversé "Nom, Prénom" vers "Prénom Nom" pour tous les livres. Les institutions sont ignorées.</div>
         </div>
@@ -1052,6 +1064,12 @@
       url: '/api/books/clean-authors',
       method: 'POST',
       label: result => `${result.updated} livre${result.updated !== 1 ? 's' : ''} mis à jour`,
+    },
+    'search-missing': {
+      url: '/api/missing/search-all-web',
+      method: 'POST',
+      label: result => `${result.series_checked} série${result.series_checked !== 1 ? 's' : ''} vérifiée${result.series_checked !== 1 ? 's' : ''} · ${result.missing_added} manquant${result.missing_added !== 1 ? 's' : ''} trouvé${result.missing_added !== 1 ? 's' : ''}`,
+      onSuccess: () => { document.getElementById('goto-missing').style.display = ''; },
     },
   };
 

@@ -140,6 +140,38 @@ def get_series_missing(series_id: int, request: Request, db: Session = Depends(g
     return _series_missing_data(series, db)
 
 
+@router.post("/api/missing/search-all-web")
+async def search_all_missing_web(request: Request, db: Session = Depends(get_db)):
+    """Lance la recherche DDG de tomes manquants pour toutes les séries."""
+    user = get_current_user(request, db)
+    require_contributor(user)
+    series_list = db.query(Series).order_by(Series.name).all()
+    total_added = 0
+    series_checked = 0
+    async with httpx.AsyncClient(timeout=15) as client:
+        for i, series in enumerate(series_list):
+            if i > 0:
+                await asyncio.sleep(1.5)
+            owned = db.query(Book).filter(Book.series_id == series.id).all()
+            owned_positions = {b.series_position for b in owned if b.series_position is not None}
+            if not owned_positions:
+                continue
+
+            text1 = await _ddg_query(f'"{series.name}" liste tomes bd livre série', client)
+            await asyncio.sleep(0.8)
+            text2 = await _ddg_query(f'{series.name} intégrale nombre tomes', client)
+            found_positions = _extract_volume_numbers(text1 + " " + text2)
+
+            db.query(SeriesMissingVolume).filter(SeriesMissingVolume.series_id == series.id).delete()
+            for pos in sorted(found_positions):
+                if pos not in owned_positions and 1 <= pos <= 500:
+                    db.add(SeriesMissingVolume(series_id=series.id, position=pos, detected_at=datetime.utcnow()))
+                    total_added += 1
+            series_checked += 1
+    db.commit()
+    return {"series_checked": series_checked, "missing_added": total_added}
+
+
 @router.post("/api/missing/{series_id}/search-web")
 async def search_missing_web(series_id: int, request: Request, db: Session = Depends(get_db)):
     """Cherche sur DDG le nombre total de tomes de la série et stocke les manquants."""
