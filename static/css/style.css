@@ -1478,3 +1478,12 @@ body.modal-open { overflow: hidden; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;
 }
 .activity-book-link:hover { text-decoration: underline; }
+
+/* ── Series proposals ───────────────────────────────────────────────────── */
+.prop-work-title {
+  display: block;
+  font-size: .75rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+  margin-top: .1rem;
+}

@@ -27,11 +27,15 @@
 
   <hr class="section-divider">
 
-  <h2 class="page-title">Suggestions de séries</h2>
-  <p class="section-hint">Livres du même auteur sans série assignée</p>
-  <div id="suggestions-list" class="suggestions-list"></div>
-  <div id="suggestions-empty" class="empty-state" style="display:none">
-    <p>Aucune suggestion disponible</p>
+  <div class="page-header">
+    <h2 class="page-title">Propositions de séries</h2>
+    <button id="btn-analyze" class="btn btn-ghost btn-sm">✨ Analyser les titres</button>
+  </div>
+  <p class="section-hint">Groupes détectés par analyse des titres OL et préfixes communs</p>
+  <div id="analyze-msg" class="detect-msg" style="display:none"></div>
+  <div id="proposals-list" class="suggestions-list"></div>
+  <div id="proposals-empty" class="empty-state" style="display:none">
+    <p>Aucune proposition — cliquez sur "Analyser les titres" pour lancer la détection</p>
   </div>
 </div>
 {% endblock %}
@@ -41,8 +45,6 @@
 (function () {
   const seriesList = document.getElementById('series-list');
   const seriesEmpty = document.getElementById('series-empty');
-  const suggestionsList = document.getElementById('suggestions-list');
-  const suggestionsEmpty = document.getElementById('suggestions-empty');
   const isAdmin = {{ 'true' if user.role == 'admin' else 'false' }};
 
   function escHtml(str) {
@@ -214,54 +216,92 @@
     `;
   }
 
-  // ── Suggestions ──────────────────────────────────────────────────────────
-  async function loadSuggestions() {
-    const res = await fetch('/api/series/suggestions');
-    const groups = await res.json();
+  // ── Propositions (analyze) ───────────────────────────────────────────────
+  const proposalsList  = document.getElementById('proposals-list');
+  const proposalsEmpty = document.getElementById('proposals-empty');
+  const analyzeMsg     = document.getElementById('analyze-msg');
+  const btnAnalyze     = document.getElementById('btn-analyze');
 
-    if (groups.length === 0) {
-      suggestionsEmpty.style.display = 'flex';
+  const SOURCE_LABELS = {
+    openlibrary_work: { label: 'Open Library', cls: 'badge-isbn' },
+    title_cluster:    { label: 'Préfixe commun', cls: 'badge-source' },
+  };
+
+  btnAnalyze.addEventListener('click', async () => {
+    btnAnalyze.disabled = true;
+    btnAnalyze.textContent = '⏳ Analyse en cours…';
+    analyzeMsg.style.display = 'none';
+    proposalsList.innerHTML = '<p style="color:var(--color-text-muted);padding:1rem 0">Interrogation de Open Library…</p>';
+    proposalsEmpty.style.display = 'none';
+
+    const res = await fetch('/api/series/analyze', { method: 'POST' });
+    btnAnalyze.disabled = false;
+    btnAnalyze.textContent = '✨ Analyser les titres';
+
+    if (!res.ok) {
+      analyzeMsg.textContent = 'Erreur lors de l\'analyse.';
+      analyzeMsg.className = 'detect-msg detect-msg-err';
+      analyzeMsg.style.display = '';
+      proposalsList.innerHTML = '';
       return;
     }
-    suggestionsEmpty.style.display = 'none';
-    suggestionsList.innerHTML = '';
 
-    groups.forEach(group => {
+    const proposals = await res.json();
+    renderProposals(proposals);
+  });
+
+  function renderProposals(proposals) {
+    proposalsList.innerHTML = '';
+    if (!proposals.length) {
+      proposalsEmpty.style.display = 'flex';
+      return;
+    }
+    proposalsEmpty.style.display = 'none';
+
+    proposals.forEach((p, idx) => {
+      const srcMeta = SOURCE_LABELS[p.source] || { label: p.source, cls: 'badge-source' };
+      const inputId = `prop-name-${idx}`;
+      const bookIds = p.books.map(b => b.id);
+
       const div = document.createElement('div');
       div.className = 'suggestion-group';
-      const bookIds = group.books.map(b => b.id);
       div.innerHTML = `
         <div class="suggestion-author">
-          <strong>${escHtml(group.author)}</strong>
-          <span class="badge badge-count">${group.books.length} livres</span>
+          <span class="badge ${srcMeta.cls}">${srcMeta.label}</span>
+          <span class="badge badge-count">${p.books.length} livres</span>
         </div>
         <div class="suggestion-books">
-          ${group.books.map(b => `<span class="suggestion-book-title">${escHtml(b.title)}</span>`).join('')}
+          ${p.books.map(b => {
+            const pos = b.position !== null && b.position !== undefined ? `<span class="badge badge-pos">#${b.position}</span> ` : '';
+            const workHint = b.work_title && b.work_title !== b.title
+              ? `<span class="prop-work-title">${escHtml(b.work_title)}</span>`
+              : '';
+            return `<span class="suggestion-book-title">${pos}${escHtml(b.title)}${workHint}</span>`;
+          }).join('')}
         </div>
         <div class="suggestion-form">
-          <input type="text" class="rename-input series-name-input" placeholder="Nom de la série…" id="sug-name-${group.author.replace(/\s/g,'_')}">
-          <button class="btn btn-primary btn-sm create-series-btn" data-book-ids="${bookIds.join(',')}" data-input-id="sug-name-${group.author.replace(/\s/g,'_')}">Créer une série</button>
+          <input type="text" class="rename-input series-name-input" id="${inputId}" value="${escHtml(p.series_name)}" placeholder="Nom de la série…">
+          <button class="btn btn-primary btn-sm create-series-btn" data-book-ids="${bookIds.join(',')}" data-input-id="${inputId}">Créer</button>
+          <button class="btn btn-ghost btn-sm dismiss-proposal-btn">Ignorer</button>
         </div>
       `;
-      suggestionsList.appendChild(div);
-    });
+      proposalsList.appendChild(div);
 
-    suggestionsList.querySelectorAll('.create-series-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const inputId = btn.dataset.inputId;
+      div.querySelector('.create-series-btn').addEventListener('click', async () => {
         const seriesName = document.getElementById(inputId).value.trim();
         if (!seriesName) { alert('Veuillez saisir un nom de série.'); return; }
-        const bookIds = btn.dataset.bookIds.split(',').map(Number);
         const res = await fetch('/api/series/link-books', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ book_ids: bookIds, series_name: seriesName }),
         });
         if (res.ok) {
+          div.remove();
           loadSeries();
-          loadSuggestions();
         }
       });
+
+      div.querySelector('.dismiss-proposal-btn').addEventListener('click', () => div.remove());
     });
   }
 
@@ -293,12 +333,10 @@
     btnDetect.disabled = false;
     btnDetect.textContent = '🔍 Détecter les séries';
     loadSeries();
-    loadSuggestions();
   });
 
   // ── Init ─────────────────────────────────────────────────────────────────
   loadSeries();
-  loadSuggestions();
 })();
 </script>
 {% endblock %}

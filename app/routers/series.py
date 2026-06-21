@@ -1,6 +1,10 @@
+import asyncio
 import json
+import re
+from itertools import combinations
 from typing import Optional
 
+import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
@@ -10,6 +14,61 @@ from app.models import Book, Series
 from app.schemas import LinkBooksRequest
 from app.series_logic import get_or_create_series
 from app.lookup import _extract_series_and_position
+
+
+def _lcp_words(t1: str, t2: str) -> list[str]:
+    """Longest common prefix in words (case-insensitive, original case kept)."""
+    w1 = t1.split()
+    w2 = t2.split()
+    result = []
+    for a, b in zip(w1, w2):
+        if a.lower().rstrip(",:;") == b.lower().rstrip(",:;"):
+            result.append(a)
+        else:
+            break
+    return result
+
+
+def _cluster_books_by_prefix(books: list[dict], min_words: int = 2) -> list[dict]:
+    """Group books by shared title prefix (≥ min_words words in common)."""
+    n = len(books)
+    parent = list(range(n))
+    prefix_map: dict[int, list[str]] = {}
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for i, j in combinations(range(n), 2):
+        lcp = _lcp_words(books[i]["title"], books[j]["title"])
+        if len(lcp) >= min_words:
+            ri, rj = find(i), find(j)
+            if ri != rj:
+                parent[rj] = ri
+            r = find(i)
+            existing = prefix_map.get(r, lcp)
+            shared = _lcp_words(" ".join(existing), " ".join(lcp))
+            prefix_map[r] = shared if shared else existing
+
+    groups: dict[int, list[int]] = {}
+    for i in range(n):
+        r = find(i)
+        if r in prefix_map:
+            groups.setdefault(r, []).append(i)
+
+    result = []
+    for root, indices in groups.items():
+        if len(indices) >= 2:
+            series_name = " ".join(prefix_map[root]).strip().rstrip(",:;- ")
+            result.append({
+                "series_name": series_name,
+                "source": "title_cluster",
+                "books": [books[i] for i in indices],
+            })
+    return result
+
 
 router = APIRouter()
 
@@ -142,6 +201,94 @@ def series_suggestions(request: Request, db: Session = Depends(get_db)):
                 seen_book_ids.add(b["id"])
             result.append({"author": author, "books": unique_books})
 
+    return result
+
+
+@router.post("/api/series/analyze")
+async def analyze_series(request: Request, db: Session = Depends(get_db)):
+    """Propose des groupes de séries via :
+    1. Titre complet de l'œuvre Open Library (contient souvent 'Série - Tome N - Titre')
+    2. Clustering par préfixe commun de titre (même auteur)
+    """
+    get_current_user(request, db)
+
+    books_no_series = (
+        db.query(Book)
+        .filter(Book.series_id.is_(None), Book.enrichment_status == "ok")
+        .all()
+    )
+
+    # ── Passe 1 : OL work title ──────────────────────────────────────────────
+    proposals: dict[str, dict] = {}  # series_name → {source, books}
+    claimed_ids: set[int] = set()
+
+    books_with_key = [b for b in books_no_series if b.work_key]
+    if books_with_key:
+        async with httpx.AsyncClient(timeout=8) as client:
+            tasks = [
+                client.get(f"https://openlibrary.org/works/{b.work_key}.json")
+                for b in books_with_key
+            ]
+            responses = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for book, resp in zip(books_with_key, responses):
+            if isinstance(resp, Exception) or resp.status_code != 200:
+                continue
+            work_title = resp.json().get("title", "")
+            series_name, position = _extract_series_and_position(work_title, None)
+            if not series_name:
+                continue
+            key = series_name.lower()
+            if key not in proposals:
+                proposals[key] = {
+                    "series_name": series_name,
+                    "source": "openlibrary_work",
+                    "books": [],
+                }
+            proposals[key]["books"].append({
+                "id": book.id,
+                "title": book.title,
+                "work_title": work_title,
+                "position": position,
+                "authors": json.loads(book.authors) if book.authors else [],
+                "cover_url": book.cover_url,
+            })
+            claimed_ids.add(book.id)
+
+    # ── Passe 2 : clustering par préfixe de titre (même auteur) ─────────────
+    unclaimed = [b for b in books_no_series if b.id not in claimed_ids]
+
+    # Grouper par premier auteur
+    author_groups: dict[str, list[dict]] = {}
+    for book in unclaimed:
+        authors = json.loads(book.authors) if book.authors else []
+        first_author = authors[0] if authors else "__unknown__"
+        bdict = {
+            "id": book.id,
+            "title": book.title,
+            "work_title": None,
+            "position": None,
+            "authors": authors,
+            "cover_url": book.cover_url,
+        }
+        author_groups.setdefault(first_author, []).append(bdict)
+
+    for author, abooks in author_groups.items():
+        if len(abooks) < 2:
+            continue
+        clusters = _cluster_books_by_prefix(abooks, min_words=2)
+        for cluster in clusters:
+            key = cluster["series_name"].lower()
+            if key not in proposals:
+                proposals[key] = {
+                    "series_name": cluster["series_name"],
+                    "source": "title_cluster",
+                    "books": cluster["books"],
+                }
+
+    # Garder uniquement les groupes avec ≥ 2 livres
+    result = [v for v in proposals.values() if len(v["books"]) >= 2]
+    result.sort(key=lambda x: x["series_name"].lower())
     return result
 
 
