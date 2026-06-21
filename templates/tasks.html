@@ -69,37 +69,12 @@
     { id: 'clean-authors',  name: 'Normaliser les auteurs',                       desc: 'Convertit les auteurs "Nom, Prénom" → "Prénom Nom" pour tous les livres.' },
   ];
 
-  const TASKS = {
-    'reenrich': {
-      url: '/api/books/re-enrich-all', method: 'POST',
-      label: r => `${r.queued} livre${r.queued !== 1 ? 's' : ''} en cours…`,
-    },
+  // Tâches planifiables : toutes passent par /api/tasks/run/{id}
+  // Tâches statiques (non planifiables) gardent leur propre endpoint
+  const STATIC_TASKS = {
     'reenrich-all': {
       url: '/api/books/re-enrich-all?force=true', method: 'POST',
       label: r => `${r.queued} livre${r.queued !== 1 ? 's' : ''} en cours…`,
-    },
-    'detect-series': {
-      url: '/api/series/detect-all', method: 'POST',
-      label: r => {
-        const parts = [];
-        if (r.found_instant) parts.push(`${r.found_instant} série${r.found_instant > 1 ? 's' : ''} trouvée${r.found_instant > 1 ? 's' : ''}`);
-        if (r.queued_lookup) parts.push(`${r.queued_lookup} en recherche…`);
-        return parts.join(' · ') || 'Aucune nouvelle série';
-      },
-    },
-    'analyze-series': {
-      url: '/api/series/analyze', method: 'POST',
-      label: r => `${r.length} proposition${r.length !== 1 ? 's' : ''} — voir Séries`,
-      onSuccess: () => { document.getElementById('goto-series-proposals').style.display = ''; },
-    },
-    'clean-authors': {
-      url: '/api/books/clean-authors', method: 'POST',
-      label: r => `${r.updated} livre${r.updated !== 1 ? 's' : ''} mis à jour`,
-    },
-    'search-missing': {
-      url: '/api/missing/search-all-web', method: 'POST',
-      label: r => `${r.series_checked} série${r.series_checked !== 1 ? 's' : ''} · ${r.missing_added} manquant${r.missing_added !== 1 ? 's' : ''}`,
-      onSuccess: () => { document.getElementById('goto-missing')?.style && (document.getElementById('goto-missing').style.display = ''); },
     },
   };
 
@@ -213,17 +188,29 @@
   function wireTaskBtns() {
     document.querySelectorAll('.task-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
-        const task = TASKS[btn.dataset.task];
-        if (!task) return;
-        const statusEl = document.getElementById(`status-${btn.dataset.task}`);
+        const taskId = btn.dataset.task;
+        const statusEl = document.getElementById(`status-${taskId}`);
         btn.disabled = true; btn.textContent = '⏳';
         if (statusEl) { statusEl.textContent = 'En cours…'; statusEl.className = 'task-status task-status-running'; }
         try {
-          const res = await fetch(task.url, { method: task.method });
-          if (!res.ok) throw new Error(await res.text());
-          const data = await res.json();
-          if (statusEl) { statusEl.textContent = task.label(data); statusEl.className = 'task-status task-status-ok'; }
-          if (task.onSuccess) task.onSuccess(data);
+          const staticTask = STATIC_TASKS[taskId];
+          let label;
+          if (staticTask) {
+            const res = await fetch(staticTask.url, { method: staticTask.method });
+            if (!res.ok) throw new Error(await res.text());
+            const data = await res.json();
+            label = staticTask.label(data);
+          } else {
+            // Tâche planifiable → endpoint unifié
+            const res = await fetch(`/api/tasks/run/${taskId}`, { method: 'POST' });
+            if (!res.ok) throw new Error(await res.text());
+            const data = await res.json();
+            label = data.result;
+            // Afficher liens "Voir →" si applicable
+            if (taskId === 'analyze-series') document.getElementById('goto-series-proposals')?.style && (document.getElementById('goto-series-proposals').style.display = '');
+            if (taskId === 'search-missing') document.getElementById('goto-missing')?.style && (document.getElementById('goto-missing').style.display = '');
+          }
+          if (statusEl) { statusEl.textContent = label; statusEl.className = 'task-status task-status-ok'; }
         } catch {
           if (statusEl) { statusEl.textContent = 'Erreur'; statusEl.className = 'task-status task-status-err'; }
         } finally {

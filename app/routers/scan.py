@@ -278,8 +278,16 @@ async def re_enrich_all(
     for b in unique:
         b.enrichment_status = "pending"
     db.commit()
-    for b in unique:
-        background_tasks.add_task(_enrich_book, b.id, b.isbn)
+    if unique:
+        from app import scheduler as sched
+        from datetime import datetime, timezone
+        sched._running["reenrich-bg"] = {
+            "label": f"Enrichissement ({len(unique)} livres)",
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        }
+        for b in unique:
+            background_tasks.add_task(_enrich_book, b.id, b.isbn)
+        background_tasks.add_task(lambda: sched._running.pop("reenrich-bg", None))
     return {"queued": len(unique), "book_ids": [b.id for b in unique]}
 
 

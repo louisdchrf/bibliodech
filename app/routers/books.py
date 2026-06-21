@@ -343,6 +343,28 @@ def get_next_runs(request: Request, db: Session = Depends(get_db)):
     return sched.get_next_runs()
 
 
+@router.post("/api/tasks/run/{task_id}")
+async def run_task_manual(task_id: str, request: Request, db: Session = Depends(get_db)):
+    """Lance une tâche manuellement (visible dans l'indicateur d'activité)."""
+    from app.auth import require_contributor
+    user = get_current_user(request, db)
+    require_contributor(user)
+    from app import scheduler as sched
+    from datetime import datetime, timezone
+    sched._running[task_id] = {
+        "label": sched.SCHEDULABLE_TASKS.get(task_id, task_id),
+        "started_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        result = await sched._execute_task(task_id, db)
+    except Exception as e:
+        sched._running.pop(task_id, None)
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=str(e))
+    sched._running.pop(task_id, None)
+    return {"result": result}
+
+
 @router.get("/api/tasks/schedules")
 def get_task_schedules(request: Request, db: Session = Depends(get_db)):
     from app.auth import require_admin
