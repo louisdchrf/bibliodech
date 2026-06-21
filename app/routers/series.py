@@ -149,18 +149,19 @@ async def _detect_all_series(db: Session) -> dict:
     if queued_lookup:
         from app.routers.scan import _enrich_book
         import asyncio
+        pairs = []
         for book_id in queued_lookup:
             book = db.query(Book).filter(Book.id == book_id).first()
             if book and book.isbn:
                 book.enrichment_status = "pending"
+                pairs.append((book_id, book.isbn))
         db.commit()
-        tasks = []
-        for book_id in queued_lookup:
-            book = db.query(Book).filter(Book.id == book_id).first()
-            if book and book.isbn:
-                tasks.append(_enrich_book(book_id, book.isbn))
-        if tasks:
-            await asyncio.gather(*tasks)
+        sem = asyncio.Semaphore(3)
+        async def _bounded(bid, isbn):
+            async with sem:
+                await _enrich_book(bid, isbn)
+        if pairs:
+            await asyncio.gather(*[_bounded(bid, isbn) for bid, isbn in pairs])
 
     return {"found_instant": found_instant, "queued_lookup": len(queued_lookup)}
 
