@@ -83,6 +83,9 @@ img { display: block; max-width: 100%; }
   letter-spacing: .02em;
   white-space: nowrap;
   color: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
 }
 
 .nav-links {
