@@ -19,56 +19,96 @@ router = APIRouter()
 import re as _re
 
 
+def _title_words(title: str) -> list[str]:
+    """Mots significatifs d'un titre (≥ 3 chars, sans stopwords)."""
+    _stop = {"les", "des", "une", "dans", "sur", "avec", "pour", "par", "the", "tome", "vol"}
+    return [w for w in _re.sub(r"[^\w\s]", " ", title.lower()).split()
+            if len(w) >= 3 and w not in _stop]
+
+
 def _find_library_matches(db: Session) -> list[dict]:
     """
-    Pour chaque série, cherche dans toute la bibliothèque les livres
-    dont le titre correspond à un tome manquant (pas encore assigné à la série).
-    Retourne une liste de correspondances {series, book, suggested_position}.
+    Pour chaque tome manquant stocké (SeriesMissingVolume avec un titre),
+    cherche dans la bibliothèque les livres dont le titre correspond.
+    Fallback sur le nom de série + position pour les tomes sans titre.
     """
-    series_list = db.query(Series).order_by(Series.name).all()
+    missing_vols = db.query(SeriesMissingVolume).all()
+    if not missing_vols:
+        return []
+
+    all_books = db.query(Book).all()
     matches = []
+    seen: set[tuple] = set()  # (book_id, series_id)
 
-    for series in series_list:
-        owned = db.query(Book).filter(Book.series_id == series.id).all()
-        owned_ids = {b.id for b in owned}
-        owned_positions = {b.series_position for b in owned if b.series_position is not None}
+    for mv in missing_vols:
+        series = mv.series
+        owned_ids = {b.id for b in db.query(Book).filter(Book.series_id == series.id).all()}
 
-        # Mots significatifs du nom de série (≥ 3 chars)
-        words = [w for w in series.name.lower().split() if len(w) >= 3]
-        if not words:
-            continue
-
-        # Chercher dans tous les livres qui ne sont pas dans cette série
-        candidates = db.query(Book).filter(Book.id.notin_(owned_ids)).all()
-        for book in candidates:
-            title_lower = (book.title or "").lower()
-            # Le titre doit contenir les 2 premiers mots significatifs de la série
-            if not all(w in title_lower for w in words[:2]):
+        if mv.title:
+            # Chercher par titre du tome manquant
+            mv_words = _title_words(mv.title)
+            if not mv_words:
                 continue
-
-            # Extraire le numéro de tome du titre du livre
-            m = _re.search(r'(?:tome|vol\.?|t\.)\s*(\d+)', title_lower)
-            if not m:
-                # Essayer un numéro seul en fin de titre : "Lady S 4" ou "Lady S. - 4"
-                m = _re.search(r'[-–\s](\d{1,2})\s*$', title_lower)
-            if not m:
+            for book in all_books:
+                if book.id in owned_ids:
+                    continue
+                book_words = _title_words(book.title or "")
+                # Au moins 2 mots significatifs en commun
+                common = sum(1 for w in mv_words if w in book_words)
+                if common < min(2, len(mv_words)):
+                    continue
+                key = (book.id, series.id)
+                if key in seen:
+                    continue
+                seen.add(key)
+                matches.append({
+                    "series_id": series.id,
+                    "series_name": series.name,
+                    "book_id": book.id,
+                    "book_title": book.title,
+                    "book_authors": json.loads(book.authors) if book.authors else [],
+                    "book_cover": book.cover_url,
+                    "current_series_id": book.series_id,
+                    "current_series_name": book.series.name if book.series else None,
+                    "suggested_position": mv.position,
+                    "missing_title": mv.title,
+                })
+        else:
+            # Fallback : série + numéro de tome dans le titre du livre
+            owned_positions = {b.series_position for b in db.query(Book).filter(Book.series_id == series.id).all()
+                               if b.series_position is not None}
+            s_words = [w for w in series.name.lower().split() if len(w) >= 3]
+            if not s_words:
                 continue
-
-            pos = float(m.group(1))
-            if pos in owned_positions:
-                continue  # Déjà dans la série à cette position
-
-            matches.append({
-                "series_id": series.id,
-                "series_name": series.name,
-                "book_id": book.id,
-                "book_title": book.title,
-                "book_authors": json.loads(book.authors) if book.authors else [],
-                "book_cover": book.cover_url,
-                "current_series_id": book.series_id,
-                "current_series_name": book.series.name if book.series else None,
-                "suggested_position": pos,
-            })
+            for book in all_books:
+                if book.id in owned_ids:
+                    continue
+                title_lower = (book.title or "").lower()
+                if not all(w in title_lower for w in s_words[:2]):
+                    continue
+                m = _re.search(r'(?:tome|vol\.?)\s*(\d+)', title_lower) \
+                    or _re.search(r'[-–\s](\d{1,2})\s*$', title_lower)
+                if not m:
+                    continue
+                pos = float(m.group(1))
+                if pos != mv.position or pos in owned_positions:
+                    continue
+                key = (book.id, series.id)
+                if key in seen:
+                    continue
+                seen.add(key)
+                matches.append({
+                    "series_id": series.id,
+                    "series_name": series.name,
+                    "book_id": book.id,
+                    "book_title": book.title,
+                    "book_authors": json.loads(book.authors) if book.authors else [],
+                    "book_cover": book.cover_url,
+                    "current_series_id": book.series_id,
+                    "current_series_name": book.series.name if book.series else None,
+                    "suggested_position": pos,
+                    "missing_title": None,
+                })
 
     return matches
 

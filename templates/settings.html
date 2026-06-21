@@ -1122,7 +1122,9 @@
           ${m.book_cover ? `<img src="${escHtml(m.book_cover)}" style="width:32px;height:44px;object-fit:cover;border-radius:2px">` : '<div style="width:32px;height:44px;background:var(--color-surface-2);border-radius:2px"></div>'}
           <div style="flex:1;min-width:0">
             <div style="font-size:.9rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(m.book_title)}</div>
-            <div style="font-size:.78rem;color:var(--color-text-muted)">${m.current_series_name ? `Actuellement dans "${escHtml(m.current_series_name)}"` : 'Non assigné'}</div>
+            <div style="font-size:.78rem;color:var(--color-text-muted)">
+            ${m.missing_title ? `Correspond à : <em>${escHtml(m.missing_title)}</em> · ` : ''}${m.current_series_name ? `dans "${escHtml(m.current_series_name)}"` : 'Non assigné'}
+          </div>
           </div>
           <span style="font-size:.8rem;color:var(--color-text-muted);white-space:nowrap">→ tome ${m.suggested_position}</span>
           <button class="btn btn-primary btn-sm assign-match-btn"
