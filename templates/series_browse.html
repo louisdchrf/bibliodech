@@ -4,12 +4,25 @@
 <div style="display:flex;height:calc(100vh - 56px);overflow:hidden;gap:0">
 
   <!-- Sidebar séries -->
-  <div id="series-sidebar" style="width:240px;min-width:180px;border-right:1px solid var(--color-border);overflow-y:auto;flex-shrink:0;background:var(--color-surface)">
-    <div style="padding:.75rem 1rem;border-bottom:1px solid var(--color-border);display:flex;align-items:center;justify-content:space-between">
+  <div id="series-sidebar" style="width:260px;min-width:200px;border-right:1px solid var(--color-border);flex-shrink:0;background:var(--color-surface);display:flex;flex-direction:column">
+    <div style="padding:.75rem 1rem;border-bottom:1px solid var(--color-border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
       <span style="font-weight:600;font-size:.9rem">Séries</span>
       <span id="series-count" style="font-size:.75rem;color:var(--color-text-muted)"></span>
     </div>
-    <div id="series-list" style="padding:.25rem 0"></div>
+    <div style="padding:.5rem .75rem;border-bottom:1px solid var(--color-border);display:flex;flex-direction:column;gap:.4rem;flex-shrink:0">
+      <div style="position:relative">
+        <input id="series-search" type="search" placeholder="Rechercher une série…"
+          style="width:100%;padding:.35rem .6rem .35rem 1.8rem;font-size:.82rem;border:1px solid var(--color-border);border-radius:6px;background:var(--color-bg);color:var(--color-text);box-sizing:border-box;outline:none">
+        <span style="position:absolute;left:.5rem;top:50%;transform:translateY(-50%);font-size:.8rem;pointer-events:none;color:var(--color-text-muted)">🔍</span>
+      </div>
+      <div style="display:flex;gap:.35rem;flex-wrap:wrap">
+        <button class="filter-btn active" data-min="0">Toutes</button>
+        <button class="filter-btn" data-min="2">≥ 2</button>
+        <button class="filter-btn" data-min="5">≥ 5</button>
+        <button class="filter-btn" data-min="10">≥ 10</button>
+      </div>
+    </div>
+    <div id="series-list" style="padding:.25rem 0;flex:1;overflow-y:auto"></div>
   </div>
 
   <!-- Contenu -->
@@ -27,15 +40,45 @@
 </div>
 {% endif %}
 
+<style>
+.filter-btn {
+  padding:.2rem .55rem;font-size:.72rem;border:1px solid var(--color-border);
+  border-radius:4px;cursor:pointer;background:none;color:var(--color-text);transition:background .1s,color .1s;
+}
+.filter-btn:hover { background:var(--color-border); }
+.filter-btn.active { background:var(--color-primary);color:#fff;border-color:var(--color-primary); }
+</style>
+
 <script>
 let _allSeries = [];
 let _activeSid = null;
+let _filterMin = 0;
+let _searchQ = '';
 
 async function loadSeries() {
   const r = await fetch('/api/series');
   _allSeries = await r.json();
-  document.getElementById('series-count').textContent = _allSeries.length;
-  renderSidebar(_allSeries);
+  updateCount();
+  applyFilters();
+}
+
+function updateCount() {
+  const visible = _filtered();
+  document.getElementById('series-count').textContent =
+    visible.length === _allSeries.length ? _allSeries.length : `${visible.length}/${_allSeries.length}`;
+}
+
+function _filtered() {
+  const q = _searchQ.toLowerCase().trim();
+  return _allSeries.filter(s =>
+    s.book_count >= _filterMin &&
+    (!q || s.name.toLowerCase().includes(q))
+  );
+}
+
+function applyFilters() {
+  updateCount();
+  renderSidebar(_filtered());
 }
 
 function renderSidebar(list) {
@@ -46,26 +89,23 @@ function renderSidebar(list) {
   }
   el.innerHTML = list.map(s => `
     <button onclick="selectSeries(${s.id})" id="sidebar-${s.id}"
-      style="display:block;width:100%;text-align:left;padding:.45rem 1rem;border:none;background:none;cursor:pointer;font-size:.85rem;color:var(--color-text);border-left:3px solid transparent"
+      style="display:block;width:100%;text-align:left;padding:.45rem 1rem;border:none;background:none;cursor:pointer;font-size:.85rem;color:var(--color-text);border-left:3px solid transparent${_activeSid === s.id ? ';background:var(--color-primary-light,color-mix(in srgb,var(--color-primary) 10%,transparent));border-left-color:var(--color-primary);font-weight:600' : ''}"
       class="series-sidebar-btn">
-      <span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(s.name)}</span>
+      <span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${highlight(escHtml(s.name), _searchQ)}</span>
       <span style="font-size:.72rem;color:var(--color-text-muted)">${s.book_count} livre${s.book_count !== 1 ? 's' : ''}</span>
     </button>`).join('');
 }
 
+function highlight(html, q) {
+  if (!q) return html;
+  const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return html.replace(new RegExp(`(${esc})`, 'gi'), '<mark style="background:var(--color-primary);color:#fff;border-radius:2px;padding:0 1px">$1</mark>');
+}
+
 async function selectSeries(sid) {
   _activeSid = sid;
-  document.querySelectorAll('.series-sidebar-btn').forEach(b => {
-    b.style.background = 'none';
-    b.style.borderLeftColor = 'transparent';
-    b.style.fontWeight = 'normal';
-  });
-  const active = document.getElementById(`sidebar-${sid}`);
-  if (active) {
-    active.style.background = 'var(--color-primary-light, color-mix(in srgb,var(--color-primary) 10%,transparent))';
-    active.style.borderLeftColor = 'var(--color-primary)';
-    active.style.fontWeight = '600';
-  }
+  // re-render sidebar to reflect active state
+  renderSidebar(_filtered());
 
   document.getElementById('series-content').innerHTML = '<p style="color:var(--color-text-muted)">Chargement…</p>';
   const r = await fetch(`/api/series/${sid}/books`);
@@ -111,6 +151,21 @@ async function confirmPurge() {
     document.getElementById('series-content').innerHTML = '<p style="color:var(--color-text-muted)">Toutes les séries ont été supprimées.</p>';
   }
 }
+
+// Wiring
+document.getElementById('series-search').addEventListener('input', e => {
+  _searchQ = e.target.value;
+  applyFilters();
+});
+
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    _filterMin = parseInt(btn.dataset.min);
+    applyFilters();
+  });
+});
 
 loadSeries();
 </script>
