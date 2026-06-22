@@ -144,6 +144,24 @@ def change_own_password(body: dict, request: Request, db: Session = Depends(get_
     return {"ok": True}
 
 
+@router.put("/api/me")
+def update_own_profile(body: dict, request: Request, db: Session = Depends(get_db)):
+    """L'utilisateur connecté met à jour son propre profil (username, email)."""
+    user = get_current_user(request, db)
+    if "username" in body:
+        username = body["username"].strip()
+        if not username:
+            raise HTTPException(status_code=422, detail="Le nom d'utilisateur ne peut pas être vide")
+        existing = db.query(User).filter(User.username == username, User.id != user.id).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="Ce nom d'utilisateur est déjà pris")
+        user.username = username
+    if "email" in body:
+        user.email = body["email"].strip() or None
+    db.commit()
+    return {"ok": True, "username": user.username}
+
+
 @router.delete("/api/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_user(user_id: int, request: Request, db: Session = Depends(get_db)):
     current = get_current_user(request, db)
