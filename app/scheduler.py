@@ -111,8 +111,7 @@ async def _execute_task(task_id: str, db) -> str:
 
     if task_id == "clean-authors":
         from app.routers.books import _clean_authors_logic
-        result = _clean_authors_logic(db)
-        return f"{result['updated']} auteurs normalisés"
+        return _clean_authors_logic(db)
 
     return "tâche inconnue"
 
