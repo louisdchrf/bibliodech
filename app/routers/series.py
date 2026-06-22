@@ -703,20 +703,29 @@ async def detect_series(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/api/series/sudoc-lookup")
 async def sudoc_lookup(request: Request, db: Session = Depends(get_db)):
-    """Interroge SUDOC pour une liste de book_ids → retourne le nom de série trouvé."""
+    """
+    Interroge plusieurs sources pour trouver la série d'un groupe de livres.
+    Ordre de priorité : SUDOC → Open Library (champ series) → lookup_isbn.
+    """
     user = get_current_user(request, db)
     require_admin(user)
     body = await request.json()
     book_ids: list[int] = body.get("book_ids", [])
     from app.routers.scan import _lookup_series_sudoc
+    from app.lookup import lookup_isbn
     books = db.query(Book).filter(Book.id.in_(book_ids)).all()
     for b in books:
         if not b.isbn:
             continue
+        # Source 1 : SUDOC (meilleure pour les BDs françaises)
         result = await _lookup_series_sudoc(b.isbn)
         if result:
             name, vol = result
-            return {"name": name, "volume": vol, "isbn": b.isbn}
+            return {"name": name, "volume": vol, "isbn": b.isbn, "source": "SUDOC"}
+        # Source 2 : lookup_isbn (Open Library, Google Books…) → champ series_name
+        info = await lookup_isbn(b.isbn)
+        if info and info.get("series_name"):
+            return {"name": info["series_name"], "volume": info.get("series_position"), "isbn": b.isbn, "source": info.get("source", "lookup")}
     return {"name": None}
 
 

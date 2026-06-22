@@ -152,7 +152,7 @@ async function sudocProposal(id, bookIds) {
     const data = await r.json();
     if (data.name) {
       input.value = data.name;
-      bar.innerHTML = `<span style="color:var(--color-success,#16a34a)">✓ Trouvé via SUDOC : <strong>${data.name}</strong>${data.volume ? ` (tome ${data.volume})` : ''}</span>`;
+      bar.innerHTML = `<span style="color:var(--color-success,#16a34a)">✓ Trouvé via ${data.source || 'catalogue'} : <strong>${data.name}</strong>${data.volume ? ` (tome ${data.volume})` : ''}</span>`;
       if (btn) { btn.textContent = '✓'; btn.style.color = 'var(--color-success,#16a34a)'; }
       await fetch(`/api/series/proposals/${id}`, {
         method: 'PATCH',
