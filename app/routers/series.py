@@ -762,6 +762,23 @@ def accept_proposal(
     return {"ok": True, "series_id": series.id, "series_name": series.name, "linked": len(books)}
 
 
+@router.patch("/api/series/proposals/{proposal_id}")
+def patch_proposal(proposal_id: int, body: dict, request: Request, db: Session = Depends(get_db)):
+    """Met à jour le nom proposé et/ou le signal d'une proposition."""
+    user = get_current_user(request, db)
+    require_admin(user)
+    from fastapi import HTTPException
+    p = db.query(SeriesProposal).filter(SeriesProposal.id == proposal_id).first()
+    if not p:
+        raise HTTPException(404, "Proposition introuvable")
+    if "proposed_name" in body:
+        p.proposed_name = body["proposed_name"]
+    if "signal" in body:
+        p.signal = body["signal"]
+    db.commit()
+    return {"ok": True}
+
+
 @router.post("/api/series/proposals/{proposal_id}/reject")
 def reject_proposal(proposal_id: int, request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)

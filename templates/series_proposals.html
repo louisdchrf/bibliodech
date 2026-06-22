@@ -169,6 +169,21 @@ async function ocrProposal(id, coverUrls, authors = []) {
     input.value = best;
     bar.innerHTML = `<span style="color:var(--color-success,#16a34a)">✓ Nom détecté : <strong>${best}</strong></span>`;
     if (btn) { btn.textContent = '✓'; btn.style.color = 'var(--color-success,#16a34a)'; }
+    // Sauvegarder dans la DB + marquer comme trouvé par OCR
+    await fetch(`/api/series/proposals/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ proposed_name: best, signal: 'ocr' }),
+    });
+    // Mettre à jour le badge signal dans la carte
+    const card = document.getElementById(`proposal-${id}`);
+    const badge = card?.querySelector('span[style*="border-radius:99px"]');
+    if (badge) {
+      badge.textContent = '🔍 OCR couverture';
+      badge.style.color = 'var(--color-success, #16a34a)';
+      badge.style.background = 'color-mix(in srgb, var(--color-success, #16a34a) 12%, transparent)';
+      badge.style.borderColor = 'color-mix(in srgb, var(--color-success, #16a34a) 30%, transparent)';
+    }
   } else {
     bar.innerHTML = `<span style="color:var(--color-text-muted)">Aucun nom détecté sur les couvertures</span>`;
     if (btn) { btn.textContent = '🔍'; }
