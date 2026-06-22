@@ -175,19 +175,12 @@ def patch_book(
     return book_to_dict(book)
 
 
-@router.post("/api/books/clean-authors")
-def clean_authors(request: Request, db: Session = Depends(get_db)):
-    """Normalise les auteurs en format 'Nom, Prénom' → 'Prénom Nom' pour tous les livres."""
-    user = get_current_user(request, db)
-    require_contributor(user)
-
+def _clean_authors_logic(db) -> str:
     def _normalize(author: str) -> str:
-        # Institution ou format complexe : laisser tel quel
         if '(' in author or author.count(',') != 1:
             return author
         nom, prenom = author.split(',', 1)
-        prenom = prenom.strip()
-        nom = nom.strip()
+        prenom, nom = prenom.strip(), nom.strip()
         if not prenom:
             return author
         return f"{prenom} {nom}"
@@ -203,9 +196,17 @@ def clean_authors(request: Request, db: Session = Depends(get_db)):
         if cleaned != authors:
             book.authors = json.dumps(cleaned, ensure_ascii=False)
             updated += 1
-
     db.commit()
-    return {"updated": updated}
+    return f"{updated} livre(s) mis à jour"
+
+
+@router.post("/api/books/clean-authors")
+def clean_authors(request: Request, db: Session = Depends(get_db)):
+    """Normalise les auteurs en format 'Nom, Prénom' → 'Prénom Nom' pour tous les livres."""
+    user = get_current_user(request, db)
+    require_contributor(user)
+    _clean_authors_logic(db)
+    return {"ok": True}
 
 
 async def _fetch_covers_logic(db) -> dict:
