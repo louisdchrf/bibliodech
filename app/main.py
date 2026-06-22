@@ -13,7 +13,7 @@ from app.auth import (
     get_current_user, verify_password, create_session, clear_session, bootstrap_admin
 )
 from app.models import User, Book
-from app.routers import scan, books, series, users, settings as settings_router, locations as locations_router, loans as loans_router, missing as missing_router
+from app.routers import scan, books, users, settings as settings_router, locations as locations_router, loans as loans_router
 from app.lookup import debug_isbn
 
 app = FastAPI(title="Bibliodech")
@@ -32,12 +32,10 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(scan.router)
 app.include_router(books.router)
-app.include_router(series.router)
 app.include_router(users.router)
 app.include_router(settings_router.router)
 app.include_router(locations_router.router)
 app.include_router(loans_router.router)
-app.include_router(missing_router.router)
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────
@@ -142,25 +140,6 @@ def library_page(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse("library.html", {"request": request, "user": user, "active": "library", "build_version": BUILD_VERSION, "sources_cfg": sources_cfg})
 
 
-@app.get("/series", response_class=HTMLResponse)
-def series_page(request: Request, db: Session = Depends(get_db)):
-    try:
-        user = get_current_user(request, db)
-    except Exception:
-        return RedirectResponse(url="/login", status_code=302)
-    if redir := _require_pw_changed(user): return redir
-    return templates.TemplateResponse("series.html", {"request": request, "user": user, "active": "series", "build_version": BUILD_VERSION})
-
-
-@app.get("/missing", response_class=HTMLResponse)
-def missing_page(request: Request, db: Session = Depends(get_db)):
-    try:
-        user = get_current_user(request, db)
-    except Exception:
-        return RedirectResponse(url="/login", status_code=302)
-    if redir := _require_pw_changed(user): return redir
-    return templates.TemplateResponse("missing.html", {"request": request, "user": user, "active": "missing", "build_version": BUILD_VERSION})
-
 
 @app.get("/tasks", response_class=HTMLResponse)
 def tasks_page(request: Request, db: Session = Depends(get_db)):
@@ -181,16 +160,14 @@ def export_books_csv(request: Request, db: Session = Depends(get_db)):
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["ISBN", "Titre", "Sous-titre", "Auteurs", "Éditeur", "Date", "Langue",
-                     "Pages", "Série", "Position", "Localisation", "Ajouté le"])
+                     "Pages", "Localisation", "Ajouté le"])
     for b in books:
         authors = ", ".join(json.loads(b.authors)) if b.authors else ""
         loc = b.location.label if b.location else (b.shelf or "")
-        series_name = b.series.name if b.series else ""
         writer.writerow([
             b.isbn or "", b.title, b.subtitle or "", authors, b.publisher or "",
             b.publish_date or "", b.language or "", b.page_count or "",
-            series_name, b.series_position or "", loc,
-            b.added_at.strftime("%Y-%m-%d") if b.added_at else "",
+            loc, b.added_at.strftime("%Y-%m-%d") if b.added_at else "",
         ])
     output.seek(0)
     return StreamingResponse(
@@ -203,13 +180,12 @@ def export_books_csv(request: Request, db: Session = Depends(get_db)):
 @app.get("/api/stats")
 def get_stats(request: Request, db: Session = Depends(get_db)):
     from sqlalchemy import func, extract
-    from app.models import Series, Room, Loan, Borrower
+    from app.models import Room, Loan, Borrower
     get_current_user(request, db)
 
     # ── Chiffres clés ─────────────────────────────────────────────────────────
     total_books   = db.query(func.count(Book.id)).scalar()
     active_loans  = db.query(func.count(Loan.id)).filter(Loan.return_date.is_(None)).scalar()
-    total_series  = db.query(func.count(Series.id)).scalar()
 
     # Auteurs uniques (dédoublonnage via JSON)
     all_authors_raw = db.query(Book.authors).filter(Book.authors.isnot(None)).all()
@@ -312,7 +288,6 @@ def get_stats(request: Request, db: Session = Depends(get_db)):
         "totals": {
             "books": total_books,
             "authors": len(unique_authors),
-            "series": total_series,
             "active_loans": active_loans,
         },
         "by_location": by_location,

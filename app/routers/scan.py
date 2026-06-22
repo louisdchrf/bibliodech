@@ -13,7 +13,6 @@ from app.database import get_db, SessionLocal
 from app.lookup import lookup_isbn, classify_isbn, _SOURCE_FNS, _lookup_isbndb, _lookup_openlibrary_search
 from app.models import Book
 from app.schemas import ScanRequest
-from app.series_logic import get_or_create_series
 
 router = APIRouter()
 
@@ -105,12 +104,6 @@ async def _enrich_book(book_id: int, isbn: str) -> None:
         book.enrichment_source = info.get("source")
         if info.get("_per_source"):
             book.source_data = json.dumps(info["_per_source"], ensure_ascii=False)
-
-        if info.get("series_name"):
-            series = get_or_create_series(db, info["series_name"], source=info.get("source", "openlibrary"))
-            book.series_id = series.id
-        if info.get("series_position"):
-            book.series_position = info["series_position"]
 
         audit_log(db, book.id, "enriched", detail={"source": info.get("source"), "title": info.get("title")})
         db.commit()

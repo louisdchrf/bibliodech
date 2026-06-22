@@ -6,9 +6,6 @@
   <div class="library-toolbar">
     <input type="text" id="search" placeholder="Rechercher titre, auteur, ISBN…" class="search-input">
     <div class="filter-row">
-      <select id="filter-series" class="select-input">
-        <option value="">Toutes les séries</option>
-      </select>
       <select id="filter-location" class="select-input">
         <option value="">Toutes les localisations</option>
       </select>
@@ -44,8 +41,7 @@
   <div class="bulk-actions">
     <button class="btn btn-ghost btn-sm" id="bulk-select-all">Tout sélectionner</button>
     <button class="btn btn-ghost btn-sm" id="bulk-authors">Modifier auteurs</button>
-    <button class="btn btn-ghost btn-sm" id="bulk-series">Attribuer série</button>
-    <button class="btn btn-ghost btn-sm" id="bulk-location">Localisation</button>
+<button class="btn btn-ghost btn-sm" id="bulk-location">Localisation</button>
     <button class="btn btn-ghost btn-sm" id="bulk-reenrich">🔄 Recharger</button>
     {% if user.role == 'admin' %}<button class="btn btn-danger btn-sm" id="bulk-delete">Supprimer</button>{% endif %}
     <button class="btn btn-ghost btn-sm" id="bulk-cancel">Annuler</button>
@@ -99,7 +95,6 @@
   const emptyState = document.getElementById('empty-state');
   const bookCount = document.getElementById('book-count');
   const searchInput = document.getElementById('search');
-  const filterSeries = document.getElementById('filter-series');
   const filterLocation = document.getElementById('filter-location');
   const filterSource = document.getElementById('filter-source');
   const sortBy = document.getElementById('sort-by');
@@ -111,7 +106,6 @@
   const bulkCount = document.getElementById('bulk-count');
 
   let debounceTimer;
-  let allSeries = [];
   let allLocations = [];
   let locTree = [];
   let selectionMode = false;
@@ -187,8 +181,6 @@
     { key: 'publish_date',    label: 'Date' },
     { key: 'language',        label: 'Langue' },
     { key: 'page_count',      label: 'Pages' },
-    { key: 'series_name',     label: 'Série' },
-    { key: 'series_position', label: 'Position' },
   ];
 
   function renderSourcesTab(book) {
@@ -205,8 +197,6 @@
     const rows = SOURCE_FIELDS.map(({ key, label }) => {
       const bookVal = key === 'authors'
         ? (book.authors || []).join(', ')
-        : key === 'series_name' ? book.series_name
-        : key === 'series_position' ? book.series_position
         : book[key];
 
       const cells = allCols.map(sid => {
@@ -272,14 +262,6 @@
     return escHtml(s);
   }
 
-  // ── Series ───────────────────────────────────────────────────────────────
-  async function loadSeries() {
-    const res = await fetch('/api/series');
-    allSeries = await res.json();
-    filterSeries.innerHTML = '<option value="">Toutes les séries</option>'
-      + allSeries.map(s => `<option value="${s.id}">${escHtml(s.name)}</option>`).join('');
-  }
-
   // ── Locations ─────────────────────────────────────────────────────────────
   async function loadLocations() {
     const res = await fetch('/api/locations/tree');
@@ -299,8 +281,6 @@
     const params = new URLSearchParams();
     const q = searchInput.value.trim();
     if (q) params.set('search', q);
-    const sid = filterSeries.value;
-    if (sid) params.set('series_id', sid);
     const lid = filterLocation.value;
     if (lid) params.set('room_id', lid);
     const src = filterSource.value;
@@ -337,7 +317,6 @@
         <div class="book-title" title="${escHtml(book.title)}">${escHtml(book.title)}</div>
         ${authors ? `<div class="book-author">${escHtml(authors)}</div>` : ''}
         <div class="book-badges">
-          ${book.series_name && getPref('bib_badge_series', true) ? `<span class="badge badge-series">${escHtml(book.series_name)}${book.series_position ? ' #' + book.series_position : ''}</span>` : ''}
           ${book.location && getPref('bib_badge_location', true) ? `<span class="badge badge-shelf">${escHtml(book.location.label)}</span>` : ''}
           ${book.active_loan ? `<span class="badge badge-loan${book.active_loan.overdue ? ' badge-loan-overdue' : ''}">Prêté · ${escHtml(book.active_loan.borrower_name||'')}</span>` : ''}
         </div>
@@ -410,11 +389,6 @@
     openBulkModal('authors');
   });
 
-  document.getElementById('bulk-series').addEventListener('click', () => {
-    if (!selectedIds.size) return;
-    openBulkModal('series');
-  });
-
   document.getElementById('bulk-location').addEventListener('click', () => {
     if (!selectedIds.size) return;
     openBulkModal('location');
@@ -477,9 +451,6 @@
 
   function openBulkModal(type) {
     const n = selectedIds.size;
-    const seriesOptions = allSeries.map(s =>
-      `<option value="${s.id}">${escHtml(s.name)}</option>`
-    ).join('');
 
     if (type === 'authors') {
       modalContent.innerHTML = `
@@ -489,31 +460,6 @@
           <div class="field">
             <label>Auteurs (séparés par virgule)</label>
             <input type="text" name="authors" placeholder="Prénom Nom, Prénom Nom…" autofocus>
-          </div>
-          <div class="modal-actions">
-            <button type="submit" class="btn btn-primary">Appliquer</button>
-          </div>
-        </form>`;
-    } else if (type === 'series') {
-      modalContent.innerHTML = `
-        <h2>Attribuer une série</h2>
-        <p class="modal-subtitle">${n} livre${n > 1 ? 's' : ''} sélectionné${n > 1 ? 's' : ''}</p>
-        <form id="bulk-form" class="edit-form">
-          <div class="field">
-            <label>Série existante</label>
-            <select name="series_id">
-              <option value="">Aucune série</option>
-              ${seriesOptions}
-            </select>
-          </div>
-          <div class="field-separator">— ou créer une nouvelle série —</div>
-          <div class="field">
-            <label>Nom de la nouvelle série</label>
-            <input type="text" name="new_series_name" placeholder="ex: Astérix">
-          </div>
-          <div class="field">
-            <label>Numérotation automatique <span class="text-muted">(laisser vide pour ne pas attribuer de numéro)</span></label>
-            <input type="number" name="series_position_start" step="1" min="1" placeholder="ex: 1 → attribue 1, 2, 3…">
           </div>
           <div class="modal-actions">
             <button type="submit" class="btn btn-primary">Appliquer</button>
@@ -564,41 +510,6 @@
       } else if (type === 'location') {
         const roomId = document.getElementById('bulk-loc-room')?.value;
         data.room_id = roomId ? parseInt(roomId) : null;
-      } else {
-        // Créer une nouvelle série si nom saisi
-        let seriesId = null;
-        const newName = (fd.get('new_series_name') || '').trim();
-        if (newName) {
-          const cr = await fetch('/api/series', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: newName, source: 'manual' }),
-          });
-          if (!cr.ok) { alert('Erreur création série.'); return; }
-          const created = await cr.json();
-          seriesId = created.id;
-          await loadSeries(); // rafraîchir la liste
-        } else {
-          const sid = fd.get('series_id');
-          seriesId = sid ? parseInt(sid) : null;
-        }
-        data.series_id = seriesId;
-
-        // Numérotation automatique : envoyer chaque livre individuellement
-        const startPos = fd.get('series_position_start');
-        if (startPos && seriesId) {
-          const ids = [...selectedIds];
-          let pos = parseInt(startPos);
-          for (const id of ids) {
-            await fetch(`/api/books/${id}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ series_id: seriesId, series_position: pos++ }),
-            });
-          }
-          closeModal(); exitSelectionMode(); loadBooks();
-          return;
-        }
       }
 
       const res = await fetch('/api/books/bulk', {
@@ -626,10 +537,6 @@
   function renderModal(book) {
     const authors = Array.isArray(book.authors) ? book.authors.join(', ') : '';
     const coverSrc = book.cover_url || '/static/img/no-cover.svg';
-    const seriesOptions = allSeries.map(s =>
-      `<option value="${s.id}" ${book.series_id === s.id ? 'selected' : ''}>${escHtml(s.name)}</option>`
-    ).join('');
-
     modalContent.innerHTML = `
       <div class="modal-header">
         <img src="${escHtml(coverSrc)}" alt="couverture" class="modal-cover" onerror="this.src='/static/img/no-cover.svg'">
@@ -670,17 +577,6 @@
           <div class="field">
             <label>Éditeur</label>
             <input type="text" name="publisher" value="${escHtml(book.publisher || '')}">
-          </div>
-          <div class="field">
-            <label>Série</label>
-            <select name="series_id">
-              <option value="">Aucune série</option>
-              ${seriesOptions}
-            </select>
-          </div>
-          <div class="field">
-            <label>Position dans la série</label>
-            <input type="number" name="series_position" step="0.1" value="${book.series_position ?? ''}">
           </div>
         </div>
         <div class="field-separator">Localisation</div>
@@ -735,7 +631,7 @@
     const FIELD_LABELS = {
       title: 'Titre', subtitle: 'Sous-titre', authors: 'Auteurs',
       publisher: 'Éditeur', publish_date: 'Date', language: 'Langue',
-      page_count: 'Pages', series_id: 'Série', series_position: 'Position',
+      page_count: 'Pages',
       location_id: 'Localisation', room_id: 'Salle', cover_url: 'Couverture',
     };
 
@@ -828,9 +724,6 @@
       const fd = new FormData(e.target);
       const bookId = fd.get('book_id');
       const authorsList = (fd.get('authors') || '').split(',').map(a => a.trim()).filter(Boolean);
-      const seriesIdVal = fd.get('series_id');
-      const seriesPosVal = fd.get('series_position');
-
       const roomSel = document.getElementById('modal-loc-room');
       const roomId = roomSel?.value ? parseInt(roomSel.value) : null;
 
@@ -838,8 +731,6 @@
         title: fd.get('title'),
         authors: authorsList,
         publisher: fd.get('publisher') || null,
-        series_id: seriesIdVal ? parseInt(seriesIdVal) : null,
-        series_position: seriesPosVal ? parseFloat(seriesPosVal) : null,
         room_id: roomId,
       };
       const res = await fetch(`/api/books/${bookId}`, {

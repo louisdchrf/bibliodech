@@ -19,8 +19,6 @@ router = APIRouter()
 def list_books(
     request: Request,
     search: Optional[str] = Query(None),
-    series_id: Optional[int] = Query(None),
-    exclude_series_id: Optional[int] = Query(None),
     room_id: Optional[str] = Query(None),  # int ou "none" pour livres sans localisation
     source: Optional[str] = Query(None),   # filtre par source d'enrichissement
     sort_by: str = Query("title"),
@@ -35,10 +33,6 @@ def list_books(
         q = q.filter(
             (Book.title.ilike(like)) | (Book.authors.ilike(like)) | (Book.isbn.ilike(like))
         )
-    if series_id is not None:
-        q = q.filter(Book.series_id == series_id)
-    if exclude_series_id is not None:
-        q = q.filter((Book.series_id != exclude_series_id) | Book.series_id.is_(None))
     if room_id == "none":
         q = q.filter(Book.room_id.is_(None))
     elif room_id is not None:
@@ -112,8 +106,6 @@ def create_book(body: BookCreate, request: Request, db: Session = Depends(get_db
         language=body.language,
         source=body.source,
         work_key=body.work_key,
-        series_id=body.series_id,
-        series_position=body.series_position,
         shelf=body.shelf,
         added_at=datetime.utcnow(),
     )
@@ -243,10 +235,6 @@ def bulk_books(
         for b in books:
             if d.authors is not None:
                 b.authors = json.dumps(d.authors)
-            if d.series_id is not None:
-                b.series_id = d.series_id
-            if d.series_position is not None:
-                b.series_position = d.series_position
             if d.room_id is not None:
                 b.room_id = d.room_id
         db.commit()

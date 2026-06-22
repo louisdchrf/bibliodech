@@ -28,16 +28,6 @@
       </div>
     </div>
 
-    <div class="task-card task-card-expand">
-      <div class="task-info">
-        <div class="task-name">Fusionner les séries en doublon</div>
-        <div class="task-desc">Détecte les séries dont les noms sont quasi-identiques et propose de les fusionner.</div>
-      </div>
-      <div class="task-actions">
-        <button class="btn btn-ghost btn-sm" id="btn-find-dupes">Détecter</button>
-      </div>
-      <div id="dupes-result" style="display:none;margin-top:1rem;width:100%"></div>
-    </div>
   </div>
 </div>
 {% endblock %}
@@ -61,12 +51,8 @@
 
   // Tâches planifiables : définition complète ici
   const SCHEDULABLE = [
-    { id: 'reenrich',       name: 'Compléter les livres manquants',              desc: 'Relance l\'enrichissement pour les livres sans titre ou non trouvés lors du scan initial.' },
-    { id: 'detect-series',  name: 'Détecter les séries (heuristiques)',           desc: 'Analyse les titres pour détecter des patterns "Tome N" et assigne automatiquement les séries.' },
-    { id: 'analyze-series', name: 'Analyser les séries (Open Library + Web)',     desc: 'Interroge Open Library et DuckDuckGo pour proposer des séries sur les livres non encore assignés.', extraBtn: '<a href="/series" class="btn btn-ghost btn-sm" id="goto-series-proposals" style="display:none">Voir →</a>' },
-    { id: 'search-missing', name: 'Chercher les tomes manquants',                 desc: 'Recherche web pour chaque série afin de détecter les nouvelles sorties et tomes manquants.', extraBtn: '<a href="/missing" class="btn btn-ghost btn-sm" id="goto-missing" style="display:none">Voir →</a>' },
-    { id: 'match-library',  name: 'Trouver les tomes manquants dans la bibliothèque', desc: 'Recherche les livres dont le titre correspond à un tome manquant d\'une série. Auto = assigne les non-ambigus.', manualLabel: 'Analyser', expand: true },
-    { id: 'clean-authors',  name: 'Normaliser les auteurs',                       desc: 'Convertit les auteurs "Nom, Prénom" → "Prénom Nom" pour tous les livres.' },
+    { id: 'reenrich',      name: 'Compléter les livres manquants', desc: 'Relance l\'enrichissement pour les livres sans titre ou non trouvés lors du scan initial.' },
+    { id: 'clean-authors', name: 'Normaliser les auteurs',        desc: 'Convertit les auteurs "Nom, Prénom" → "Prénom Nom" pour tous les livres.' },
   ];
 
   // Tâches planifiables : toutes passent par /api/tasks/run/{id}
@@ -118,8 +104,6 @@
       list.insertBefore(div, firstStatic);
     });
 
-    // Wirer match-library après injection
-    wireMatchLibrary();
   }
 
   let _nextRuns = {};
@@ -207,8 +191,6 @@
             const data = await res.json();
             label = data.result;
             // Afficher liens "Voir →" si applicable
-            if (taskId === 'analyze-series') document.getElementById('goto-series-proposals')?.style && (document.getElementById('goto-series-proposals').style.display = '');
-            if (taskId === 'search-missing') document.getElementById('goto-missing')?.style && (document.getElementById('goto-missing').style.display = '');
           }
           if (statusEl) { statusEl.textContent = label; statusEl.className = 'task-status task-status-ok'; }
         } catch {
@@ -219,111 +201,6 @@
       });
     });
   }
-
-  // ── Correspondances bibliothèque ─────────────────────────────────────────
-  function wireMatchLibrary() {
-    const btn = document.getElementById('btn-match-library');
-    if (!btn) return;
-    btn.addEventListener('click', matchLibraryClick);
-  }
-
-  async function matchLibraryClick() {
-    const btn = document.getElementById('btn-match-library');
-    const statusEl = document.getElementById('status-match-library');
-    const resultEl = document.getElementById('expand-match-library');
-    btn.disabled = true; btn.textContent = '⏳';
-    statusEl.textContent = 'Analyse en cours…';
-    resultEl.style.display = 'none'; resultEl.innerHTML = '';
-
-    const matches = await fetch('/api/missing/library-matches').then(r => r.json());
-    btn.disabled = false; btn.textContent = 'Analyser';
-
-    if (!matches.length) { statusEl.textContent = 'Aucune correspondance trouvée'; return; }
-
-    const bySeries = {};
-    for (const m of matches) {
-      if (!bySeries[m.series_id]) bySeries[m.series_id] = { name: m.series_name, items: [] };
-      bySeries[m.series_id].items.push(m);
-    }
-    statusEl.textContent = `${matches.length} correspondance${matches.length > 1 ? 's' : ''} trouvée${matches.length > 1 ? 's' : ''}`;
-
-    let html = `<div style="display:flex;justify-content:flex-end;margin-bottom:.75rem">
-      <button class="btn btn-primary btn-sm" id="btn-auto-assign">Tout assigner (non ambigus)</button></div>`;
-    for (const { name, items } of Object.values(bySeries)) {
-      html += `<div style="margin-bottom:1rem"><div style="font-weight:600;margin-bottom:.4rem">${escHtml(name)}</div>`;
-      for (const m of items) {
-        html += `<div class="dupe-row" id="match-${m.book_id}-${m.series_id}" style="display:flex;align-items:center;gap:.75rem;padding:.5rem 0;border-bottom:1px solid var(--color-border)">
-          ${m.book_cover ? `<img src="${escHtml(m.book_cover)}" style="width:32px;height:44px;object-fit:cover;border-radius:2px">` : '<div style="width:32px;height:44px;background:var(--color-surface-2);border-radius:2px"></div>'}
-          <div style="flex:1;min-width:0">
-            <div style="font-size:.9rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(m.book_title)}</div>
-            <div style="font-size:.78rem;color:var(--color-text-muted)">${m.missing_title ? `Correspond à : <em>${escHtml(m.missing_title)}</em> · ` : ''}${m.current_series_name ? `dans "${escHtml(m.current_series_name)}"` : 'Non assigné'}</div>
-          </div>
-          <span style="font-size:.8rem;color:var(--color-text-muted);white-space:nowrap">→ tome ${m.suggested_position}</span>
-          <button class="btn btn-primary btn-sm assign-match-btn" data-book-id="${m.book_id}" data-series-id="${m.series_id}" data-pos="${m.suggested_position}" data-slot="match-${m.book_id}-${m.series_id}">Rattacher</button>
-        </div>`;
-      }
-      html += '</div>';
-    }
-    resultEl.innerHTML = html; resultEl.style.display = 'block';
-
-    resultEl.querySelectorAll('.assign-match-btn').forEach(b => {
-      b.addEventListener('click', async () => {
-        b.disabled = true;
-        await fetch(`/api/books/${b.dataset.bookId}/assign-series`, {
-          method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ series_id: parseInt(b.dataset.seriesId), position: parseFloat(b.dataset.pos) }),
-        });
-        document.getElementById(b.dataset.slot)?.remove();
-      });
-    });
-
-    document.getElementById('btn-auto-assign')?.addEventListener('click', async () => {
-      const ab = document.getElementById('btn-auto-assign');
-      ab.disabled = true; ab.textContent = '⏳';
-      const data = await fetch('/api/missing/auto-assign', { method: 'POST' }).then(r => r.json());
-      ab.textContent = `✓ ${data.assigned} assigné${data.assigned > 1 ? 's' : ''}${data.ambiguous ? ` · ${data.ambiguous} ambigus ignorés` : ''}`;
-      matchLibraryClick();
-    });
-  }
-
-  // ── Fusion séries doublons ─────────────────────────────────────────────────
-  document.getElementById('btn-find-dupes').addEventListener('click', async () => {
-    const btn = document.getElementById('btn-find-dupes');
-    const resultEl = document.getElementById('dupes-result');
-    btn.disabled = true; btn.textContent = '⏳';
-    resultEl.style.display = 'none';
-    const res = await fetch('/api/series/duplicates');
-    btn.disabled = false; btn.textContent = 'Détecter';
-    if (!res.ok) { resultEl.style.display = ''; resultEl.textContent = 'Erreur.'; return; }
-    const pairs = await res.json();
-    resultEl.style.display = '';
-    if (!pairs.length) { resultEl.innerHTML = '<p class="task-status task-status-ok">Aucun doublon détecté.</p>'; return; }
-    resultEl.innerHTML = pairs.map((p, i) => `
-      <div class="dupe-pair" id="dupe-${i}">
-        <div class="dupe-info">
-          <span class="dupe-name">${escHtml(p.a.name)}</span><span class="dupe-count">${p.a.book_count} livre${p.a.book_count !== 1 ? 's' : ''}</span>
-          <span class="dupe-arrow">→</span>
-          <span class="dupe-name">${escHtml(p.b.name)}</span><span class="dupe-count">${p.b.book_count} livre${p.b.book_count !== 1 ? 's' : ''}</span>
-        </div>
-        <div class="dupe-actions">
-          <button class="btn btn-sm btn-ghost merge-btn" data-from="${p.a.id}" data-into="${p.b.id}" data-pair="${i}">Garder "${escHtml(p.b.name)}"</button>
-          <button class="btn btn-sm btn-ghost merge-btn" data-from="${p.b.id}" data-into="${p.a.id}" data-pair="${i}">Garder "${escHtml(p.a.name)}"</button>
-          <button class="btn btn-sm btn-ghost" onclick="document.getElementById('dupe-${i}').remove()">Ignorer</button>
-        </div>
-      </div>`).join('');
-    resultEl.querySelectorAll('.merge-btn').forEach(b => {
-      b.addEventListener('click', async () => {
-        const pairEl = document.getElementById(`dupe-${b.dataset.pair}`);
-        b.disabled = true;
-        const r = await fetch('/api/series/merge', {
-          method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ from_id: Number(b.dataset.from), into_id: Number(b.dataset.into) }),
-        });
-        if (r.ok) pairEl.innerHTML = '<p class="task-status task-status-ok">✓ Fusionné</p>';
-        else { b.disabled = false; alert('Erreur lors de la fusion.'); }
-      });
-    });
-  });
 
   // Lancer les tâches non planifiables (statiques) + charger les schedules
   wireTaskBtns();

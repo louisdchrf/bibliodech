@@ -13,7 +13,7 @@ def utc_iso(dt: datetime | None) -> str | None:
     return s
 
 
-def book_to_dict(book: Book, series_name: str | None = None) -> dict:
+def book_to_dict(book: Book) -> dict:
     # Localisation effective : room_id direct prioritaire, sinon via shelf legacy
     room = book.room
     if room is None and book.location and book.location.room:
@@ -70,12 +70,9 @@ def book_to_dict(book: Book, series_name: str | None = None) -> dict:
         "language": book.language,
         "source": book.source,
         "work_key": book.work_key,
-        "series_id": book.series_id,
-        "series_position": book.series_position,
         "room_id": room.id if room else None,
         "location": loc,
         "added_at": utc_iso(book.added_at),
-        "series_name": series_name or (book.series.name if book.series else None),
         "enrichment_status": book.enrichment_status,
         "active_loan": loan_info,
         "source_data": json.loads(book.source_data) if book.source_data else None,

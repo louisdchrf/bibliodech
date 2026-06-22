@@ -35,12 +35,8 @@ def get_next_runs() -> dict[str, str | None]:
 # Tâches planifiables : id → (label, coroutine_factory)
 # Chaque coroutine_factory reçoit (db) et exécute la logique directement
 SCHEDULABLE_TASKS = {
-    "reenrich":       "Compléter les livres manquants",
-    "search-missing": "Chercher les tomes manquants",
-    "detect-series":  "Détecter les séries",
-    "analyze-series": "Analyser les séries (Open Library + Web)",
-    "match-library":  "Trouver les tomes manquants dans la bibliothèque",
-    "clean-authors":  "Normaliser les auteurs",
+    "reenrich":      "Compléter les livres manquants",
+    "clean-authors": "Normaliser les auteurs",
 }
 
 _DEFAULT_CONFIG = {
@@ -106,41 +102,6 @@ async def _execute_task(task_id: str, db) -> str:
         from app.routers.books import _reenrich_missing
         result = await _reenrich_missing(db, force=False)
         return f"{result.get('queued', 0)} livres enrichis"
-
-    if task_id == "search-missing":
-        from app.routers.missing import search_all_missing_web_logic
-        result = await search_all_missing_web_logic(db)
-        return f"{result['series_checked']} séries · {result['missing_added']} manquants"
-
-    if task_id == "detect-series":
-        from app.routers.series import _detect_all_series
-        result = await _detect_all_series(db)
-        return f"{result.get('found_instant', 0)} séries détectées"
-
-    if task_id == "analyze-series":
-        from app.routers.series import _analyze_series_logic
-        result = await _analyze_series_logic(db)
-        n = len(result)
-        return f"{n} proposition{'s' if n != 1 else ''}"
-
-    if task_id == "match-library":
-        from app.routers.missing import _find_library_matches, auto_assign_matches as _aa
-        from collections import defaultdict
-        matches = _find_library_matches(db)
-        by_slot: dict = defaultdict(list)
-        for m in matches:
-            by_slot[(m["series_id"], m["suggested_position"])].append(m)
-        assigned = 0
-        for (series_id, pos), candidates in by_slot.items():
-            if len(candidates) == 1:
-                from app.models import Book
-                book = db.query(Book).filter(Book.id == candidates[0]["book_id"]).first()
-                if book:
-                    book.series_id = series_id
-                    book.series_position = pos
-                    assigned += 1
-        db.commit()
-        return f"{assigned} livre{'s' if assigned != 1 else ''} assigné{'s' if assigned != 1 else ''}"
 
     if task_id == "clean-authors":
         from app.routers.books import _clean_authors_logic
