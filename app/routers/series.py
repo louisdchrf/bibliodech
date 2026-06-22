@@ -49,6 +49,53 @@ def _first_word(title: str) -> str | None:
     return None
 
 
+# ── Parsing du titre ─────────────────────────────────────────────────────────
+
+# Chaque pattern : (regex, group_série, group_position)
+_TITLE_PATTERNS = [
+    # "Série. N, sous-titre"  — format bibliographique BnF/SUDOC
+    # ex: "Spirou et Fantasio. 10, 1972-1975"  |  "La femme léopard. 2, Le maître…"
+    (re.compile(r'^(.+?)\.\s*(\d{1,3})\s*,\s*.+$'), 1, 2),
+
+    # "Série. Tome N"  |  "Série. Tome N, sous-titre"
+    (re.compile(r'^(.+?)\.\s*[Tt]omes?\s+(\d{1,3})', re.I), 1, 2),
+
+    # "Série Tome N"  (sans point)
+    (re.compile(r'^(.+?)\s+[Tt]omes?\s+(\d{1,3})(?:\s|$|,|-)', re.I), 1, 2),
+
+    # "Série - Tome N"  |  "Série – Tome N"
+    (re.compile(r'^(.+?)\s*[-–]\s*[Tt]omes?\s+(\d{1,3})', re.I), 1, 2),
+
+    # "Série Volume N"  |  "Série Vol. N"
+    (re.compile(r'^(.+?)\s+(?:[Vv]olumes?|[Vv]ol\.)\s*(\d{1,3})', re.I), 1, 2),
+
+    # "Série - T. N"  |  "Série T. N"
+    (re.compile(r'^(.+?)\s*[-–]?\s*[Tt]\.\s*(\d{1,3})(?:\s|$)', re.I), 1, 2),
+
+    # "Série n°N"  |  "Série no N"
+    (re.compile(r'^(.+?)\s+n[o°]\s*(\d{1,3})', re.I), 1, 2),
+]
+
+_TITLE_NOISE = re.compile(
+    r'\s*[\({\[].+?[\)}\]]$|'          # parenthèses/crochets en fin
+    r'\s*:\s*.+$|'                       # sous-titre après ":"
+    r'\s*[-–]\s*.+$',                    # sous-titre après tiret
+)
+
+
+def _parse_title(title: str) -> tuple[str, int | None] | None:
+    """Extrait (nom_de_série, position) depuis un titre, ou None si non reconnu."""
+    for pattern, gi, gp in _TITLE_PATTERNS:
+        m = pattern.match(title.strip())
+        if m:
+            raw_name = m.group(gi).strip().rstrip('.,;:- ')
+            # Nettoyer le nom restant (sous-titres, parenthèses…)
+            name = _TITLE_NOISE.sub('', raw_name).strip().rstrip('.,;:- ')
+            if len(name) >= 2:
+                return name, int(m.group(gp))
+    return None
+
+
 # ── Requête Google Books pour le nom de série ─────────────────────────────────
 
 async def _google_series_name(isbn: str, api_key: str = "") -> str | None:
@@ -77,6 +124,69 @@ async def _detect(db: Session) -> dict:
     import app.settings as cfg
     gb_key = cfg.get(db, "googlebooks_api_key") or ""
 
+    books = (
+        db.query(Book)
+        .filter(Book.enrichment_status == "ok", Book.series_id.is_(None))
+        .all()
+    )
+
+    auto_assigned = 0
+    proposals_created = 0
+    already_proposed_book_sets: list[frozenset] = [
+        frozenset(json.loads(p.book_ids))
+        for p in db.query(SeriesProposal).filter(SeriesProposal.status == "pending").all()
+    ]
+
+    def _already_proposed(book_ids: list[int]) -> bool:
+        s = frozenset(book_ids)
+        return any(s == existing for existing in already_proposed_book_sets)
+
+    # ── Signal 0 : parsing direct du titre ──────────────────────────────────
+    # Groupe les orphelins dont le titre contient explicitement un nom de série.
+    # Haute confiance → auto-assignation dès 1 livre si la série existe déjà,
+    # création de série si ≥1 livre avec position, regroupement si ≥2 livres.
+
+    title_groups: dict[str, list[tuple[Book, int | None]]] = defaultdict(list)
+    parsed_books: set[int] = set()
+
+    for b in books:
+        result = _parse_title(b.title)
+        if result:
+            series_name, position = result
+            title_groups[_norm(series_name)].append((b, position))
+            parsed_books.add(b.id)
+
+    for norm_name, entries in title_groups.items():
+        # Trouver le nom cannonique (le plus fréquent dans le groupe)
+        name_counts: dict[str, int] = defaultdict(int)
+        for b, _ in entries:
+            r = _parse_title(b.title)
+            if r:
+                name_counts[r[0]] += 1
+        canon_name = max(name_counts, key=name_counts.__getitem__)
+
+        # Chercher une série existante (par nom normalisé)
+        existing = db.query(Series).all()
+        series = next((s for s in existing if _norm(s.name) == norm_name), None)
+
+        if not series:
+            # Chercher aussi les séries dont le nom normalisé est contenu
+            series = next((s for s in existing if norm_name in _norm(s.name) or _norm(s.name) in norm_name), None)
+
+        if not series:
+            series = Series(name=canon_name, source="detected")
+            db.add(series)
+            db.flush()
+
+        for b, position in entries:
+            b.series_id = series.id
+            if position is not None and b.series_position is None:
+                b.series_position = position
+            auto_assigned += 1
+
+    db.commit()
+
+    # Recalculer les orphelins après Signal 0
     books = (
         db.query(Book)
         .filter(Book.enrichment_status == "ok", Book.series_id.is_(None))
@@ -113,17 +223,6 @@ async def _detect(db: Session) -> dict:
         au = _norm_authors(b.authors)
         if au:
             author_groups[(au, pub)].append(b)
-
-    auto_assigned = 0
-    proposals_created = 0
-    already_proposed_book_sets: list[frozenset] = [
-        frozenset(json.loads(p.book_ids))
-        for p in db.query(SeriesProposal).filter(SeriesProposal.status == "pending").all()
-    ]
-
-    def _already_proposed(book_ids: list[int]) -> bool:
-        s = frozenset(book_ids)
-        return any(s == existing for existing in already_proposed_book_sets)
 
     # ── Signal 1 : préfixe + éditeur ────────────────────────────────────────
     for (fw, pub), group in prefix_groups.items():
