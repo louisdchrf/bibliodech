@@ -182,15 +182,36 @@ def _ocr_series_from_cover(cover_url: str, known_series: list[str]) -> str | Non
     except Exception:
         return None
 
-    w, h = img.size
-    # Tiers supérieur (séries souvent en haut), puis image complète
-    top = img.crop((0, 0, w, h // 3))
-    top_lines = [l.strip() for l in _ocr_text(_preprocess_for_ocr(top)).splitlines() if len(l.strip()) >= 2]
-    full_lines = [l.strip() for l in _ocr_text(_preprocess_for_ocr(img)).splitlines() if len(l.strip()) >= 2]
+    def _clean_line(s: str) -> str:
+        """Nettoie les caractères parasites OCR : underscores, tirets isolés, etc."""
+        return re.sub(r'[_|\\]', '', s).strip().strip('.,;:!?- ')
 
-    # Texte unifié tiers supérieur (jointure pour capturer "LES AVENTURES DE\nTINTIN")
+    w, h = img.size
+    # Scanner plusieurs bandes verticales pour maximiser les chances de trouver le titre
+    crops = {
+        "top_quarter": img.crop((0, 0, w, h // 4)),
+        "top_third":   img.crop((0, 0, w, h // 3)),
+        "top_half":    img.crop((0, 0, w, h // 2)),
+        "full":        img,
+    }
+    crop_lines: dict[str, list[str]] = {}
+    for name, crop in crops.items():
+        crop_lines[name] = [_clean_line(l) for l in _ocr_text(_preprocess_for_ocr(crop)).splitlines()
+                            if len(_clean_line(l)) >= 2]
+
+    top_lines = crop_lines["top_quarter"]
+    full_lines = crop_lines["full"]
+
+    # Texte unifié (jointure pour capturer "LES AVENTURES DE\nTINTIN")
+    all_lines = []
+    seen = set()
+    for lines in crop_lines.values():
+        for l in lines:
+            if l not in seen:
+                all_lines.append(l)
+                seen.add(l)
     top_joined = " ".join(top_lines)
-    full_joined = " ".join(full_lines)
+    full_joined = " ".join(all_lines)
 
     known_norm = {_norm(s): s for s in known_series}
 
@@ -230,24 +251,46 @@ def _ocr_series_from_cover(cover_url: str, known_series: list[str]) -> str | Non
         if words and all(w in full_norm for w in words):
             return ks
 
-    # ── Passe 3 : heuristique — première ligne en majuscules dans le top ─────
-    for line in top_lines:
-        clean = _SERIE_PREFIXES.sub("", line).strip().rstrip(".,;:!?- ")
-        # Ignorer les lignes trop courtes ou trop longues
+    _KNOWN_PUBLISHERS = {
+        "dupuis", "dargaud", "casterman", "lombard", "glenat", "delcourt",
+        "soleil", "bamboo", "lucky", "comics", "marvel", "dc", "editions",
+    }
+
+    def _is_author_line(s: str) -> bool:
+        """Deux mots en majuscules ou mixte = probablement un auteur."""
+        words = s.split()
+        if len(words) == 2:
+            # "BRUNO DEQUIER" ou "Bruno Dequier" → auteur
+            if all(w[0].isupper() for w in words if w):
+                return True
+        if len(words) == 3 and all(w[0].isupper() for w in words if w):
+            return True
+        return False
+
+    # ── Passe 3 : heuristique — lignes en majuscules dans toutes les bandes ────
+    best_candidate: str | None = None
+    for line in all_lines:
+        clean = _SERIE_PREFIXES.sub("", line).strip()
         if len(clean) < 3 or len(clean) > 60:
             continue
-        # Ignorer les lignes qui ressemblent à des auteurs (Prénom Nom)
-        if re.match(r'^[A-Z][a-z]+ [A-Z][a-z]+$', clean):
+        if _is_author_line(clean):
+            continue
+        if _norm(clean) in _KNOWN_PUBLISHERS:
             continue
         if clean.isupper() or (clean[0].isupper() and sum(1 for c in clean if c.isupper()) >= 2):
             n = _norm(clean)
+            # D'abord chercher dans les séries connues
             for kn, ks in known_norm.items():
                 if len(n) >= 4 and (n in kn or kn in n):
                     return ks
-            # Pas de correspondance → ne pas retourner du texte aléatoire sans série connue
-            # (trop de bruit)
+            # Conserver comme candidat si assez long et vraiment en majuscules (1 mot)
+            if clean.isupper() and len(clean) >= 4 and best_candidate is None:
+                words = clean.split()
+                if len(words) == 1:  # un seul mot en majuscules → probablement titre de série
+                    best_candidate = clean.title()
 
-    return None
+    # Retourner le meilleur candidat uppercase même sans série connue
+    return best_candidate
 
     return None
 
