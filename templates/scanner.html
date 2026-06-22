@@ -124,6 +124,11 @@
     } catch (e) { /* ignore */ }
   }
 
+  function clearShelf() {
+    selShelf.innerHTML = '<option value="">— Choisir —</option>';
+    selShelf.disabled = true;
+  }
+
   selSite.addEventListener('change', () => {
     const siteId = parseInt(selSite.value) || null;
     const site = locTree.find(s => s.id === siteId);
