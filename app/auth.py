@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import datetime
 
@@ -9,9 +10,20 @@ from sqlalchemy.orm import Session
 
 from app.models import User
 
-SECRET_KEY = os.environ.get("SECRET_KEY", "change-me-in-production-please")
+log = logging.getLogger(__name__)
+
+_DEFAULT_SECRET = "change-me-in-production-please"
+SECRET_KEY = os.environ.get("SECRET_KEY", _DEFAULT_SECRET)
+if SECRET_KEY == _DEFAULT_SECRET:
+    log.warning(
+        "[auth] SECRET_KEY non définie — utilisation de la valeur par défaut. "
+        "Définissez SECRET_KEY dans l'environnement pour sécuriser les sessions."
+    )
+
 COOKIE_NAME = "bibliodech_session"
 COOKIE_MAX_AGE = 7 * 24 * 3600
+# Activer secure=True uniquement hors dev (HTTPS requis)
+_COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").lower() in ("1", "true", "yes")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 serializer = URLSafeTimedSerializer(SECRET_KEY)
@@ -37,6 +49,7 @@ def create_session(response: Response, user_id: int) -> None:
         max_age=COOKIE_MAX_AGE,
         httponly=True,
         samesite="lax",
+        secure=_COOKIE_SECURE,
     )
 
 

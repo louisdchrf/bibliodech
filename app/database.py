@@ -82,6 +82,20 @@ def init_db():
             """))
             conn.execute(text("CREATE INDEX ix_app_logs_created_at ON app_logs (created_at)"))
 
+        # ── Index de performance (idempotents via IF NOT EXISTS) ─────────────
+        existing_idx = {r[0] for r in conn.execute(text(
+            "SELECT name FROM sqlite_master WHERE type='index'"
+        ))}
+        perf_indexes = [
+            ("ix_books_series_id",          "CREATE INDEX IF NOT EXISTS ix_books_series_id ON books (series_id)"),
+            ("ix_books_room_id",             "CREATE INDEX IF NOT EXISTS ix_books_room_id ON books (room_id)"),
+            ("ix_books_enrichment_status",   "CREATE INDEX IF NOT EXISTS ix_books_enrichment_status ON books (enrichment_status)"),
+            ("ix_series_proposals_status",   "CREATE INDEX IF NOT EXISTS ix_series_proposals_status ON series_proposals (status)"),
+        ]
+        for idx_name, ddl in perf_indexes:
+            if idx_name not in existing_idx:
+                conn.execute(text(ddl))
+
         conn.commit()
 
         # ── Migration localisations plates → hiérarchie sites/rooms/shelves ──

@@ -1,6 +1,19 @@
 import json
+import logging
 from datetime import date, datetime
 from app.models import Book
+
+log = logging.getLogger(__name__)
+
+
+def _safe_json(raw: str | None, default, book_id: int, field: str):
+    if not raw:
+        return default
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as e:
+        log.warning("book_to_dict: JSON invalide book_id=%s field=%s: %s", book_id, field, e)
+        return default
 
 
 def utc_iso(dt: datetime | None) -> str | None:
@@ -32,7 +45,8 @@ def book_to_dict(book: Book) -> dict:
     # Prêt actif (pas de return_date)
     try:
         active_loan = next((l for l in book.loans if l.return_date is None), None)
-    except Exception:
+    except Exception as e:
+        log.warning("book_to_dict: erreur loans book_id=%s: %s", book.id, e)
         active_loan = None
 
     if active_loan:
@@ -61,7 +75,7 @@ def book_to_dict(book: Book) -> dict:
         "isbn": book.isbn,
         "title": book.title,
         "subtitle": book.subtitle,
-        "authors": json.loads(book.authors) if book.authors else [],
+        "authors": _safe_json(book.authors, [], book.id, "authors"),
         "publisher": book.publisher,
         "publish_date": book.publish_date,
         "cover_url": book.cover_url,
@@ -75,5 +89,5 @@ def book_to_dict(book: Book) -> dict:
         "added_at": utc_iso(book.added_at),
         "enrichment_status": book.enrichment_status,
         "active_loan": loan_info,
-        "source_data": json.loads(book.source_data) if book.source_data else None,
+        "source_data": _safe_json(book.source_data, None, book.id, "source_data"),
     }

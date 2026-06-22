@@ -35,9 +35,11 @@ def _norm_pub(p: str | None) -> str:
 
 
 def _norm_authors(a: str | None) -> frozenset:
+    if not a:
+        return frozenset()
     try:
-        return frozenset(_norm(x) for x in json.loads(a or "[]"))
-    except Exception:
+        return frozenset(_norm(x) for x in json.loads(a))
+    except json.JSONDecodeError:
         return frozenset()
 
 
@@ -372,6 +374,9 @@ async def _sudoc_detect(db: Session, task_id: str = "sudoc-series") -> dict:
     assigned = 0
     proposed = 0
 
+    # Charger toutes les séries une seule fois (dict norm_name → Series)
+    series_by_norm: dict[str, Series] = {_norm(s.name): s for s in db.query(Series).all()}
+
     for i, b in enumerate(books):
         series_name = None
         series_vol = None
@@ -386,12 +391,12 @@ async def _sudoc_detect(db: Session, task_id: str = "sudoc-series") -> dict:
                 series_vol = info.get("series_position")
 
         if series_name:
-            existing = db.query(Series).all()
-            series = next((s for s in existing if _norm(s.name) == _norm(series_name)), None)
+            series = series_by_norm.get(_norm(series_name))
             if not series:
                 series = Series(name=series_name, source="sudoc")
                 db.add(series)
                 db.flush()
+                series_by_norm[_norm(series_name)] = series
             b.series_id = series.id
             if series_vol is not None and b.series_position is None:
                 b.series_position = int(series_vol)
@@ -558,6 +563,9 @@ async def _detect(db: Session, task_id: str = "detect-series") -> dict:
         if i % 10 == 0:
             await asyncio.sleep(0)
 
+    # Charger toutes les séries une seule fois pour éviter N+1 queries
+    all_series_by_norm: dict[str, Series] = {_norm(s.name): s for s in db.query(Series).all()}
+
     for norm_name, entries in title_groups.items():
         # Trouver le nom cannonique (le plus fréquent dans le groupe)
         name_counts: dict[str, int] = defaultdict(int)
@@ -568,17 +576,20 @@ async def _detect(db: Session, task_id: str = "detect-series") -> dict:
         canon_name = max(name_counts, key=name_counts.__getitem__)
 
         # Chercher une série existante (par nom normalisé)
-        existing = db.query(Series).all()
-        series = next((s for s in existing if _norm(s.name) == norm_name), None)
+        series = all_series_by_norm.get(norm_name)
 
         if not series:
             # Chercher aussi les séries dont le nom normalisé est contenu
-            series = next((s for s in existing if norm_name in _norm(s.name) or _norm(s.name) in norm_name), None)
+            series = next(
+                (s for n, s in all_series_by_norm.items() if norm_name in n or n in norm_name),
+                None,
+            )
 
         if not series:
             series = Series(name=canon_name, source="detected")
             db.add(series)
             db.flush()
+            all_series_by_norm[_norm(canon_name)] = series
 
         for b, position in entries:
             b.series_id = series.id

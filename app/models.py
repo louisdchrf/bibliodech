@@ -34,14 +34,14 @@ class Book(Base):
     source = Column(String, nullable=False, default="manual")
     work_key = Column(String, nullable=True)
 
-    series_id = Column(Integer, ForeignKey("series.id"), nullable=True)
+    series_id = Column(Integer, ForeignKey("series.id"), nullable=True, index=True)
     series_position = Column(Float, nullable=True)
 
     shelf = Column(String, nullable=True)
     location_id = Column(Integer, ForeignKey("shelves.id"), nullable=True)   # legacy shelf
-    room_id = Column(Integer, ForeignKey("rooms.id"), nullable=True)
+    room_id = Column(Integer, ForeignKey("rooms.id"), nullable=True, index=True)
     added_at = Column(DateTime, default=datetime.utcnow)
-    enrichment_status = Column(String, nullable=False, default="ok")
+    enrichment_status = Column(String, nullable=False, default="ok", index=True)
     enrichment_source = Column(String, nullable=True)  # source principale (ex: "sudoc", "bnf")
     source_data = Column(Text, nullable=True)  # JSON: résultats bruts par source
 
@@ -142,7 +142,7 @@ class SeriesProposal(Base):
     proposed_name     = Column(String, nullable=True)          # None = user must provide
     signal            = Column(String, nullable=False)          # prefix | author
     existing_series_id = Column(Integer, ForeignKey("series.id", ondelete="SET NULL"), nullable=True)
-    status            = Column(String, nullable=False, default="pending")  # pending|accepted|rejected
+    status            = Column(String, nullable=False, default="pending", index=True)  # pending|accepted|rejected
     detected_at       = Column(DateTime, default=datetime.utcnow)
 
     existing_series   = relationship("Series")
