@@ -1125,7 +1125,13 @@
       + sources.map(s => `<option value="${s.id}">${escHtml(s.label)} (${s.count})</option>`).join('');
   }
 
-  Promise.all([loadLocations(), loadSourceFilter()]).then(() => { loadBooks(); updateReenrichCount(); });
+  Promise.all([loadLocations(), loadSourceFilter()]).then(async () => {
+    await loadBooks();
+    updateReenrichCount();
+    // Ouvrir directement un livre si ?book=ID dans l'URL
+    const bookId = new URLSearchParams(window.location.search).get('book');
+    if (bookId) openModal(parseInt(bookId));
+  });
 
   // Rechargement des localisations si on revient sur l'onglet après en avoir créé une
   document.addEventListener('visibilitychange', () => {
