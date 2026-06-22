@@ -21,7 +21,6 @@
     <ul id="sources-list" class="sources-list"></ul>
 
     <div class="settings-actions">
-      <button id="btn-save" class="btn btn-primary">Enregistrer</button>
       <span id="save-msg" class="save-msg"></span>
     </div>
   </div>
@@ -55,8 +54,7 @@
         </datalist>
       </li>
     </ul>
-    <button id="btn-save-display" class="btn btn-primary" style="margin-top:.75rem">Enregistrer</button>
-    <span id="display-msg" class="save-msg"></span>
+    <span id="display-msg" class="save-msg" style="margin-top:.75rem;display:block"></span>
   </div>
 
   <!-- Onglet Email -->
@@ -100,7 +98,6 @@
     </div>
 
     <div class="settings-actions" style="margin-bottom:2rem">
-      <button id="btn-save-smtp" class="btn btn-primary">Enregistrer</button>
       <div style="display:flex;gap:.5rem;align-items:center">
         <input type="email" id="smtp-test-to" class="input-sm" placeholder="Adresse de test…" style="width:220px">
         <button id="btn-test-smtp" class="btn btn-ghost">Envoyer un test</button>
@@ -362,7 +359,6 @@
 
   // ── Sources ───────────────────────────────────────────────────────────────
   const list = document.getElementById('sources-list');
-  const btnSave = document.getElementById('btn-save');
   const saveMsg = document.getElementById('save-msg');
   let sources = [];
 
@@ -396,6 +392,12 @@
         ${hasKey ? `<button type="button" class="btn btn-ghost btn-xs api-key-btn" data-source="${src.id}" data-key="${hasKey}" title="Configurer la clé API">🔑</button>` : ''}
       `;
       list.appendChild(li);
+    });
+    list.querySelectorAll('input[type=checkbox][data-id]').forEach(cb => {
+      cb.addEventListener('change', saveSources);
+    });
+    list.querySelectorAll('.source-timeout').forEach(inp => {
+      inp.addEventListener('blur', saveSources);
     });
     initDrag();
     wireApiKeyBtns();
@@ -467,7 +469,6 @@
   function initDrag() {
     list.querySelectorAll('.source-item').forEach(item => {
       item.addEventListener('dragstart', () => { dragIdx = parseInt(item.dataset.index); item.classList.add('dragging'); });
-      item.addEventListener('dragend', () => { item.classList.remove('dragging'); dragIdx = null; });
       item.addEventListener('dragover', (e) => {
         e.preventDefault();
         const overIdx = parseInt(item.dataset.index);
@@ -477,10 +478,11 @@
         dragIdx = overIdx;
         renderSources();
       });
+      item.addEventListener('dragend', () => { item.classList.remove('dragging'); dragIdx = null; saveSources(); });
     });
   }
 
-  btnSave.addEventListener('click', async () => {
+  async function saveSources() {
     list.querySelectorAll('input[type=checkbox]').forEach(cb => {
       const src = sources.find(s => s.id === cb.dataset.id);
       if (src) src.enabled = cb.checked;
@@ -490,10 +492,10 @@
       if (src) src.timeout = parseFloat(inp.value) || 5;
     });
     const r1 = await fetch('/api/settings/lookup_sources', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ value: sources }) });
-    saveMsg.textContent = r1.ok ? 'Enregistré !' : 'Erreur lors de la sauvegarde.';
+    saveMsg.textContent = r1.ok ? '✓ Enregistré' : 'Erreur';
     saveMsg.className = 'save-msg ' + (r1.ok ? 'save-msg-ok' : 'save-msg-err');
-    setTimeout(() => saveMsg.textContent = '', 2500);
-  });
+    setTimeout(() => { saveMsg.textContent = ''; saveMsg.className = 'save-msg'; }, 2000);
+  }
 
   // ── Users ─────────────────────────────────────────────────────────────────
   const tbody = document.getElementById('users-tbody');
@@ -751,7 +753,7 @@
     inp.type = inp.type === 'password' ? 'text' : 'password';
   });
 
-  document.getElementById('btn-save-smtp').addEventListener('click', async () => {
+  async function saveSmtp() {
     const smtp = {
       host:     document.getElementById('smtp-host').value.trim(),
       port:     parseInt(document.getElementById('smtp-port').value) || 587,
@@ -760,19 +762,25 @@
       from_:    document.getElementById('smtp-from').value.trim(),
       tls:      document.getElementById('smtp-tls').checked,
     };
-    const siteUrl   = document.getElementById('site-url').value.trim();
-    const overdue   = document.getElementById('mail-overdue').checked;
-    const newAcc    = document.getElementById('mail-new-account').checked;
-    const resetPw   = document.getElementById('mail-reset-password').checked;
-
+    const siteUrl = document.getElementById('site-url').value.trim();
+    const overdue = document.getElementById('mail-overdue').checked;
+    const newAcc  = document.getElementById('mail-new-account').checked;
+    const resetPw = document.getElementById('mail-reset-password').checked;
     const saves = await Promise.all([
-      fetch('/api/settings/smtp',                 { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ value: smtp }) }),
-      fetch('/api/settings/site_url',             { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ value: siteUrl }) }),
-      fetch('/api/settings/mail_overdue',         { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ value: overdue }) }),
-      fetch('/api/settings/mail_new_account',     { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ value: newAcc }) }),
-      fetch('/api/settings/mail_reset_password',  { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ value: resetPw }) }),
+      fetch('/api/settings/smtp',                { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ value: smtp }) }),
+      fetch('/api/settings/site_url',            { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ value: siteUrl }) }),
+      fetch('/api/settings/mail_overdue',        { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ value: overdue }) }),
+      fetch('/api/settings/mail_new_account',    { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ value: newAcc }) }),
+      fetch('/api/settings/mail_reset_password', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ value: resetPw }) }),
     ]);
-    smtpMsg(saves.every(r => r.ok) ? 'Enregistré !' : 'Erreur lors de la sauvegarde.', saves.every(r => r.ok));
+    smtpMsg(saves.every(r => r.ok) ? '✓ Enregistré' : 'Erreur', saves.every(r => r.ok));
+  }
+
+  ['smtp-host','smtp-port','smtp-user','smtp-password','smtp-from','site-url'].forEach(id => {
+    document.getElementById(id)?.addEventListener('blur', saveSmtp);
+  });
+  ['smtp-tls','mail-overdue','mail-new-account','mail-reset-password'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', saveSmtp);
   });
 
   document.getElementById('btn-test-smtp').addEventListener('click', async () => {
@@ -814,7 +822,6 @@
     locationCb.checked = getPref('badgeLocation');
 
     const tzInput = document.getElementById('pref-timezone');
-    const btnSaveDisplay = document.getElementById('btn-save-display');
     const displayMsg = document.getElementById('display-msg');
 
     darkCb.addEventListener('change', () => {
@@ -823,23 +830,21 @@
     });
     locationCb.addEventListener('change', () => setPref('badgeLocation', locationCb.checked));
 
-    // Charge le timezone depuis l'API
     fetch('/api/settings').then(r => r.json()).then(d => {
       if (tzInput && d.timezone) tzInput.value = d.timezone;
     });
 
-    btnSaveDisplay && btnSaveDisplay.addEventListener('click', async () => {
-      const tz = tzInput ? tzInput.value.trim() : '';
-      if (tz) {
-        const r = await fetch('/api/settings/timezone', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(tz) });
-        if (r.ok) {
-          window.APP_TIMEZONE = tz;
-          displayMsg.textContent = 'Enregistré'; displayMsg.className = 'save-msg save-ok';
-        } else {
-          displayMsg.textContent = 'Erreur'; displayMsg.className = 'save-msg save-err';
-        }
-        setTimeout(() => { displayMsg.textContent = ''; displayMsg.className = 'save-msg'; }, 2500);
+    tzInput && tzInput.addEventListener('blur', async () => {
+      const tz = tzInput.value.trim();
+      if (!tz) return;
+      const r = await fetch('/api/settings/timezone', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(tz) });
+      if (r.ok) {
+        window.APP_TIMEZONE = tz;
+        displayMsg.textContent = '✓ Enregistré'; displayMsg.className = 'save-msg save-msg-ok';
+      } else {
+        displayMsg.textContent = 'Erreur'; displayMsg.className = 'save-msg save-msg-err';
       }
+      setTimeout(() => { displayMsg.textContent = ''; displayMsg.className = 'save-msg'; }, 2000);
     });
   }
 
