@@ -148,7 +148,7 @@ async def _enrich_book(book_id: int, isbn: str, _progress_key: str | None = None
             if _progress_key in sched._running:
                 p = sched._running[_progress_key].get("progress")
                 if p:
-                    p["current"] += 1
+                    p["current"] = min(p["current"] + 1, p["total"])
         db.close()
 
 
@@ -350,15 +350,17 @@ async def re_enrich_all(
     if unique:
         from app import scheduler as sched
         from datetime import datetime, timezone
-        key = "reenrich-bg"
+        import time
+        key = f"reenrich-bg-{int(time.time())}"
         sched._running[key] = {
             "label": f"Enrichissement ({len(unique)} livres)",
             "started_at": datetime.now(timezone.utc).isoformat(),
             "progress": {"current": 0, "total": len(unique)},
         }
+        _key = key  # capture locale pour le lambda
         for b in unique:
             background_tasks.add_task(_enrich_book, b.id, b.isbn, key)
-        background_tasks.add_task(lambda: sched._running.pop(key, None))
+        background_tasks.add_task(lambda: sched._running.pop(_key, None))
     return {"queued": len(unique), "book_ids": [b.id for b in unique]}
 
 

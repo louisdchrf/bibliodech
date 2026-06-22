@@ -208,7 +208,18 @@
 
       if (_tasks.length) {
         btn.style.display = '';
-        labelEl.textContent = _tasks.length === 1 ? _tasks[0].label : _tasks.length + ' tâches';
+        if (_tasks.length === 1) {
+          var t = _tasks[0];
+          var p = t.progress;
+          if (p && p.total > 0) {
+            var pct = Math.min(100, Math.round(p.current / p.total * 100));
+            labelEl.textContent = t.label + ' — ' + p.current + '/' + p.total + ' (' + pct + '%)';
+          } else {
+            labelEl.textContent = t.label;
+          }
+        } else {
+          labelEl.textContent = _tasks.length + ' tâches';
+        }
       } else {
         btn.style.display = 'none';
       }
