@@ -1,5 +1,6 @@
 import json
 import re
+import xml.etree.ElementTree as ET
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
@@ -15,6 +16,50 @@ from app.models import Book
 from app.schemas import ScanRequest
 
 router = APIRouter()
+
+
+async def _lookup_series_sudoc(isbn: str) -> tuple[str, int | None] | None:
+    """
+    Interroge SUDOC par ISBN pour récupérer le nom de série (champ UNIMARC 225$a)
+    et éventuellement le numéro de volume (225$v).
+    Retourne (series_name, volume) ou None.
+    """
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            # Étape 1 : ISBN → PPN
+            r1 = await client.get(f"https://www.sudoc.fr/services/isbn2ppn/{isbn}")
+            r1.raise_for_status()
+            ppn_match = re.search(r"<ppn>(\d+)</ppn>", r1.text)
+            if not ppn_match:
+                return None
+            ppn = ppn_match.group(1)
+
+            # Étape 2 : PPN → UNIMARC XML
+            r2 = await client.get(f"https://www.sudoc.fr/{ppn}.xml")
+            r2.raise_for_status()
+
+        root = ET.fromstring(r2.text)
+        ns = {"m": "http://www.loc.gov/MARC21/slim"}
+        # Champ 225 = mention de collection/série en UNIMARC
+        for df in root.iter():
+            if df.get("tag") == "225":
+                name = None
+                vol = None
+                for sf in df:
+                    code = sf.get("code")
+                    if code == "a" and sf.text:
+                        name = sf.text.strip()
+                    elif code == "v" and sf.text:
+                        try:
+                            vol = int(re.search(r"\d+", sf.text).group())
+                        except Exception:
+                            pass
+                if name:
+                    return (name, vol)
+    except Exception:
+        pass
+    return None
 
 
 def _normalize_isbn(isbn: str) -> str:
@@ -141,6 +186,24 @@ async def _enrich_book(book_id: int, isbn: str, _progress_key: str | None = None
 
         audit_log(db, book.id, "enriched", detail={"source": info.get("source"), "title": info.get("title")})
         db.commit()
+
+        # Chercher la série dans SUDOC si le livre n'en a pas encore
+        if book.series_id is None:
+            sudoc = await _lookup_series_sudoc(isbn)
+            if sudoc:
+                series_name, vol = sudoc
+                from app.models import Series
+                from app.routers.series import _norm
+                existing = db.query(Series).all()
+                series = next((s for s in existing if _norm(s.name) == _norm(series_name)), None)
+                if not series:
+                    series = Series(name=series_name, source="sudoc")
+                    db.add(series)
+                    db.flush()
+                book.series_id = series.id
+                if vol is not None and book.series_position is None:
+                    book.series_position = vol
+                db.commit()
 
     finally:
         if _progress_key:
