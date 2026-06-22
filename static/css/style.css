@@ -546,6 +546,10 @@ input:focus, select:focus {
   gap: 1.25rem;
 }
 
+.book-grid.series-grid {
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+}
+
 .book-card {
   background: var(--color-surface);
   border-radius: var(--radius-md);
