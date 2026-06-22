@@ -1011,6 +1011,8 @@ def get_missing_volumes(request: Request, db: Session = Depends(get_db)):
         min_pos, max_pos = min(positions), max(positions)
         owned = set(positions)
         gaps = [i for i in range(min_pos, max_pos + 1) if i not in owned]
+        if not gaps:
+            continue
         cover = next((b.cover_url for b in s.books if b.cover_url), None)
         result.append({
             "id": s.id,
