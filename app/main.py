@@ -534,6 +534,17 @@ def series_browse_page(request: Request, db: Session = Depends(get_db)):
     })
 
 
+@app.get("/missing-volumes", response_class=HTMLResponse)
+def missing_volumes_page(request: Request, db: Session = Depends(get_db)):
+    try:
+        user = get_current_user(request, db)
+    except Exception:
+        return RedirectResponse(url="/login", status_code=302)
+    return templates.TemplateResponse("missing_volumes.html", {
+        "request": request, "user": user, "active": "missing-volumes", "build_version": BUILD_VERSION,
+    })
+
+
 @app.get("/series/proposals", response_class=HTMLResponse)
 def series_proposals_page(request: Request, db: Session = Depends(get_db)):
     try:

@@ -19,12 +19,13 @@
     <div class="nav-links">
       <a href="/scanner" {% if active=='scanner' %}class="active"{% endif %}>Scanner</a>
       <div class="nav-menu" id="nav-menu-library">
-        <span class="nav-menu-trigger {% if active in ['library','series-browse','series'] %}active{% endif %}">
+        <span class="nav-menu-trigger {% if active in ['library','series-browse','series','missing-volumes'] %}active{% endif %}">
           Bibliothèque <span class="nav-menu-chevron">▾</span>
         </span>
         <div class="nav-menu-dropdown">
           <a href="/library" class="nav-menu-item {% if active=='library' %}active{% endif %}">Ouvrages</a>
           <a href="/series" class="nav-menu-item {% if active=='series-browse' %}active{% endif %}">Séries</a>
+          <a href="/missing-volumes" class="nav-menu-item {% if active=='missing-volumes' %}active{% endif %}">Manquants</a>
           {% if user.role == 'admin' %}<a href="/series/proposals" class="nav-menu-item {% if active=='series' %}active{% endif %}">Détection</a>{% endif %}
         </div>
       </div>

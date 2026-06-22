@@ -2,6 +2,7 @@ import asyncio
 import json
 import re
 import unicodedata
+import xml.etree.ElementTree as ET
 from collections import defaultdict
 from datetime import datetime
 
@@ -948,6 +949,115 @@ def get_series_books(series_id: int, request: Request, db: Session = Depends(get
             }
             for b in books
         ],
+    }
+
+
+@router.get("/api/series/missing")
+def get_missing_volumes(request: Request, db: Session = Depends(get_db)):
+    """Retourne les trous de tomes pour chaque série ayant des positions renseignées."""
+    get_current_user(request, db)
+    all_series = db.query(Series).order_by(Series.name).all()
+    result = []
+    for s in all_series:
+        books_with_pos = sorted(
+            [b for b in s.books if b.series_position is not None],
+            key=lambda b: b.series_position,
+        )
+        if len(books_with_pos) < 2:
+            continue
+        positions = [int(b.series_position) for b in books_with_pos if b.series_position == int(b.series_position)]
+        if not positions:
+            continue
+        min_pos, max_pos = min(positions), max(positions)
+        owned = set(positions)
+        gaps = [i for i in range(min_pos, max_pos + 1) if i not in owned]
+        cover = next((b.cover_url for b in s.books if b.cover_url), None)
+        result.append({
+            "id": s.id,
+            "name": s.name,
+            "cover_url": cover,
+            "owned": sorted(owned),
+            "max_owned": max_pos,
+            "gaps": gaps,
+            "books": [
+                {
+                    "id": b.id,
+                    "title": b.title,
+                    "cover_url": b.cover_url,
+                    "series_position": b.series_position,
+                }
+                for b in books_with_pos
+            ],
+        })
+    return result
+
+
+@router.get("/api/series/{series_id}/check-bnf")
+async def check_bnf_volumes(series_id: int, request: Request, db: Session = Depends(get_db)):
+    """Interroge la BnF pour trouver le nombre total de volumes connus pour une série."""
+    get_current_user(request, db)
+    from fastapi import HTTPException
+    series = db.query(Series).filter(Series.id == series_id).first()
+    if not series:
+        raise HTTPException(404)
+
+    volumes_found: set[int] = set()
+    titles_found: dict[int, str] = {}
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            # BnF SRU — recherche par nom de série (champ bib.serie)
+            resp = await client.get(
+                "https://catalogue.bnf.fr/api/SRU",
+                params={
+                    "version": "1.2",
+                    "operation": "searchRetrieve",
+                    "query": f'bib.serie adj "{series.name}"',
+                    "maximumRecords": "50",
+                    "recordSchema": "unimarcxchange",
+                },
+            )
+            if resp.status_code == 200:
+                root = ET.fromstring(resp.text)
+                ns = {
+                    "srw": "http://www.loc.gov/zing/srw/",
+                    "mxc": "info:lc/xmlns/marcxchange-v2",
+                }
+                for record in root.findall(".//mxc:record", ns):
+                    # Champ 225 = mention de collection, $v = numéro de volume
+                    vol_num = None
+                    title_val = None
+                    for df in record.findall("mxc:datafield", ns):
+                        tag = df.get("tag", "")
+                        if tag == "225":
+                            for sf in df.findall("mxc:subfield", ns):
+                                if sf.get("code") == "v":
+                                    try:
+                                        vol_num = int(re.sub(r"[^\d]", "", sf.text or ""))
+                                    except ValueError:
+                                        pass
+                        # Champ 200 = titre propre
+                        if tag == "200":
+                            for sf in df.findall("mxc:subfield", ns):
+                                if sf.get("code") == "a":
+                                    title_val = sf.text
+                    if vol_num and vol_num > 0:
+                        volumes_found.add(vol_num)
+                        if title_val:
+                            titles_found[vol_num] = title_val
+    except Exception:
+        pass
+
+    if not volumes_found:
+        return {"series_id": series_id, "name": series.name, "volumes_found": [], "max_known": None, "source": None}
+
+    return {
+        "series_id": series_id,
+        "name": series.name,
+        "volumes_found": sorted(volumes_found),
+        "max_known": max(volumes_found),
+        "titles": titles_found,
+        "source": "BnF",
     }
 
 

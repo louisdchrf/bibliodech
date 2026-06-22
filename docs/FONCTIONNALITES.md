@@ -129,11 +129,130 @@ Gérée dans `/locations`. Chaque livre peut être associé à une étagère. La
 
 ---
 
-## Séries
+## Détection des séries
 
-- Détection automatique à l'enrichissement (titre contenant "Tome X", champs dédiés BNF/Google Books)
-- Gestion manuelle dans `/series` : créer, renommer, associer des livres
-- Position dans la série stockée en float (permet des positions comme 2.5 pour un hors-série)
+La détection des séries est un pipeline multi-signaux qui s'exécute à l'enrichissement et via des tâches planifiables. Les sources sont consultées dans l'ordre de fiabilité décroissante.
+
+---
+
+### Signal 0 — Parsing du titre (haute confiance)
+
+**Fichier** : `app/routers/series.py` → `_parse_title()` et `_detect()`  
+**Déclencheur** : tâche "Détecter les séries" + à chaque enrichissement via SUDOC
+
+Reconnaît les formats de titres structurés courants en bibliothèques françaises :
+
+| Pattern | Exemple |
+|---|---|
+| `Série. N, sous-titre` (BnF/SUDOC) | `Blake et Mortimer. 25, Le testament de William S.` |
+| `Série. Tome N` | `Astérix. Tome 1` |
+| `Série Tome N` | `Astérix Tome 1` |
+| `Série – Tome N` | `Tintin – Tome 7` |
+| `Série Volume N` / `Vol. N` | `One Piece Volume 12` |
+| `Série T. N` | `Astérix T. 3` |
+| `Série n° N` | `Lucky Luke n° 42` |
+
+**Comportement** : auto-crée la série et assigne le livre avec sa position. Aucune proposition générée, assignation directe.
+
+---
+
+### Signal SUDOC — Catalogue universitaire (haute confiance)
+
+**Fichier** : `app/routers/scan.py` → `_lookup_series_sudoc()`  
+**Déclencheur** : à chaque enrichissement (`_enrich_book`) + tâche "Chercher les séries dans le catalogue"
+
+Flux en 2 appels HTTP :
+1. `GET https://www.sudoc.fr/services/isbn2ppn/{isbn}` → PPN (identifiant SUDOC)
+2. `GET https://www.sudoc.fr/{ppn}.xml` → notice UNIMARC
+
+Extrait le champ **UNIMARC 225** :
+- `225$a` → nom de la série (ex : `Ralph Azham`)
+- `225$v` → numéro de volume (ex : `2`)
+
+Très efficace pour les BDs françaises (Dupuis, Dargaud, Casterman, Lombard…).  
+En fallback : `lookup_isbn()` → champ `series_name` retourné par Open Library ou Google Books.
+
+---
+
+### Signal 1 — Préfixe + éditeur (confiance moyenne)
+
+**Fichier** : `app/routers/series.py` → `_detect()`, groupe `prefix_groups`
+
+Regroupe les livres orphelins qui partagent le **même premier mot significatif de titre** et le **même éditeur** (normalisé). Si au moins 2 livres correspondent et qu'un groupe similaire existe déjà en série, assignation directe. Sinon : proposition dans la page Détection.
+
+---
+
+### Signal 2 — Auteur + éditeur (confiance faible)
+
+**Fichier** : `app/routers/series.py` → `_detect()`, groupe `author_groups`
+
+Regroupe les livres orphelins du **même auteur** chez le **même éditeur**. Génère uniquement des propositions (jamais d'auto-assignation) car un auteur peut publier des œuvres indépendantes chez le même éditeur.
+
+---
+
+### Signal OCR — Lecture des couvertures (confiance variable)
+
+**Fichier** : `app/routers/series.py` → `_ocr_series_from_cover()` et `_ocr_detect()`  
+**Déclencheur** : tâche "Lire les séries sur les couvertures" + bouton 🔍 dans la page Détection
+
+Utilise **Tesseract OCR** (local, sans clé API) via `pytesseract`. La couverture locale est préprocessée avant la lecture (niveaux de gris, upscale ×1.5–2, contraste ×2, netteté ×2).
+
+**Extraction en 3 passes** sur 4 bandes verticales (1/4, 1/3, 1/2, pleine image) :
+
+| Passe | Méthode |
+|---|---|
+| **1. Formules** | Regex `"LES AVENTURES DE X"`, `"UNE AVENTURE DE X"` |
+| **2. Séries connues** | Matching exact ou par mots-clés contre les séries en base |
+| **2b. Fuzzy** | Distance de Levenshtein ≤ 30% pour erreurs OCR |
+| **3. Heuristique** | Ligne en majuscules, 1–2 mots, ni auteur ni éditeur connu |
+
+**Filtres anti-bruit** :
+- Noms d'auteurs du livre exclus (comparaison par préfixe de mot)
+- Éditeurs connus exclus (Dupuis, Dargaud, Casterman, Lombard, Glénat…)
+- Lignes "Prénom Nom" à 2–3 mots exclues si non connues comme séries
+
+**Résolution** : les couvertures sont stockées en **600px de large** depuis juin 2026 (précédemment 300px). La tâche "Re-télécharger toutes les couvertures (HD)" permet de mettre à jour les couvertures existantes.
+
+---
+
+### Page Détection (`/series/proposals`)
+
+Interface de validation des propositions générées par les signaux 1 et 2.
+
+**Par proposition :**
+- Badge(s) indiquant la/les source(s) détection (cumulables : `Auteur + éditeur` + `🔍 OCR couverture` + `📚 SUDOC`)
+- Champ nom de la série (pré-rempli si détecté)
+- Bouton 🔍 : lance l'OCR sur les couvertures du groupe (1 par 1 avec barre de progression)
+- Dropdown : relier à une série existante plutôt que d'en créer une nouvelle
+- Boutons : **Accepter** (crée/assigne la série) ou **Rejeter**
+
+---
+
+### Ordre d'exécution recommandé
+
+Pour une bibliothèque neuve ou après un import massif :
+
+1. **Scanner** les livres (enrichissement automatique déclenche SUDOC en parallèle)
+2. Tâche **"Détecter les séries"** → Signal 0 (titres) + Signaux 1/2 (heuristiques)
+3. Tâche **"Chercher les séries dans le catalogue"** → SUDOC sur les orphelins restants
+4. Valider les propositions dans **Détection → Propositions** (utiliser 🔍 OCR si le nom est vide)
+5. Tâche **"Lire les séries sur les couvertures (OCR)"** → dernier recours pour les livres sans ISBN exploitable
+
+---
+
+### Normalisation des noms
+
+Toutes les comparaisons de noms de séries utilisent `_norm()` :
+```python
+unicodedata.normalize("NFD", s.lower())  # minuscules + suppression des accents
+```
+Exemples : `"Tintin"`, `"TINTIN"`, `"tïntïn"` → tous équivalents à `"tintin"`.
+
+---
+
+### Gestion manuelle
+
+Page **Bibliothèque → Séries** : vue en grille ou liste de toutes les séries, avec couverture du premier tome, nom et nombre de volumes. Clic sur une série → panneau latéral avec la liste des tomes dans l'ordre.
 
 ---
 

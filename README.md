@@ -4,13 +4,14 @@ Application web auto-hébergée de gestion de bibliothèque personnelle. Scan IS
 
 ## Fonctionnalités
 
-- **Scan à la chaîne** — douchette USB/HID, chaque ISBN s'enchaîne sans confirmation manuelle
-- **Enrichissement automatique** — SUDOC, BNF, Decitre, Google Books, Open Library, ISBNdb (optionnel)
-- **Détection de séries** — automatique depuis les sources, heuristiques sur le titre, suggestions par auteur
-- **Localisation hiérarchique** — adresse › pièce › étagère, assignée au scan ou modifiable en masse
+- **Scan à la chaîne** — douchette USB/HID ou caméra (QR/EAN), chaque ISBN s'enchaîne sans confirmation manuelle
+- **Enrichissement automatique** — SUDOC, BNF, Decitre, Google Books, Open Library, ISBNdb (optionnel) ; toutes les sources interrogées en parallèle, résultats fusionnés
+- **Détection de séries multi-signaux** — parsing du titre (formats BnF/SUDOC), catalogue SUDOC par ISBN (champ UNIMARC 225), heuristiques auteur+éditeur, OCR Tesseract sur les couvertures
+- **Localisation hiérarchique** — Site › Salle › Étagère, assignée au scan ou modifiable en masse
 - **Prêts** — suivi emprunteur, date de retour prévue, vue "prêts en cours", historique
-- **Bibliothèque** — recherche, filtres (série, localisation), tri, édition individuelle et en masse, export CSV
+- **Bibliothèque** — recherche, filtres (série, localisation), tri, vue grille ou liste, édition individuelle et en masse, export CSV
 - **Multi-utilisateurs** — rôles Admin et Contributeur, gestion des comptes depuis les paramètres
+- **Tâches planifiables** — enrichissement, couvertures, normalisation auteurs, détection séries (SUDOC + OCR), planification horaire configurable avec suivi de progression en temps réel
 
 ## Prérequis
 
@@ -64,6 +65,22 @@ Configurables dans **Paramètres › Sources ISBN**. Activées par défaut : SUD
 
 **ISBNdb** (optionnel, ~15 $/mois) améliore la couverture des éditions étrangères. La clé API se configure dans Paramètres › Sources ISBN › Clés API.
 
+## Détection des séries
+
+La détection est un pipeline en 5 signaux, du plus fiable au moins fiable :
+
+| Priorité | Signal | Source | Mode |
+|---|---|---|---|
+| 1 | **Parsing du titre** | Titre du livre | Auto-assignation |
+| 2 | **Catalogue SUDOC** | UNIMARC 225 par ISBN | Auto-assignation |
+| 3 | **Préfixe + éditeur** | Métadonnées | Proposition |
+| 4 | **Auteur + éditeur** | Métadonnées | Proposition |
+| 5 | **OCR couverture** | Tesseract (local) | Proposition |
+
+Les signaux 1 et 2 s'exécutent automatiquement à chaque enrichissement. Les signaux 3 à 5 sont des tâches planifiables depuis **Paramètres › Tâches**. Les propositions générées sont à valider dans **Bibliothèque › Détection**.
+
+Documentation complète : [`docs/FONCTIONNALITES.md`](docs/FONCTIONNALITES.md)
+
 ## Développement local (sans Docker)
 
 ```bash
@@ -87,4 +104,5 @@ Conçu pour un usage **réseau local (LAN)**. Ne pas exposer directement sur Int
 
 - Backend : Python 3.12 / FastAPI / SQLAlchemy / SQLite
 - Frontend : HTML / CSS / JavaScript vanilla (aucun build step)
-- Conteneur : `python:3.12-slim`, un seul service + volume nommé
+- OCR : Tesseract (`tesseract-ocr` + `tesseract-ocr-fra`) via `pytesseract`
+- Conteneur : `python:3.12-slim`, un seul service + volume nommé (`/app/data`)

@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Ouvrages manquants — Bibliodech{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Ouvrages manquants</h1>
+    <p class="page-subtitle" id="subtitle">Analyse des trous dans vos séries</p>
+  </div>
+</div>
+
+<div id="loading" style="padding:2rem;text-align:center;color:var(--color-text-muted)">Chargement…</div>
+<div id="no-results" style="display:none;padding:2rem;text-align:center;color:var(--color-text-muted)">
+  Aucun tome manquant détecté. Assurez-vous que les positions des tomes sont renseignées dans vos séries.
+</div>
+
+<div id="series-list" style="display:none;display:flex;flex-direction:column;gap:1.25rem;padding:0 0 2rem"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  let _data = [];
+
+  async function load() {
+    const res = await fetch('/api/series/missing');
+    _data = await res.json();
+    document.getElementById('loading').style.display = 'none';
+    if (_data.length === 0) {
+      document.getElementById('no-results').style.display = 'block';
+      return;
+    }
+    const totalGaps = _data.reduce((a, s) => a + s.gaps.length, 0);
+    document.getElementById('subtitle').textContent =
+      `${_data.length} série${_data.length > 1 ? 's' : ''} analysée${_data.length > 1 ? 's' : ''} · ${totalGaps} tome${totalGaps > 1 ? 's' : ''} manquant${totalGaps > 1 ? 's' : ''}`;
+    render();
+  }
+
+  function render() {
+    const container = document.getElementById('series-list');
+    container.style.display = 'flex';
+    container.innerHTML = '';
+    for (const s of _data) {
+      container.appendChild(makeCard(s));
+    }
+  }
+
+  function makeCard(s) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style = 'padding:1.25rem 1.5rem;';
+    card.id = `series-${s.id}`;
+
+    const hasGaps = s.gaps.length > 0;
+    const gapBadge = hasGaps
+      ? `<span class="badge badge-warn">${s.gaps.length} trou${s.gaps.length > 1 ? 's' : ''}</span>`
+      : `<span class="badge badge-ok">Collection complète</span>`;
+
+    const cover = s.cover_url
+      ? `<img src="${s.cover_url}" style="width:48px;height:64px;object-fit:cover;border-radius:4px;flex-shrink:0">`
+      : `<div style="width:48px;height:64px;background:var(--color-surface-2);border-radius:4px;flex-shrink:0"></div>`;
+
+    // Timeline visuelle des tomes
+    const maxPos = s.max_owned;
+    const owned = new Set(s.owned);
+    const timelineCells = [];
+    for (let i = 1; i <= maxPos; i++) {
+      const isOwned = owned.has(i);
+      timelineCells.push(
+        `<div title="Tome ${i}" style="
+          width:28px;height:28px;border-radius:4px;display:flex;align-items:center;justify-content:center;
+          font-size:.7rem;font-weight:600;
+          background:${isOwned ? 'var(--color-primary)' : 'var(--color-surface-2)'};
+          color:${isOwned ? '#fff' : 'var(--color-text-muted)'};
+          border:${isOwned ? 'none' : '2px dashed var(--color-border)'};
+        ">${i}</div>`
+      );
+    }
+
+    // Section BnF (chargée à la demande)
+    const bnfId = `bnf-${s.id}`;
+
+    card.innerHTML = `
+      <div style="display:flex;gap:1rem;align-items:flex-start">
+        ${cover}
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem">
+            <span style="font-weight:600;font-size:1rem">${escHtml(s.name)}</span>
+            ${gapBadge}
+            <span style="color:var(--color-text-muted);font-size:.82rem">${s.owned.length} tome${s.owned.length > 1 ? 's' : ''} possédé${s.owned.length > 1 ? 's' : ''}</span>
+          </div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:.75rem">
+            ${timelineCells.join('')}
+          </div>
+          ${hasGaps ? `<p style="font-size:.85rem;color:var(--color-text-muted);margin:0 0 .75rem">
+            Tomes manquants : <strong>${s.gaps.join(', ')}</strong>
+          </p>` : ''}
+          <div id="${bnfId}">
+            <button class="btn btn-ghost btn-sm" onclick="checkBnF(${s.id}, '${escAttr(s.name)}')">
+              Vérifier les nouveaux tomes (BnF)
+            </button>
+          </div>
+        </div>
+      </div>`;
+    return card;
+  }
+
+  window.checkBnF = async function (seriesId, name) {
+    const el = document.getElementById(`bnf-${seriesId}`);
+    el.innerHTML = `<span style="font-size:.82rem;color:var(--color-text-muted)">Interrogation BnF…</span>`;
+    try {
+      const res = await fetch(`/api/series/${seriesId}/check-bnf`);
+      const data = await res.json();
+      const s = _data.find(x => x.id === seriesId);
+      if (!data.max_known) {
+        el.innerHTML = `<span style="font-size:.82rem;color:var(--color-text-muted)">Aucune donnée trouvée sur la BnF pour cette série.</span>`;
+        return;
+      }
+      const ownedSet = new Set(s ? s.owned : []);
+      const bnfVolumes = new Set(data.volumes_found);
+      const notOwned = data.volumes_found.filter(v => !ownedSet.has(v));
+      const newTomes = notOwned.filter(v => v > (s ? s.max_owned : 0));
+      const gapsToo = notOwned.filter(v => v <= (s ? s.max_owned : 0));
+
+      let html = `<div style="font-size:.82rem;margin-top:.25rem">
+        <span style="color:var(--color-text-muted)">BnF : ${data.volumes_found.length} tomes référencés (jusqu'au tome ${data.max_known})</span>`;
+      if (newTomes.length) {
+        html += `<br><span style="color:var(--color-warn,#e07b00);font-weight:600">
+          Nouveaux tomes non acquis : ${newTomes.map(v => {
+            const t = data.titles && data.titles[v] ? ` — ${data.titles[v]}` : '';
+            return `Tome ${v}${t}`;
+          }).join(', ')}
+        </span>`;
+      } else if (data.max_known <= (s ? s.max_owned : 0)) {
+        html += `<br><span style="color:var(--color-ok,#2e9e5b)">Vous avez tous les tomes référencés sur la BnF.</span>`;
+      }
+      if (gapsToo.length) {
+        html += `<br><span style="color:var(--color-text-muted)">Trous confirmés par BnF : tomes ${gapsToo.join(', ')}</span>`;
+      }
+      html += `</div>`;
+      el.innerHTML = html;
+    } catch {
+      el.innerHTML = `<span style="font-size:.82rem;color:var(--color-error)">Erreur lors de la vérification BnF.</span>`;
+    }
+  };
+
+  function escHtml(s) {
+    return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function escAttr(s) {
+    return String(s ?? '').replace(/'/g, "\\'");
+  }
+
+  load();
+})();
+</script>
+{% endblock %}
