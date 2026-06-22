@@ -4,7 +4,7 @@ import httpx
 from PIL import Image
 
 COVERS_DIR = "/app/data/covers"
-MAX_WIDTH = 300
+MAX_WIDTH = 600
 QUALITY = 82
 
 

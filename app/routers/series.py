@@ -144,8 +144,9 @@ def _preprocess_for_ocr(img):
     """Améliore l'image pour Tesseract : niveaux de gris, upscale, contraste."""
     from PIL import ImageEnhance, ImageFilter
     img = img.convert("L")
-    # Doubler la résolution pour aider Tesseract sur les petits textes
-    img = img.resize((img.width * 2, img.height * 2), resample=1)  # LANCZOS=1
+    # Upscale pour aider Tesseract — moins aggressif si l'image est déjà grande
+    scale = 1.5 if img.width >= 500 else 2
+    img = img.resize((int(img.width * scale), int(img.height * scale)), resample=1)  # LANCZOS=1
     img = ImageEnhance.Contrast(img).enhance(2.0)
     img = ImageEnhance.Sharpness(img).enhance(2.0)
     return img
