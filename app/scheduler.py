@@ -35,11 +35,12 @@ def get_next_runs() -> dict[str, str | None]:
 # Tâches planifiables : id → (label, coroutine_factory)
 # Chaque coroutine_factory reçoit (db) et exécute la logique directement
 SCHEDULABLE_TASKS = {
-    "reenrich":       "Compléter les livres manquants",
-    "fetch-covers":   "Rechercher les couvertures manquantes",
-    "clean-authors":  "Normaliser les auteurs",
-    "detect-series":  "Détecter les séries",
-    "ocr-series":     "Lire les séries sur les couvertures (OCR)",
+    "reenrich":        "Compléter les livres manquants",
+    "fetch-covers":    "Rechercher les couvertures manquantes",
+    "refresh-covers":  "Re-télécharger toutes les couvertures (HD)",
+    "clean-authors":   "Normaliser les auteurs",
+    "detect-series":   "Détecter les séries",
+    "ocr-series":      "Lire les séries sur les couvertures (OCR)",
 }
 
 _DEFAULT_CONFIG = {
@@ -110,6 +111,11 @@ async def _execute_task(task_id: str, db) -> str:
         from app.routers.books import _fetch_covers_logic
         result = await _fetch_covers_logic(db, task_id=task_id)
         return f"{result['updated']} couvertures récupérées"
+
+    if task_id == "refresh-covers":
+        from app.routers.books import _refresh_covers_logic
+        result = await _refresh_covers_logic(db, task_id=task_id)
+        return f"{result['updated']}/{result['total']} couvertures mises à jour"
 
     if task_id == "clean-authors":
         from app.routers.books import _clean_authors_logic

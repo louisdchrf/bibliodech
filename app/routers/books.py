@@ -217,6 +217,40 @@ def clean_authors(request: Request, db: Session = Depends(get_db)):
     return {"ok": True}
 
 
+async def _refresh_covers_logic(db, task_id: str = "refresh-covers") -> dict:
+    """Re-télécharge toutes les couvertures existantes en haute résolution."""
+    import asyncio
+    from app.routers.scan import _resolve_cover
+    from app.covers import fetch_and_save
+    from app import scheduler as sched
+
+    books = db.query(Book).filter(Book.isbn.isnot(None)).all()
+    total = len(books)
+    updated = 0
+    done = 0
+    sem = asyncio.Semaphore(3)
+
+    if task_id in sched._running:
+        sched._running[task_id]["progress"] = {"current": 0, "total": total}
+
+    async def _try_one(book):
+        nonlocal updated, done
+        async with sem:
+            url = await _resolve_cover(book.isbn, {})
+            if url:
+                result = await fetch_and_save(book.isbn, url)
+                if result:
+                    book.cover_url = result
+                    db.commit()
+                    updated += 1
+            done += 1
+            if task_id in sched._running:
+                sched._running[task_id]["progress"]["current"] = done
+
+    await asyncio.gather(*[_try_one(b) for b in books])
+    return {"updated": updated, "total": total}
+
+
 async def _fetch_covers_logic(db, task_id: str = "fetch-covers") -> dict:
     """Cherche et sauvegarde les couvertures pour les livres qui n'en ont pas."""
     import asyncio
