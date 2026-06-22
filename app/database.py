@@ -56,6 +56,19 @@ def init_db():
         if "avatar" not in user_cols:
             conn.execute(text("ALTER TABLE users ADD COLUMN avatar TEXT"))
 
+        if "series_proposals" not in tables:
+            conn.execute(text("""
+                CREATE TABLE series_proposals (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    book_ids TEXT NOT NULL,
+                    proposed_name TEXT,
+                    signal TEXT NOT NULL,
+                    existing_series_id INTEGER REFERENCES series(id) ON DELETE SET NULL,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    detected_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+
         if "app_logs" not in tables:
             conn.execute(text("""
                 CREATE TABLE app_logs (

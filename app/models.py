@@ -134,6 +134,20 @@ class AuditLog(Base):
     user = relationship("User", foreign_keys=[user_id])
 
 
+class SeriesProposal(Base):
+    __tablename__ = "series_proposals"
+
+    id                = Column(Integer, primary_key=True, index=True)
+    book_ids          = Column(Text, nullable=False)          # JSON list[int]
+    proposed_name     = Column(String, nullable=True)          # None = user must provide
+    signal            = Column(String, nullable=False)          # prefix | author
+    existing_series_id = Column(Integer, ForeignKey("series.id", ondelete="SET NULL"), nullable=True)
+    status            = Column(String, nullable=False, default="pending")  # pending|accepted|rejected
+    detected_at       = Column(DateTime, default=datetime.utcnow)
+
+    existing_series   = relationship("Series")
+
+
 class SeriesMissingVolume(Base):
     __tablename__ = "series_missing_volumes"
 

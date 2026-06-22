@@ -12,8 +12,8 @@ from app.database import get_db, init_db
 from app.auth import (
     get_current_user, verify_password, create_session, clear_session, bootstrap_admin
 )
-from app.models import User, Book
-from app.routers import scan, books, users, settings as settings_router, locations as locations_router, loans as loans_router
+from app.models import User, Book, Series
+from app.routers import scan, books, users, settings as settings_router, locations as locations_router, loans as loans_router, series as series_router
 from app.lookup import debug_isbn
 
 app = FastAPI(title="Bibliodech")
@@ -40,6 +40,7 @@ app.include_router(users.router)
 app.include_router(settings_router.router)
 app.include_router(locations_router.router)
 app.include_router(loans_router.router)
+app.include_router(series_router.router)
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────
@@ -520,3 +521,24 @@ def stats_page(request: Request, db: Session = Depends(get_db)):
 async def page_logs(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     return templates.TemplateResponse("applogs.html", {"request": request, "user": user, "active": "logs", "build_version": BUILD_VERSION})
+
+
+@app.get("/series/proposals", response_class=HTMLResponse)
+def series_proposals_page(request: Request, db: Session = Depends(get_db)):
+    try:
+        user = get_current_user(request, db)
+        if user.role != "admin":
+            return RedirectResponse(url="/library", status_code=302)
+    except Exception:
+        return RedirectResponse(url="/login", status_code=302)
+    from app.models import SeriesProposal
+    pending = db.query(SeriesProposal).filter(SeriesProposal.status == "pending").count()
+    series_list = db.query(Series).order_by(Series.name).all()
+    return templates.TemplateResponse("series_proposals.html", {
+        "request": request,
+        "user": user,
+        "active": "series",
+        "build_version": BUILD_VERSION,
+        "pending_count": pending,
+        "series_list": [{"id": s.id, "name": s.name} for s in series_list],
+    })

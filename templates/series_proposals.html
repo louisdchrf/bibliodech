@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Séries — Bibliodech{% endblock %}
+{% block content %}
+<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+  <div>
+    <h1 style="margin:0">Détection des séries</h1>
+    <p style="margin:.25rem 0 0;color:var(--color-text-muted);font-size:.9rem">Propositions à valider · <span id="pending-count">{{ pending_count }}</span> en attente</p>
+  </div>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+    <button class="btn btn-primary" id="btn-detect" onclick="runDetect()">Détecter les séries</button>
+  </div>
+</div>
+
+<div id="detect-status" style="display:none;margin:.75rem 0;padding:.6rem 1rem;border-radius:6px;font-size:.88rem"></div>
+
+<div id="proposals-container" style="margin-top:1.5rem"></div>
+
+<script>
+const SERIES_LIST = {{ series_list | tojson }};
+
+async function runDetect() {
+  const btn = document.getElementById('btn-detect');
+  const status = document.getElementById('detect-status');
+  btn.disabled = true;
+  btn.textContent = 'Détection en cours…';
+  status.style.display = 'none';
+  try {
+    const r = await fetch('/api/series/detect', {method: 'POST'});
+    const d = await r.json();
+    status.style.display = 'block';
+    status.style.background = 'var(--color-success-bg, #f0fdf4)';
+    status.style.color = 'var(--color-success, #166534)';
+    status.style.border = '1px solid var(--color-success-border, #bbf7d0)';
+    status.textContent = `${d.auto_assigned} livre(s) assignés automatiquement · ${d.proposals} nouvelle(s) proposition(s)`;
+    await loadProposals();
+  } catch(e) {
+    status.style.display = 'block';
+    status.style.background = 'var(--color-error-bg)';
+    status.style.color = 'var(--color-error)';
+    status.style.border = '1px solid var(--color-error-border, #fecaca)';
+    status.textContent = 'Erreur lors de la détection.';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Détecter les séries';
+}
+
+async function loadProposals() {
+  const r = await fetch('/api/series/proposals');
+  const proposals = await r.json();
+  document.getElementById('pending-count').textContent = proposals.length;
+  renderProposals(proposals);
+}
+
+function renderProposals(proposals) {
+  const c = document.getElementById('proposals-container');
+  if (!proposals.length) {
+    c.innerHTML = '<p style="color:var(--color-text-muted)">Aucune proposition en attente.</p>';
+    return;
+  }
+  c.innerHTML = proposals.map(p => renderCard(p)).join('');
+}
+
+function renderCard(p) {
+  const signalLabel = p.signal === 'prefix' ? 'Préfixe commun' : 'Auteur + éditeur';
+  const signalColor = p.signal === 'prefix' ? 'var(--color-primary)' : 'var(--color-warning, #d97706)';
+
+  const books = p.books.map(b => `
+    <div style="display:flex;align-items:center;gap:.5rem;padding:.35rem 0;border-bottom:1px solid var(--color-border)">
+      ${b.cover_url
+        ? `<img src="${b.cover_url}" style="width:32px;height:46px;object-fit:cover;border-radius:3px;flex-shrink:0">`
+        : `<div style="width:32px;height:46px;background:var(--color-border);border-radius:3px;flex-shrink:0"></div>`}
+      <div style="min-width:0">
+        <div style="font-size:.85rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${b.title}</div>
+        <div style="font-size:.75rem;color:var(--color-text-muted)">${(b.authors||[]).join(', ')}</div>
+      </div>
+    </div>`).join('');
+
+  const seriesOptions = SERIES_LIST.map(s =>
+    `<option value="${s.id}" ${p.existing_series_id == s.id ? 'selected' : ''}>${s.name}</option>`
+  ).join('');
+
+  const nameVal = p.proposed_name || p.existing_series_name || '';
+
+  return `
+  <div class="card" id="proposal-${p.id}" style="margin-bottom:1.25rem">
+    <div style="display:flex;align-items:flex-start;gap:1rem;flex-wrap:wrap">
+      <div style="flex:1;min-width:260px">
+        <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.75rem">
+          <span style="font-size:.72rem;font-weight:600;color:${signalColor};background:color-mix(in srgb,${signalColor} 12%,transparent);padding:.15rem .5rem;border-radius:99px;border:1px solid color-mix(in srgb,${signalColor} 30%,transparent)">${signalLabel}</span>
+          <span style="font-size:.75rem;color:var(--color-text-muted)">${p.books.length} livre(s)</span>
+        </div>
+        <div style="max-height:260px;overflow-y:auto">${books}</div>
+      </div>
+      <div style="min-width:240px;max-width:300px">
+        <div style="margin-bottom:.75rem">
+          <label style="font-size:.8rem;font-weight:600;display:block;margin-bottom:.3rem">Nom de la série</label>
+          <input type="text" id="name-${p.id}" class="form-control" placeholder="Nom de la série…" value="${nameVal}" style="width:100%">
+        </div>
+        <div style="margin-bottom:1rem">
+          <label style="font-size:.8rem;font-weight:600;display:block;margin-bottom:.3rem">Ou relier à une série existante</label>
+          <select id="existing-${p.id}" class="form-control" style="width:100%" onchange="onSeriesSelect(${p.id})">
+            <option value="">— Nouvelle série —</option>
+            ${seriesOptions}
+          </select>
+        </div>
+        <div style="display:flex;gap:.5rem">
+          <button class="btn btn-primary btn-sm" onclick="acceptProposal(${p.id})">Accepter</button>
+          <button class="btn btn-ghost btn-sm" onclick="rejectProposal(${p.id})">Rejeter</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function onSeriesSelect(id) {
+  const sel = document.getElementById(`existing-${id}`);
+  const nameInput = document.getElementById(`name-${id}`);
+  if (sel.value) {
+    const s = SERIES_LIST.find(s => s.id == sel.value);
+    if (s) nameInput.value = s.name;
+  }
+}
+
+async function acceptProposal(id) {
+  const name = document.getElementById(`name-${id}`).value.trim();
+  const existingId = parseInt(document.getElementById(`existing-${id}`).value) || null;
+  if (!name && !existingId) {
+    alert('Veuillez saisir un nom de série ou en choisir une existante.');
+    return;
+  }
+  const r = await fetch(`/api/series/proposals/${id}/accept`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name, existing_series_id: existingId}),
+  });
+  if (r.ok) {
+    document.getElementById(`proposal-${id}`)?.remove();
+    const cnt = document.getElementById('pending-count');
+    cnt.textContent = Math.max(0, parseInt(cnt.textContent) - 1);
+    if (!document.querySelectorAll('[id^="proposal-"]').length)
+      document.getElementById('proposals-container').innerHTML =
+        '<p style="color:var(--color-text-muted)">Aucune proposition en attente.</p>';
+  }
+}
+
+async function rejectProposal(id) {
+  const r = await fetch(`/api/series/proposals/${id}/reject`, {method: 'POST'});
+  if (r.ok) {
+    document.getElementById(`proposal-${id}`)?.remove();
+    const cnt = document.getElementById('pending-count');
+    cnt.textContent = Math.max(0, parseInt(cnt.textContent) - 1);
+    if (!document.querySelectorAll('[id^="proposal-"]').length)
+      document.getElementById('proposals-container').innerHTML =
+        '<p style="color:var(--color-text-muted)">Aucune proposition en attente.</p>';
+  }
+}
+
+loadProposals();
+</script>
+{% endblock %}

@@ -35,9 +35,10 @@ def get_next_runs() -> dict[str, str | None]:
 # Tâches planifiables : id → (label, coroutine_factory)
 # Chaque coroutine_factory reçoit (db) et exécute la logique directement
 SCHEDULABLE_TASKS = {
-    "reenrich":      "Compléter les livres manquants",
-    "fetch-covers":  "Rechercher les couvertures manquantes",
-    "clean-authors": "Normaliser les auteurs",
+    "reenrich":       "Compléter les livres manquants",
+    "fetch-covers":   "Rechercher les couvertures manquantes",
+    "clean-authors":  "Normaliser les auteurs",
+    "detect-series":  "Détecter les séries",
 }
 
 _DEFAULT_CONFIG = {
@@ -112,6 +113,11 @@ async def _execute_task(task_id: str, db) -> str:
     if task_id == "clean-authors":
         from app.routers.books import _clean_authors_logic
         return _clean_authors_logic(db)
+
+    if task_id == "detect-series":
+        from app.routers.series import _detect
+        result = await _detect(db)
+        return f"{result['auto_assigned']} assignés, {result['proposals']} propositions"
 
     return "tâche inconnue"
 
