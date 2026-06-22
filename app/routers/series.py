@@ -455,6 +455,113 @@ def delete_series(series_id: int, request: Request, db: Session = Depends(get_db
     db.commit()
 
 
+@router.get("/api/series/lookup")
+async def lookup_series(q: str, request: Request, db: Session = Depends(get_db)):
+    """Cherche une série par nom dans Open Library et retourne les volumes + correspondances en bibliothèque."""
+    get_current_user(request, db)
+    if not q or len(q.strip()) < 2:
+        raise HTTPException(status_code=400, detail="Requête trop courte")
+
+    import difflib
+
+    async with httpx.AsyncClient(timeout=12) as client:
+        # Recherche par série dans OL
+        resp = await client.get(
+            "https://openlibrary.org/search.json",
+            params={"q": q, "fields": "title,author_name,isbn,series,cover_i,number_of_pages_median,first_publish_year", "limit": 100},
+        )
+        resp.raise_for_status()
+        docs = resp.json().get("docs", [])
+
+    # Groupe par nom de série
+    from collections import defaultdict
+    by_series: dict[str, list[dict]] = defaultdict(list)
+    for doc in docs:
+        series_list = doc.get("series") or []
+        for s in series_list:
+            if difflib.SequenceMatcher(None, q.lower(), s.lower()).ratio() > 0.5:
+                by_series[s].append(doc)
+
+    if not by_series:
+        # Fallback: regroupe par titre commun
+        return {"series": [], "query": q}
+
+    # Prendre la série avec le plus de volumes
+    best_name = max(by_series, key=lambda s: len(by_series[s]))
+    volumes_raw = by_series[best_name]
+
+    # Déduplique par titre, trie par position estimée
+    from app.lookup import _extract_series_and_position
+    seen_titles: set[str] = set()
+    volumes = []
+    for doc in volumes_raw:
+        title = doc.get("title", "")
+        if title.lower() in seen_titles:
+            continue
+        seen_titles.add(title.lower())
+        _, pos = _extract_series_and_position(title, None)
+        isbns = doc.get("isbn") or []
+        cover_id = doc.get("cover_i")
+        volumes.append({
+            "title": title,
+            "authors": doc.get("author_name") or [],
+            "position": pos,
+            "isbns": isbns[:5],
+            "cover_url": f"https://covers.openlibrary.org/b/id/{cover_id}-S.jpg" if cover_id else None,
+        })
+    volumes.sort(key=lambda v: (v["position"] is None, v["position"] or 9999))
+
+    # Correspondances dans la bibliothèque (par ISBN ou similarité de titre)
+    all_isbns = {isbn for v in volumes for isbn in v["isbns"]}
+    matched_by_isbn = {}
+    if all_isbns:
+        books = db.query(Book).filter(Book.isbn.in_(all_isbns)).all()
+        for b in books:
+            matched_by_isbn[b.isbn] = {"id": b.id, "title": b.title, "series_id": b.series_id}
+
+    # Enrichit chaque volume avec son match bibliothèque
+    for v in volumes:
+        match = next((matched_by_isbn[i] for i in v["isbns"] if i in matched_by_isbn), None)
+        v["library_book"] = match
+
+    in_library = sum(1 for v in volumes if v["library_book"])
+
+    return {
+        "query": q,
+        "series_name": best_name,
+        "total_volumes": len(volumes),
+        "in_library": in_library,
+        "volumes": volumes,
+        "all_series": [{"name": n, "count": len(v)} for n, v in sorted(by_series.items(), key=lambda x: -len(x[1]))[:5]],
+    }
+
+
+@router.post("/api/series/apply-lookup")
+def apply_series_lookup(body: dict, request: Request, db: Session = Depends(get_db)):
+    """Crée la série et lie les livres trouvés en bibliothèque."""
+    user = get_current_user(request, db)
+    require_contributor(user)
+    series_name = (body.get("series_name") or "").strip()
+    book_ids = body.get("book_ids") or []
+    positions = body.get("positions") or {}  # book_id → position
+    if not series_name:
+        raise HTTPException(status_code=400, detail="Nom de série requis")
+
+    series = get_or_create_series(db, series_name, source="openlibrary_search")
+    linked = 0
+    for bid in book_ids:
+        book = db.query(Book).filter(Book.id == bid).first()
+        if book:
+            book.series_id = series.id
+            pos = positions.get(str(bid))
+            if pos is not None:
+                book.series_position = pos
+            linked += 1
+    db.commit()
+    count = db.query(Book).filter(Book.series_id == series.id).count()
+    return {**_series_to_dict(series, book_count=count), "linked": linked}
+
+
 @router.post("/api/series/link-books")
 def link_books(
     body: LinkBooksRequest,
