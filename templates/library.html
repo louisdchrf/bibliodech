@@ -86,6 +86,43 @@
     </div>
   </div>
 </div>
+<!-- Popup import couverture -->
+<div id="cover-modal" class="modal-overlay" style="display:none" role="dialog" aria-modal="true">
+  <div class="modal-card" style="max-width:420px">
+    <button class="modal-close" id="cover-modal-close">&times;</button>
+    <h3 style="margin-bottom:1.25rem;font-size:1.05rem">Modifier la couverture</h3>
+
+    <div style="display:flex;gap:1rem;align-items:flex-start;margin-bottom:1.25rem">
+      <img id="cover-modal-preview" src="/static/img/no-cover.svg" alt="aperçu"
+           style="width:72px;height:100px;object-fit:cover;border-radius:4px;background:var(--color-surface-2);flex-shrink:0"
+           onerror="this.src='/static/img/no-cover.svg'">
+      <div style="flex:1;min-width:0">
+        <p style="font-size:.82rem;color:var(--color-text-muted);margin:0 0 .75rem">
+          Choisissez un fichier image depuis votre appareil, ou collez l'URL directe d'une image.
+        </p>
+        <span id="cover-modal-status" style="font-size:.82rem"></span>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:.9rem">
+      <div>
+        <p style="font-size:.78rem;font-weight:600;color:var(--color-text-muted);margin:0 0 .35rem;text-transform:uppercase;letter-spacing:.04em">Depuis un fichier</p>
+        <label class="btn btn-ghost btn-sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:.4rem">
+          Choisir une image…
+          <input type="file" id="cover-modal-file" accept="image/*" style="display:none">
+        </label>
+        <span id="cover-modal-filename" style="font-size:.8rem;color:var(--color-text-muted);margin-left:.5rem"></span>
+      </div>
+      <div>
+        <p style="font-size:.78rem;font-weight:600;color:var(--color-text-muted);margin:0 0 .35rem;text-transform:uppercase;letter-spacing:.04em">Depuis une URL</p>
+        <div style="display:flex;gap:.4rem">
+          <input type="url" id="cover-modal-url" placeholder="https://…" class="input-full" style="flex:1;min-width:0">
+          <button type="button" id="cover-modal-url-btn" class="btn btn-ghost btn-sm">Importer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -596,32 +633,9 @@
             </select>
           </div>
         </div>
-        <div class="field-separator">Couverture</div>
-        <div class="cover-import-row">
-          <div class="cover-import-preview-wrap">
-            <img id="cover-preview" src="${escHtml(coverSrc)}" alt="couverture" class="cover-import-preview" onerror="this.src='/static/img/no-cover.svg'">
-          </div>
-          <div class="cover-import-controls">
-            <div class="cover-import-option">
-              <label class="cover-import-label">Depuis un fichier</label>
-              <label class="btn btn-ghost btn-sm cover-file-btn">
-                Choisir une image
-                <input type="file" id="cover-file-input" accept="image/*" style="display:none">
-              </label>
-              <span id="cover-file-name" style="font-size:.8rem;color:var(--color-text-muted)"></span>
-            </div>
-            <div class="cover-import-option">
-              <label class="cover-import-label">Depuis une URL</label>
-              <div style="display:flex;gap:.4rem">
-                <input type="url" id="cover-url-input" placeholder="https://…" class="input-full" style="flex:1;min-width:0">
-                <button type="button" id="cover-url-btn" class="btn btn-ghost btn-sm">Importer</button>
-              </div>
-            </div>
-            <span id="cover-import-status" style="font-size:.8rem"></span>
-          </div>
-        </div>
         <div class="modal-actions">
           <button type="submit" class="btn btn-primary">Enregistrer</button>
+          <button type="button" class="btn btn-ghost" id="cover-btn">Modifier la couverture</button>
           ${book.active_loan
             ? `<button type="button" class="btn btn-ghost" id="return-btn">Rendu ✓ (${escHtml(book.active_loan.borrower_name||'')})</button>`
             : `<button type="button" class="btn btn-ghost" id="loan-btn">Prêter…</button>`
@@ -804,58 +818,11 @@
       });
     }
 
-    // ── Import couverture ─────────────────────────────────────────────────
-    const bookId = document.querySelector('[name="book_id"]').value;
-    const coverPreview = document.getElementById('cover-preview');
-    const coverStatus = document.getElementById('cover-import-status');
-    const coverFileInput = document.getElementById('cover-file-input');
-    const coverUrlInput = document.getElementById('cover-url-input');
-    const coverFileName = document.getElementById('cover-file-name');
-
-    coverFileInput.addEventListener('change', async () => {
-      const f = coverFileInput.files[0];
-      if (!f) return;
-      coverFileName.textContent = f.name;
-      // Préview local immédiat
-      coverPreview.src = URL.createObjectURL(f);
-      coverStatus.textContent = 'Envoi…';
-      coverStatus.style.color = 'var(--color-text-muted)';
-      const fd = new FormData();
-      fd.append('file', f);
-      const res = await fetch(`/api/books/${bookId}/cover`, { method: 'POST', body: fd });
-      if (res.ok) {
-        const updated = await res.json();
-        coverPreview.src = updated.cover_url + '?t=' + Date.now();
-        coverStatus.textContent = 'Couverture mise à jour.';
-        coverStatus.style.color = 'var(--color-success,#22c55e)';
-        loadBooks();
-      } else {
-        const err = await res.json().catch(() => ({}));
-        coverStatus.textContent = err.detail || 'Erreur lors de l\'envoi.';
-        coverStatus.style.color = 'var(--color-danger)';
-      }
-    });
-
-    document.getElementById('cover-url-btn').addEventListener('click', async () => {
-      const url = coverUrlInput.value.trim();
-      if (!url) return;
-      coverStatus.textContent = 'Téléchargement…';
-      coverStatus.style.color = 'var(--color-text-muted)';
-      const fd = new FormData();
-      fd.append('url', url);
-      const res = await fetch(`/api/books/${bookId}/cover`, { method: 'POST', body: fd });
-      if (res.ok) {
-        const updated = await res.json();
-        coverPreview.src = updated.cover_url + '?t=' + Date.now();
-        coverUrlInput.value = '';
-        coverStatus.textContent = 'Couverture mise à jour.';
-        coverStatus.style.color = 'var(--color-success,#22c55e)';
-        loadBooks();
-      } else {
-        const err = await res.json().catch(() => ({}));
-        coverStatus.textContent = err.detail || 'Erreur lors du téléchargement.';
-        coverStatus.style.color = 'var(--color-danger)';
-      }
+    // ── Bouton "Modifier la couverture" → ouvre la popup dédiée ──────────
+    document.getElementById('cover-btn').addEventListener('click', () => {
+      const bookId = document.querySelector('[name="book_id"]').value;
+      const currentSrc = document.querySelector('.modal-cover')?.src || '/static/img/no-cover.svg';
+      openCoverModal(bookId, currentSrc);
     });
     // ─────────────────────────────────────────────────────────────────────
 
@@ -906,6 +873,75 @@
     modalOverlay.style.display = 'none';
     document.body.classList.remove('modal-open');
   }
+
+  // ── Popup couverture ───────────────────────────────────────────────────────
+  const coverModal      = document.getElementById('cover-modal');
+  const coverModalClose = document.getElementById('cover-modal-close');
+  const coverModalFile  = document.getElementById('cover-modal-file');
+  const coverModalUrl   = document.getElementById('cover-modal-url');
+  const coverModalUrlBtn = document.getElementById('cover-modal-url-btn');
+  const coverModalPreview  = document.getElementById('cover-modal-preview');
+  const coverModalFilename = document.getElementById('cover-modal-filename');
+  const coverModalStatus   = document.getElementById('cover-modal-status');
+  let _coverBookId = null;
+
+  function openCoverModal(bookId, currentSrc) {
+    _coverBookId = bookId;
+    coverModalPreview.src = currentSrc;
+    coverModalUrl.value = '';
+    coverModalFilename.textContent = '';
+    coverModalStatus.textContent = '';
+    coverModal.style.display = 'flex';
+  }
+
+  function closeCoverModal() { coverModal.style.display = 'none'; }
+
+  coverModalClose.addEventListener('click', closeCoverModal);
+  coverModal.addEventListener('click', e => { if (e.target === coverModal) closeCoverModal(); });
+
+  async function _submitCover(fd) {
+    coverModalStatus.style.color = 'var(--color-text-muted)';
+    coverModalStatus.textContent = 'Envoi…';
+    const res = await fetch(`/api/books/${_coverBookId}/cover`, { method: 'POST', body: fd });
+    if (res.ok) {
+      const updated = await res.json();
+      const newSrc = updated.cover_url + '?t=' + Date.now();
+      coverModalPreview.src = newSrc;
+      // Met à jour la couverture dans le modal livre derrière
+      const mainCover = document.querySelector('.modal-cover');
+      if (mainCover) mainCover.src = newSrc;
+      coverModalStatus.style.color = 'var(--color-success,#22c55e)';
+      coverModalStatus.textContent = 'Couverture mise à jour.';
+      loadBooks();
+      setTimeout(closeCoverModal, 900);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      coverModalStatus.style.color = 'var(--color-danger)';
+      coverModalStatus.textContent = err.detail || 'Erreur.';
+    }
+  }
+
+  coverModalFile.addEventListener('change', async () => {
+    const f = coverModalFile.files[0];
+    if (!f) return;
+    coverModalFilename.textContent = f.name;
+    coverModalPreview.src = URL.createObjectURL(f);
+    const fd = new FormData();
+    fd.append('file', f);
+    await _submitCover(fd);
+  });
+
+  coverModalUrlBtn.addEventListener('click', async () => {
+    const url = coverModalUrl.value.trim();
+    if (!url) return;
+    const fd = new FormData();
+    fd.append('url', url);
+    await _submitCover(fd);
+  });
+
+  coverModalUrl.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); coverModalUrlBtn.click(); }
+  });
 
   // ── Helpers prêt (users + emprunteurs dans le même select) ─────────────
   async function populateLoanSelect(sel) {
