@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Bibliodech{% endblock %}</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=3">
+  <link rel="stylesheet" href="/static/css/style.css?v=4">
   <script>
     (function(){
       try {
@@ -33,10 +33,19 @@
       </button>
       <div class="nav-user-menu" id="nav-user-menu">
         <button class="nav-user-btn" id="nav-user-btn" aria-haspopup="true" aria-expanded="false">
-          {{ user.username }} <span class="nav-user-chevron">▾</span>
+          <span class="nav-avatar" id="nav-avatar">
+            {% if user.avatar %}
+            <img src="{{ user.avatar }}" alt="" class="nav-avatar-img">
+            {% else %}
+            <span class="nav-avatar-initials">{{ user.username[:1] | upper }}</span>
+            {% endif %}
+          </span>
+          <span id="nav-username-label">{{ user.username }}</span>
+          <span class="nav-user-chevron">▾</span>
         </button>
         <div class="nav-user-dropdown" id="nav-user-dropdown" role="menu">
-          <button class="nav-dropdown-item" id="nav-edit-profile">Modifier le mot de passe</button>
+          <button class="nav-dropdown-item" id="nav-edit-account">Mon compte</button>
+          <button class="nav-dropdown-item" id="nav-edit-password">Modifier le mot de passe</button>
           <div class="nav-dropdown-sep"></div>
           <form method="post" action="/logout">
             <button type="submit" class="nav-dropdown-item nav-dropdown-item-danger">Déconnexion</button>
@@ -77,6 +86,34 @@
   <footer class="app-footer">
     v{{ build_version }}
   </footer>
+
+  <!-- Modal Mon compte (nom + avatar) -->
+  <div id="account-modal" class="modal-overlay" style="display:none" role="dialog" aria-modal="true">
+    <div class="modal-card modal-card-sm">
+      <button class="modal-close" id="account-modal-close">&times;</button>
+      <h3 style="margin-bottom:1.25rem">Mon compte</h3>
+      <div style="display:flex;align-items:center;gap:1.25rem;margin-bottom:1.25rem">
+        <div class="avatar-upload-wrap" id="avatar-preview-wrap">
+          <span class="nav-avatar nav-avatar-lg" id="account-avatar-preview">
+            <!-- rempli par JS -->
+          </span>
+          <label class="avatar-upload-btn" title="Changer la photo">
+            <input type="file" id="account-avatar-input" accept="image/*" style="display:none">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          </label>
+        </div>
+        <div style="flex:1">
+          <label style="font-size:.82rem;font-weight:500;display:block;margin-bottom:.35rem">Nom d'utilisateur</label>
+          <input type="text" id="account-username" class="input-sm" style="width:100%" autocomplete="username">
+        </div>
+      </div>
+      <div class="modal-footer" style="padding:0">
+        <button class="btn btn-ghost" id="account-modal-cancel">Annuler</button>
+        <button class="btn btn-primary" id="account-modal-save">Enregistrer</button>
+      </div>
+      <div id="account-msg" style="margin-top:.6rem;font-size:.82rem"></div>
+    </div>
+  </div>
 
   <!-- Modal changement de mot de passe -->
   <div id="chpwd-modal" class="modal-overlay" style="display:none" role="dialog" aria-modal="true">
@@ -173,10 +210,10 @@
 
   <script>
   (function(){
-    // ── Menu utilisateur ──────────────────────────────────────────────────────
     var userBtn      = document.getElementById('nav-user-btn');
     var userDropdown = document.getElementById('nav-user-dropdown');
 
+    // ── Menu déroulant ────────────────────────────────────────────────────────
     if (userBtn && userDropdown) {
       userBtn.addEventListener('click', function(e) {
         e.stopPropagation();
@@ -190,13 +227,109 @@
         }
       });
     }
+    function closeDropdown() { userDropdown.classList.remove('open'); userBtn.setAttribute('aria-expanded', false); }
+
+    // ── Modal Mon compte ──────────────────────────────────────────────────────
+    var accountModal   = document.getElementById('account-modal');
+    var accountMsg     = document.getElementById('account-msg');
+    var avatarPreview  = document.getElementById('account-avatar-preview');
+    var avatarInput    = document.getElementById('account-avatar-input');
+    var _pendingAvatar = null; // File object en attente d'upload
+
+    // Initiales ou image dans la navbar
+    var _currentAvatar = {{ ('"' + user.avatar + '"') | safe if user.avatar else 'null' }};
+
+    function renderNavAvatar(src) {
+      var navAvatar = document.getElementById('nav-avatar');
+      if (!navAvatar) return;
+      if (src) {
+        navAvatar.innerHTML = '<img src="' + src + '?t=' + Date.now() + '" alt="" class="nav-avatar-img">';
+      }
+    }
+
+    function openAccountModal() {
+      closeDropdown();
+      document.getElementById('account-username').value = document.getElementById('nav-username-label').textContent.trim();
+      _pendingAvatar = null;
+      accountMsg.textContent = '';
+      // Aperçu avatar actuel
+      if (_currentAvatar) {
+        avatarPreview.innerHTML = '<img src="' + _currentAvatar + '?t=' + Date.now() + '" alt="" class="nav-avatar-img" style="width:100%;height:100%;object-fit:cover;border-radius:50%">';
+      } else {
+        var initials = document.getElementById('nav-username-label').textContent.trim()[0].toUpperCase();
+        avatarPreview.innerHTML = '<span class="nav-avatar-initials">' + initials + '</span>';
+      }
+      accountModal.style.display = 'flex';
+      setTimeout(function(){ document.getElementById('account-username').focus(); }, 50);
+    }
+    function closeAccountModal() { accountModal.style.display = 'none'; }
+
+    document.getElementById('nav-edit-account')?.addEventListener('click', openAccountModal);
+    document.getElementById('account-modal-close')?.addEventListener('click', closeAccountModal);
+    document.getElementById('account-modal-cancel')?.addEventListener('click', closeAccountModal);
+    accountModal?.addEventListener('click', function(e){ if (e.target === accountModal) closeAccountModal(); });
+
+    // Aperçu local avant upload
+    avatarInput?.addEventListener('change', function() {
+      var file = avatarInput.files[0];
+      if (!file) return;
+      _pendingAvatar = file;
+      var reader = new FileReader();
+      reader.onload = function(ev) {
+        avatarPreview.innerHTML = '<img src="' + ev.target.result + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">';
+      };
+      reader.readAsDataURL(file);
+    });
+
+    document.getElementById('account-modal-save')?.addEventListener('click', async function() {
+      accountMsg.textContent = '';
+      var ok = true;
+
+      // 1. Sauvegarder le nom
+      var newUsername = document.getElementById('account-username').value.trim();
+      var currentUsername = document.getElementById('nav-username-label').textContent.trim();
+      if (newUsername && newUsername !== currentUsername) {
+        var r = await fetch('/api/me', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ username: newUsername }) });
+        if (r.ok) {
+          var d = await r.json();
+          document.getElementById('nav-username-label').textContent = d.username;
+        } else {
+          var err = await r.json();
+          accountMsg.textContent = err.detail || 'Erreur';
+          accountMsg.style.color = 'var(--color-error)';
+          ok = false;
+        }
+      }
+
+      // 2. Upload avatar si sélectionné
+      if (ok && _pendingAvatar) {
+        var fd = new FormData();
+        fd.append('file', _pendingAvatar);
+        var r2 = await fetch('/api/me/avatar', { method: 'POST', body: fd });
+        if (r2.ok) {
+          var d2 = await r2.json();
+          _currentAvatar = d2.avatar;
+          renderNavAvatar(d2.avatar);
+        } else {
+          accountMsg.textContent = 'Erreur lors de l\'upload de la photo';
+          accountMsg.style.color = 'var(--color-error)';
+          ok = false;
+        }
+      }
+
+      if (ok) {
+        accountMsg.textContent = '✓ Compte mis à jour';
+        accountMsg.style.color = 'var(--color-success, green)';
+        setTimeout(closeAccountModal, 900);
+      }
+    });
 
     // ── Modal changement de mot de passe ─────────────────────────────────────
-    var chpwdModal  = document.getElementById('chpwd-modal');
-    var chpwdMsg    = document.getElementById('chpwd-msg');
+    var chpwdModal = document.getElementById('chpwd-modal');
+    var chpwdMsg   = document.getElementById('chpwd-msg');
 
     function openChpwd() {
-      userDropdown.classList.remove('open');
+      closeDropdown();
       document.getElementById('chpwd-old').value = '';
       document.getElementById('chpwd-new').value = '';
       document.getElementById('chpwd-confirm').value = '';
@@ -206,21 +339,18 @@
     }
     function closeChpwd() { chpwdModal.style.display = 'none'; }
 
-    var editPwdBtn = document.getElementById('nav-edit-profile');
-    if (editPwdBtn)  editPwdBtn.addEventListener('click', openChpwd);
+    document.getElementById('nav-edit-password')?.addEventListener('click', openChpwd);
     document.getElementById('chpwd-modal-close')?.addEventListener('click', closeChpwd);
     document.getElementById('chpwd-modal-cancel')?.addEventListener('click', closeChpwd);
     chpwdModal?.addEventListener('click', function(e){ if (e.target === chpwdModal) closeChpwd(); });
 
     document.getElementById('chpwd-modal-save')?.addEventListener('click', async function() {
-      var oldPw     = document.getElementById('chpwd-old').value;
-      var newPw     = document.getElementById('chpwd-new').value;
+      var oldPw = document.getElementById('chpwd-old').value;
+      var newPw = document.getElementById('chpwd-new').value;
       var confirmPw = document.getElementById('chpwd-confirm').value;
       chpwdMsg.textContent = '';
-
       var res = await fetch('/api/me/change-password', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ old_password: oldPw, new_password: newPw, confirm_password: confirmPw }),
       });
       var data = await res.json();

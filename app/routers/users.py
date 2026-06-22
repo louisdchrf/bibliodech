@@ -185,6 +185,33 @@ def update_own_profile(body: dict, request: Request, db: Session = Depends(get_d
     return {"ok": True, "username": user.username}
 
 
+@router.post("/api/me/avatar")
+async def upload_avatar(request: Request, db: Session = Depends(get_db)):
+    """Upload d'une photo de profil (multipart, champ 'file')."""
+    import io
+    from fastapi import UploadFile
+    from PIL import Image
+
+    user = get_current_user(request, db)
+    form = await request.form()
+    file: UploadFile = form.get("file")
+    if not file:
+        raise HTTPException(status_code=422, detail="Fichier manquant")
+
+    data = await file.read()
+    try:
+        img = Image.open(io.BytesIO(data)).convert("RGB")
+        img.thumbnail((256, 256))
+        dest = f"/app/data/avatars/{user.id}.jpg"
+        img.save(dest, "JPEG", quality=85)
+    except Exception:
+        raise HTTPException(status_code=422, detail="Image invalide")
+
+    user.avatar = f"/avatars/{user.id}.jpg"
+    db.commit()
+    return {"ok": True, "avatar": user.avatar}
+
+
 @router.delete("/api/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_user(user_id: int, request: Request, db: Session = Depends(get_db)):
     current = get_current_user(request, db)

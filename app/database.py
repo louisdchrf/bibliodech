@@ -53,6 +53,8 @@ def init_db():
             conn.execute(text("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0"))
         if "email" not in user_cols:
             conn.execute(text("ALTER TABLE users ADD COLUMN email TEXT"))
+        if "avatar" not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN avatar TEXT"))
 
         if "app_logs" not in tables:
             conn.execute(text("""

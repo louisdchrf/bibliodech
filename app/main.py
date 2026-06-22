@@ -27,6 +27,10 @@ app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), na
 COVERS_DIR = "/app/data/covers"
 os.makedirs(COVERS_DIR, exist_ok=True)
 app.mount("/covers", StaticFiles(directory=COVERS_DIR), name="covers")
+
+AVATARS_DIR = "/app/data/avatars"
+os.makedirs(AVATARS_DIR, exist_ok=True)
+app.mount("/avatars", StaticFiles(directory=AVATARS_DIR), name="avatars")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 # ── Routers ───────────────────────────────────────────────────────────────────

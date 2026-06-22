@@ -163,6 +163,7 @@ class User(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     must_change_password = Column(Boolean, default=False, nullable=False)
     email = Column(String, nullable=True)
+    avatar = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

@@ -132,18 +132,56 @@ img { display: block; max-width: 100%; }
   background: #fff;
   color: var(--color-primary);
   border: 1px solid #fff;
-  border-radius: var(--radius);
-  padding: .3rem .7rem;
+  border-radius: 999px;
+  padding: .2rem .65rem .2rem .2rem;
   font-size: .82rem;
   font-weight: 500;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: .3rem;
+  gap: .45rem;
   white-space: nowrap;
 }
 .nav-user-btn:hover { background: rgba(255,255,255,.85); }
 .nav-user-chevron { font-size: .65rem; opacity: .7; }
+
+/* ── Avatar ─────────────────────────────────────────────────────────────── */
+.nav-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.nav-avatar-lg {
+  width: 64px;
+  height: 64px;
+  font-size: 1.5rem;
+}
+.nav-avatar-img { width: 100%; height: 100%; object-fit: cover; }
+.nav-avatar-initials { font-size: .75rem; font-weight: 700; color: #fff; line-height: 1; }
+
+.avatar-upload-wrap { position: relative; flex-shrink: 0; }
+.avatar-upload-btn {
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: 2px solid var(--color-surface);
+}
+.avatar-upload-btn:hover { background: var(--color-primary-dark, #122a4a); }
 
 .nav-user-dropdown {
   display: none;
