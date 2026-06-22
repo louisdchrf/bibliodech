@@ -36,7 +36,7 @@
           {{ user.username }} <span class="nav-user-chevron">▾</span>
         </button>
         <div class="nav-user-dropdown" id="nav-user-dropdown" role="menu">
-          <button class="nav-dropdown-item" id="nav-edit-profile">Mon profil</button>
+          <button class="nav-dropdown-item" id="nav-edit-profile">Modifier le mot de passe</button>
           <div class="nav-dropdown-sep"></div>
           <form method="post" action="/logout">
             <button type="submit" class="nav-dropdown-item nav-dropdown-item-danger">Déconnexion</button>
@@ -78,24 +78,28 @@
     v{{ build_version }}
   </footer>
 
-  <!-- Modal profil -->
-  <div id="profile-modal" class="modal-overlay" style="display:none" role="dialog" aria-modal="true">
+  <!-- Modal changement de mot de passe -->
+  <div id="chpwd-modal" class="modal-overlay" style="display:none" role="dialog" aria-modal="true">
     <div class="modal-card modal-card-sm">
-      <button class="modal-close" id="profile-modal-close">&times;</button>
-      <h3 style="margin-bottom:1.25rem">Mon profil</h3>
+      <button class="modal-close" id="chpwd-modal-close">&times;</button>
+      <h3 style="margin-bottom:1.25rem">Modifier le mot de passe</h3>
       <div class="field" style="margin-bottom:.9rem">
-        <label>Nom d'utilisateur</label>
-        <input type="text" id="profile-username" class="input-sm" style="width:100%">
+        <label>Mot de passe actuel</label>
+        <input type="password" id="chpwd-old" class="input-sm" style="width:100%" autocomplete="current-password">
+      </div>
+      <div class="field" style="margin-bottom:.9rem">
+        <label>Nouveau mot de passe</label>
+        <input type="password" id="chpwd-new" class="input-sm" style="width:100%" autocomplete="new-password">
       </div>
       <div class="field" style="margin-bottom:1.25rem">
-        <label>Nouveau mot de passe <span class="text-muted">(laisser vide pour ne pas changer)</span></label>
-        <input type="password" id="profile-password" class="input-sm" style="width:100%" autocomplete="new-password">
+        <label>Confirmer le nouveau mot de passe</label>
+        <input type="password" id="chpwd-confirm" class="input-sm" style="width:100%" autocomplete="new-password">
       </div>
       <div class="modal-footer" style="padding:0">
-        <button class="btn btn-ghost" id="profile-modal-cancel">Annuler</button>
-        <button class="btn btn-primary" id="profile-modal-save">Enregistrer</button>
+        <button class="btn btn-ghost" id="chpwd-modal-cancel">Annuler</button>
+        <button class="btn btn-primary" id="chpwd-modal-save">Enregistrer</button>
       </div>
-      <div id="profile-msg" style="margin-top:.6rem;font-size:.82rem"></div>
+      <div id="chpwd-msg" style="margin-top:.6rem;font-size:.82rem"></div>
     </div>
   </div>
 
@@ -187,68 +191,46 @@
       });
     }
 
-    // ── Modal profil ──────────────────────────────────────────────────────────
-    var profileModal  = document.getElementById('profile-modal');
-    var profileClose  = document.getElementById('profile-modal-close');
-    var profileCancel = document.getElementById('profile-modal-cancel');
-    var profileSave   = document.getElementById('profile-modal-save');
-    var profileMsg    = document.getElementById('profile-msg');
+    // ── Modal changement de mot de passe ─────────────────────────────────────
+    var chpwdModal  = document.getElementById('chpwd-modal');
+    var chpwdMsg    = document.getElementById('chpwd-msg');
 
-    function openProfileModal() {
+    function openChpwd() {
       userDropdown.classList.remove('open');
-      document.getElementById('profile-username').value = userBtn ? userBtn.textContent.trim().replace('▾','').trim() : '';
-      document.getElementById('profile-password').value = '';
-      profileMsg.textContent = '';
-      profileModal.style.display = 'flex';
-      setTimeout(function(){ document.getElementById('profile-username').focus(); }, 50);
+      document.getElementById('chpwd-old').value = '';
+      document.getElementById('chpwd-new').value = '';
+      document.getElementById('chpwd-confirm').value = '';
+      chpwdMsg.textContent = '';
+      chpwdModal.style.display = 'flex';
+      setTimeout(function(){ document.getElementById('chpwd-old').focus(); }, 50);
     }
-    function closeProfileModal() { profileModal.style.display = 'none'; }
+    function closeChpwd() { chpwdModal.style.display = 'none'; }
 
-    var editProfileBtn = document.getElementById('nav-edit-profile');
-    if (editProfileBtn) editProfileBtn.addEventListener('click', openProfileModal);
-    if (profileClose)  profileClose.addEventListener('click', closeProfileModal);
-    if (profileCancel) profileCancel.addEventListener('click', closeProfileModal);
-    if (profileModal)  profileModal.addEventListener('click', function(e){ if (e.target === profileModal) closeProfileModal(); });
+    var editPwdBtn = document.getElementById('nav-edit-profile');
+    if (editPwdBtn)  editPwdBtn.addEventListener('click', openChpwd);
+    document.getElementById('chpwd-modal-close')?.addEventListener('click', closeChpwd);
+    document.getElementById('chpwd-modal-cancel')?.addEventListener('click', closeChpwd);
+    chpwdModal?.addEventListener('click', function(e){ if (e.target === chpwdModal) closeChpwd(); });
 
-    if (profileSave) profileSave.addEventListener('click', async function() {
-      var username = document.getElementById('profile-username').value.trim();
-      var password = document.getElementById('profile-password').value;
-      profileMsg.textContent = '';
-      var ok = true;
+    document.getElementById('chpwd-modal-save')?.addEventListener('click', async function() {
+      var oldPw     = document.getElementById('chpwd-old').value;
+      var newPw     = document.getElementById('chpwd-new').value;
+      var confirmPw = document.getElementById('chpwd-confirm').value;
+      chpwdMsg.textContent = '';
 
-      if (username) {
-        var r1 = await fetch('/api/me', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ username }) });
-        if (r1.ok) {
-          var d = await r1.json();
-          if (userBtn) userBtn.innerHTML = d.username + ' <span class="nav-user-chevron">▾</span>';
-        } else {
-          var err = await r1.json();
-          profileMsg.textContent = err.detail || 'Erreur lors de la mise à jour du nom';
-          profileMsg.style.color = 'var(--color-error)';
-          ok = false;
-        }
-      }
-
-      if (ok && password) {
-        if (password.length < 6) {
-          profileMsg.textContent = 'Le mot de passe doit faire au moins 6 caractères';
-          profileMsg.style.color = 'var(--color-error)';
-          ok = false;
-        } else {
-          var r2 = await fetch('/api/me/change-password', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ new_password: password }) });
-          if (!r2.ok) {
-            var err2 = await r2.json();
-            profileMsg.textContent = err2.detail || 'Erreur lors du changement de mot de passe';
-            profileMsg.style.color = 'var(--color-error)';
-            ok = false;
-          }
-        }
-      }
-
-      if (ok) {
-        profileMsg.textContent = '✓ Profil mis à jour';
-        profileMsg.style.color = 'var(--color-success, green)';
-        setTimeout(closeProfileModal, 900);
+      var res = await fetch('/api/me/change-password', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ old_password: oldPw, new_password: newPw, confirm_password: confirmPw }),
+      });
+      var data = await res.json();
+      if (res.ok) {
+        chpwdMsg.textContent = '✓ Mot de passe modifié';
+        chpwdMsg.style.color = 'var(--color-success, green)';
+        setTimeout(closeChpwd, 900);
+      } else {
+        chpwdMsg.textContent = data.detail || 'Erreur';
+        chpwdMsg.style.color = 'var(--color-error)';
       }
     });
   })();

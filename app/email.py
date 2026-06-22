@@ -134,3 +134,14 @@ def mail_reset_password(username: str, temp_password: str, site_url: str = "") -
 <p>Connectez-vous à <a href="{login_url}" style="color:#1e3a5f">{login_url}</a> et changez-le immédiatement.</p>
 """
     return subject, _wrap("Réinitialisation du mot de passe", body)
+
+
+def mail_password_changed(username: str, site_url: str = "") -> tuple[str, str]:
+    subject = "Votre mot de passe Bibliodech a été modifié"
+    login_url = f"{site_url}/login" if site_url else "/login"
+    body = f"""
+<p>Bonjour <strong>{username}</strong>,</p>
+<p>Votre mot de passe a été modifié avec succès.</p>
+<p>Si vous n'êtes pas à l'origine de cette modification, contactez immédiatement un administrateur ou reconnectez-vous à <a href="{login_url}" style="color:#1e3a5f">{login_url}</a>.</p>
+"""
+    return subject, _wrap("Mot de passe modifié", body)

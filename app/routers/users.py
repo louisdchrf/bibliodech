@@ -133,14 +133,37 @@ def reset_user_password(user_id: int, request: Request, db: Session = Depends(ge
 
 @router.post("/api/me/change-password")
 def change_own_password(body: dict, request: Request, db: Session = Depends(get_db)):
-    """L'utilisateur connecté change son propre mot de passe."""
+    """L'utilisateur connecté change son propre mot de passe (vérifie l'ancien)."""
+    from app.auth import verify_password
+    from app.email import send_mail, mail_password_changed, get_smtp_config
+    import app.settings as cfg
+
     user = get_current_user(request, db)
+
+    old_pw = body.get("old_password", "")
     new_pw = body.get("new_password", "").strip()
+    confirm_pw = body.get("confirm_password", "").strip()
+
+    if not verify_password(old_pw, user.password_hash):
+        raise HTTPException(status_code=403, detail="Mot de passe actuel incorrect")
     if len(new_pw) < 6:
-        raise HTTPException(status_code=422, detail="Le mot de passe doit faire au moins 6 caractères")
+        raise HTTPException(status_code=422, detail="Le nouveau mot de passe doit faire au moins 6 caractères")
+    if new_pw != confirm_pw:
+        raise HTTPException(status_code=422, detail="Les deux mots de passe ne correspondent pas")
+
     user.password_hash = hash_password(new_pw)
     user.must_change_password = False
     db.commit()
+
+    # Notification par mail si l'utilisateur a une adresse et que le SMTP est configuré
+    if user.email and get_smtp_config(db).get("host"):
+        try:
+            site_url = cfg.get(db, "site_url") or ""
+            subject, html = mail_password_changed(user.username, site_url)
+            send_mail(db, user.email, subject, html)
+        except Exception:
+            pass
+
     return {"ok": True}
 
 
