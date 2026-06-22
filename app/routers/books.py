@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.audit import log as audit_log
@@ -208,6 +208,31 @@ def clean_authors(request: Request, db: Session = Depends(get_db)):
     return {"updated": updated}
 
 
+async def _fetch_covers_logic(db) -> dict:
+    """Cherche et sauvegarde les couvertures pour les livres qui n'en ont pas."""
+    import asyncio
+    from app.routers.scan import _resolve_cover
+
+    books = db.query(Book).filter(
+        (Book.cover_url.is_(None)) | (Book.cover_url == "")
+    ).filter(Book.isbn.isnot(None)).all()
+
+    updated = 0
+    sem = asyncio.Semaphore(3)
+
+    async def _try_one(book):
+        nonlocal updated
+        async with sem:
+            url = await _resolve_cover(book.isbn, {})
+            if url:
+                book.cover_url = url
+                db.commit()
+                updated += 1
+
+    await asyncio.gather(*[_try_one(b) for b in books])
+    return {"updated": updated, "total": len(books)}
+
+
 @router.post("/api/books/bulk")
 def bulk_books(
     body: BulkActionRequest,
@@ -317,6 +342,57 @@ def get_app_logs(
         }
         for l in logs
     ]
+
+
+@router.post("/api/books/{book_id}/cover")
+async def upload_cover(
+    book_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    file: UploadFile | None = File(None),
+    url: str | None = Form(None),
+):
+    """Remplace la couverture d'un livre par un fichier ou une URL."""
+    user = get_current_user(request, db)
+    require_contributor(user)
+
+    book = db.query(Book).filter(Book.id == book_id).first()
+    if not book:
+        raise HTTPException(status_code=404, detail="Livre introuvable")
+
+    from app.covers import COVERS_DIR, MAX_WIDTH, QUALITY
+    from PIL import Image
+    import io as _io
+
+    isbn = book.isbn or str(book.id)
+    path = f"{COVERS_DIR}/{isbn}.jpg"
+
+    if file and file.filename:
+        content = await file.read()
+        try:
+            img = Image.open(_io.BytesIO(content)).convert("RGB")
+        except Exception:
+            raise HTTPException(status_code=400, detail="Fichier image invalide")
+        if img.width > MAX_WIDTH:
+            ratio = MAX_WIDTH / img.width
+            img = img.resize((MAX_WIDTH, int(img.height * ratio)), Image.LANCZOS)
+        img.save(path, "JPEG", quality=QUALITY, optimize=True)
+        book.cover_url = f"/covers/{isbn}.jpg"
+
+    elif url:
+        from app.covers import fetch_and_save
+        result = await fetch_and_save(isbn, url)
+        if not result:
+            raise HTTPException(status_code=400, detail="Impossible de télécharger l'image depuis cette URL")
+        book.cover_url = result
+
+    else:
+        raise HTTPException(status_code=400, detail="Fichier ou URL requis")
+
+    audit_log(db, book.id, "cover_updated", user_id=user.id)
+    db.commit()
+    db.refresh(book)
+    return book_to_dict(book)
 
 
 @router.delete("/api/books/{book_id}", status_code=status.HTTP_204_NO_CONTENT)

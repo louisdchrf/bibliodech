@@ -596,6 +596,30 @@
             </select>
           </div>
         </div>
+        <div class="field-separator">Couverture</div>
+        <div class="cover-import-row">
+          <div class="cover-import-preview-wrap">
+            <img id="cover-preview" src="${escHtml(coverSrc)}" alt="couverture" class="cover-import-preview" onerror="this.src='/static/img/no-cover.svg'">
+          </div>
+          <div class="cover-import-controls">
+            <div class="cover-import-option">
+              <label class="cover-import-label">Depuis un fichier</label>
+              <label class="btn btn-ghost btn-sm cover-file-btn">
+                Choisir une image
+                <input type="file" id="cover-file-input" accept="image/*" style="display:none">
+              </label>
+              <span id="cover-file-name" style="font-size:.8rem;color:var(--color-text-muted)"></span>
+            </div>
+            <div class="cover-import-option">
+              <label class="cover-import-label">Depuis une URL</label>
+              <div style="display:flex;gap:.4rem">
+                <input type="url" id="cover-url-input" placeholder="https://…" class="input-full" style="flex:1;min-width:0">
+                <button type="button" id="cover-url-btn" class="btn btn-ghost btn-sm">Importer</button>
+              </div>
+            </div>
+            <span id="cover-import-status" style="font-size:.8rem"></span>
+          </div>
+        </div>
         <div class="modal-actions">
           <button type="submit" class="btn btn-primary">Enregistrer</button>
           ${book.active_loan
@@ -779,6 +803,61 @@
         loadBooks();
       });
     }
+
+    // ── Import couverture ─────────────────────────────────────────────────
+    const bookId = document.querySelector('[name="book_id"]').value;
+    const coverPreview = document.getElementById('cover-preview');
+    const coverStatus = document.getElementById('cover-import-status');
+    const coverFileInput = document.getElementById('cover-file-input');
+    const coverUrlInput = document.getElementById('cover-url-input');
+    const coverFileName = document.getElementById('cover-file-name');
+
+    coverFileInput.addEventListener('change', async () => {
+      const f = coverFileInput.files[0];
+      if (!f) return;
+      coverFileName.textContent = f.name;
+      // Préview local immédiat
+      coverPreview.src = URL.createObjectURL(f);
+      coverStatus.textContent = 'Envoi…';
+      coverStatus.style.color = 'var(--color-text-muted)';
+      const fd = new FormData();
+      fd.append('file', f);
+      const res = await fetch(`/api/books/${bookId}/cover`, { method: 'POST', body: fd });
+      if (res.ok) {
+        const updated = await res.json();
+        coverPreview.src = updated.cover_url + '?t=' + Date.now();
+        coverStatus.textContent = 'Couverture mise à jour.';
+        coverStatus.style.color = 'var(--color-success,#22c55e)';
+        loadBooks();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        coverStatus.textContent = err.detail || 'Erreur lors de l\'envoi.';
+        coverStatus.style.color = 'var(--color-danger)';
+      }
+    });
+
+    document.getElementById('cover-url-btn').addEventListener('click', async () => {
+      const url = coverUrlInput.value.trim();
+      if (!url) return;
+      coverStatus.textContent = 'Téléchargement…';
+      coverStatus.style.color = 'var(--color-text-muted)';
+      const fd = new FormData();
+      fd.append('url', url);
+      const res = await fetch(`/api/books/${bookId}/cover`, { method: 'POST', body: fd });
+      if (res.ok) {
+        const updated = await res.json();
+        coverPreview.src = updated.cover_url + '?t=' + Date.now();
+        coverUrlInput.value = '';
+        coverStatus.textContent = 'Couverture mise à jour.';
+        coverStatus.style.color = 'var(--color-success,#22c55e)';
+        loadBooks();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        coverStatus.textContent = err.detail || 'Erreur lors du téléchargement.';
+        coverStatus.style.color = 'var(--color-danger)';
+      }
+    });
+    // ─────────────────────────────────────────────────────────────────────
 
     const reenrichBtn = document.getElementById('reenrich-btn');
     if (reenrichBtn) {

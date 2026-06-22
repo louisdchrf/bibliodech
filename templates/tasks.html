@@ -51,8 +51,9 @@
 
   // Tâches planifiables : définition complète ici
   const SCHEDULABLE = [
-    { id: 'reenrich',      name: 'Compléter les livres manquants', desc: 'Relance l\'enrichissement pour les livres sans titre ou non trouvés lors du scan initial.' },
-    { id: 'clean-authors', name: 'Normaliser les auteurs',        desc: 'Convertit les auteurs "Nom, Prénom" → "Prénom Nom" pour tous les livres.' },
+    { id: 'reenrich',      name: 'Compléter les livres manquants',       desc: 'Relance l\'enrichissement pour les livres sans titre ou non trouvés lors du scan initial.' },
+    { id: 'fetch-covers',  name: 'Rechercher les couvertures manquantes', desc: 'Interroge Open Library et Google Books pour télécharger les couvertures des livres qui n\'en ont pas.' },
+    { id: 'clean-authors', name: 'Normaliser les auteurs',                desc: 'Convertit les auteurs "Nom, Prénom" → "Prénom Nom" pour tous les livres.' },
   ];
 
   // Tâches planifiables : toutes passent par /api/tasks/run/{id}

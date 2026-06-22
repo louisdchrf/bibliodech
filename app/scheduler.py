@@ -36,6 +36,7 @@ def get_next_runs() -> dict[str, str | None]:
 # Chaque coroutine_factory reçoit (db) et exécute la logique directement
 SCHEDULABLE_TASKS = {
     "reenrich":      "Compléter les livres manquants",
+    "fetch-covers":  "Rechercher les couvertures manquantes",
     "clean-authors": "Normaliser les auteurs",
 }
 
@@ -102,6 +103,11 @@ async def _execute_task(task_id: str, db) -> str:
         from app.routers.books import _reenrich_missing
         result = await _reenrich_missing(db, force=False)
         return f"{result.get('queued', 0)} livres enrichis"
+
+    if task_id == "fetch-covers":
+        from app.routers.books import _fetch_covers_logic
+        result = await _fetch_covers_logic(db)
+        return f"{result['updated']} couvertures récupérées"
 
     if task_id == "clean-authors":
         from app.routers.books import _clean_authors_logic
