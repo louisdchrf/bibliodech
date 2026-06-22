@@ -139,13 +139,35 @@ def _ocr_image_path(cover_url: str) -> str | None:
     return None
 
 
+def _preprocess_for_ocr(img):
+    """Améliore l'image pour Tesseract : niveaux de gris, upscale, contraste."""
+    from PIL import ImageEnhance, ImageFilter
+    img = img.convert("L")
+    # Doubler la résolution pour aider Tesseract sur les petits textes
+    img = img.resize((img.width * 2, img.height * 2), resample=1)  # LANCZOS=1
+    img = ImageEnhance.Contrast(img).enhance(2.0)
+    img = ImageEnhance.Sharpness(img).enhance(2.0)
+    return img
+
+
+def _ocr_text(img, lang: str = "fra+eng") -> str:
+    import pytesseract
+    try:
+        return pytesseract.image_to_string(img, lang=lang, config="--psm 3 --oem 1")
+    except Exception:
+        return ""
+
+
 def _ocr_series_from_cover(cover_url: str, known_series: list[str]) -> str | None:
     """
     Lance l'OCR sur la couverture et tente d'extraire un nom de série.
-    Retourne le nom normalisé (ou None si non trouvé).
+    Stratégie :
+      1. Matcher le texte OCR contre les séries connues (exact, mots-clés)
+      2. Extraire le nom après les formules "Les aventures de …"
+      3. Retourner la première ligne significative en majuscules
     """
     try:
-        import pytesseract
+        import pytesseract  # noqa — vérifie la dispo
         from PIL import Image
     except ImportError:
         return None
@@ -155,47 +177,76 @@ def _ocr_series_from_cover(cover_url: str, known_series: list[str]) -> str | Non
         return None
 
     try:
-        img = Image.open(path)
+        img = Image.open(path).convert("RGB")
     except Exception:
         return None
 
-    # Recadrer le tiers supérieur (là où est souvent le nom de série)
     w, h = img.size
-    top_band = img.crop((0, 0, w, h // 3))
+    # Tiers supérieur (séries souvent en haut), puis image complète
+    top = img.crop((0, 0, w, h // 3))
+    top_lines = [l.strip() for l in _ocr_text(_preprocess_for_ocr(top)).splitlines() if len(l.strip()) >= 2]
+    full_lines = [l.strip() for l in _ocr_text(_preprocess_for_ocr(img)).splitlines() if len(l.strip()) >= 2]
 
-    try:
-        raw = pytesseract.image_to_string(top_band, lang="fra+eng", config="--psm 6")
-    except Exception:
-        return None
-
-    lines = [l.strip() for l in raw.splitlines() if len(l.strip()) >= 3]
-    if not lines:
-        return None
+    # Texte unifié tiers supérieur (jointure pour capturer "LES AVENTURES DE\nTINTIN")
+    top_joined = " ".join(top_lines)
+    full_joined = " ".join(full_lines)
 
     known_norm = {_norm(s): s for s in known_series}
 
-    for line in lines:
-        # Retirer les préfixes formule ("Les aventures de …")
-        clean = _SERIE_PREFIXES.sub("", line).strip().rstrip(".,;:!? ")
-        if len(clean) < 2:
-            continue
-
-        # Correspondance exacte avec une série connue
-        n = _norm(clean)
-        if n in known_norm:
-            return known_norm[n]
-
-        # Correspondance partielle : la ligne est contenue dans un nom connu
+    # ── Passe 1 : formules "Les aventures de X" dans le texte unifié ─────────
+    # Capturer ce qui suit la formule jusqu'à la fin de ligne / ponctuation
+    formula_match = re.search(
+        r"(?:les?\s+aventures?\s+(?:de|du|des?)|une?\s+aventure\s+(?:de|du|des?))\s+([A-ZÀ-Ÿa-zà-ÿ][A-ZÀ-Ÿa-zà-ÿ &'\-]{1,40})",
+        top_joined, re.I
+    )
+    if not formula_match:
+        formula_match = re.search(
+            r"(?:les?\s+aventures?\s+(?:de|du|des?)|une?\s+aventure\s+(?:de|du|des?))\s+([A-ZÀ-Ÿa-zà-ÿ][A-ZÀ-Ÿa-zà-ÿ &'\-]{1,40})",
+            full_joined, re.I
+        )
+    if formula_match:
+        candidate = formula_match.group(1).strip().rstrip(".,;:!?- ")
+        # Vérifier si ça matche une série connue
+        cn = _norm(candidate)
+        if cn in known_norm:
+            return known_norm[cn]
         for kn, ks in known_norm.items():
-            if n and (n in kn or kn in n):
+            if len(cn) >= 3 and (cn in kn or kn in cn):
                 return ks
+        # Pas de série connue → retourner le nom extrait directement
+        if len(candidate) >= 3:
+            return candidate.title() if candidate.isupper() else candidate
 
-    # Aucune correspondance avec une série connue → retourner la première ligne
-    # significative (en majuscules = titre de série probable sur couverture BD)
-    for line in lines:
-        clean = _SERIE_PREFIXES.sub("", line).strip().rstrip(".,;:!? ")
-        if len(clean) >= 3 and (clean.isupper() or clean[0].isupper()):
-            return clean
+    # ── Passe 2 : matching direct contre les séries connues ──────────────────
+    full_norm = _norm(full_joined)
+    # Exact
+    for kn, ks in sorted(known_norm.items(), key=lambda x: -len(x[0])):
+        if kn and kn in full_norm:
+            return ks
+    # Mots-clés significatifs
+    for kn, ks in known_norm.items():
+        words = [w for w in kn.split() if w not in _ARTICLES and len(w) >= 4]
+        if words and all(w in full_norm for w in words):
+            return ks
+
+    # ── Passe 3 : heuristique — première ligne en majuscules dans le top ─────
+    for line in top_lines:
+        clean = _SERIE_PREFIXES.sub("", line).strip().rstrip(".,;:!?- ")
+        # Ignorer les lignes trop courtes ou trop longues
+        if len(clean) < 3 or len(clean) > 60:
+            continue
+        # Ignorer les lignes qui ressemblent à des auteurs (Prénom Nom)
+        if re.match(r'^[A-Z][a-z]+ [A-Z][a-z]+$', clean):
+            continue
+        if clean.isupper() or (clean[0].isupper() and sum(1 for c in clean if c.isupper()) >= 2):
+            n = _norm(clean)
+            for kn, ks in known_norm.items():
+                if len(n) >= 4 and (n in kn or kn in n):
+                    return ks
+            # Pas de correspondance → ne pas retourner du texte aléatoire sans série connue
+            # (trop de bruit)
+
+    return None
 
     return None
 
