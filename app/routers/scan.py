@@ -23,8 +23,35 @@ def _normalize_isbn(isbn: str) -> str:
 
 
 
+async def _decitre_cover_url(client, isbn: str) -> str | None:
+    """Récupère l'URL de couverture depuis la page Decitre (JSON-LD)."""
+    import re as _re
+    _JSONLD_RE = _re.compile(r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', _re.DOTALL)
+    try:
+        resp = await client.get(f"https://www.decitre.fr/livres/{isbn}.html", follow_redirects=True)
+        if resp.status_code != 200:
+            return None
+        for match in _JSONLD_RE.finditer(resp.text):
+            try:
+                obj = json.loads(match.group(1))
+                items = obj if isinstance(obj, list) else [obj]
+                for item in items:
+                    if item.get("@type") in ("Book", "Product") and item.get("name"):
+                        img = item.get("image")
+                        if isinstance(img, list):
+                            img = img[0] if img else None
+                        if img:
+                            return img
+            except (json.JSONDecodeError, AttributeError):
+                continue
+    except Exception:
+        pass
+    return None
+
+
 async def _resolve_cover(isbn: str, info: dict) -> str | None:
     """Essaie les URLs de couverture dans l'ordre jusqu'à en trouver une valide."""
+    import httpx
     import app.settings as cfg_mod
     from app.database import SessionLocal as _SL
     _db = _SL()
@@ -35,22 +62,26 @@ async def _resolve_cover(isbn: str, info: dict) -> str | None:
 
     candidates = []
 
-    # 1. URL fournie par la source principale
+    # 1. URL fournie par la source principale (scan enrichissement)
     if info.get("cover_url"):
         candidates.append(info["cover_url"])
 
-    # 2. Open Library covers par ISBN (si pas déjà dedans)
-    ol_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg"
-    if ol_url not in candidates:
-        candidates.append(ol_url)
+    async with httpx.AsyncClient(timeout=8) as client:
+        # 2. Decitre — bonne couverture pour le fonds francophone
+        decitre_url = await _decitre_cover_url(client, isbn)
+        if decitre_url and decitre_url not in candidates:
+            candidates.append(decitre_url)
 
-    # 3. Google Books thumbnail
-    gb_api = f"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}"
-    if gb_key:
-        gb_api += f"&key={gb_key}"
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=6) as client:
+        # 3. Open Library covers par ISBN
+        ol_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg"
+        if ol_url not in candidates:
+            candidates.append(ol_url)
+
+        # 4. Google Books thumbnail
+        gb_api = f"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}"
+        if gb_key:
+            gb_api += f"&key={gb_key}"
+        try:
             gb_resp = await client.get(gb_api)
             if gb_resp.status_code == 200:
                 items = gb_resp.json().get("items", [])
@@ -59,8 +90,8 @@ async def _resolve_cover(isbn: str, info: dict) -> str | None:
                     gb_cover = (links.get("large") or links.get("medium") or links.get("thumbnail", "")).replace("http://", "https://")
                     if gb_cover and gb_cover not in candidates:
                         candidates.append(gb_cover)
-    except Exception:
-        pass
+        except Exception:
+            pass
 
     for url in candidates:
         local = await fetch_and_save(isbn, url)
