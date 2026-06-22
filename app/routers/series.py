@@ -358,6 +358,7 @@ async def _sudoc_detect(db: Session, task_id: str = "sudoc-series") -> dict:
     """
     from app.routers.scan import _lookup_series_sudoc
     from app.lookup import lookup_isbn
+    from app import scheduler as sched
 
     books = (
         db.query(Book)
