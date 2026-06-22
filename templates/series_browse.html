@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Séries — Bibliodech{% endblock %}
+{% block content %}
+<div style="display:flex;height:calc(100vh - 56px);overflow:hidden;gap:0">
+
+  <!-- Sidebar séries -->
+  <div id="series-sidebar" style="width:240px;min-width:180px;border-right:1px solid var(--color-border);overflow-y:auto;flex-shrink:0;background:var(--color-surface)">
+    <div style="padding:.75rem 1rem;border-bottom:1px solid var(--color-border);display:flex;align-items:center;justify-content:space-between">
+      <span style="font-weight:600;font-size:.9rem">Séries</span>
+      <span id="series-count" style="font-size:.75rem;color:var(--color-text-muted)"></span>
+    </div>
+    <div id="series-list" style="padding:.25rem 0"></div>
+  </div>
+
+  <!-- Contenu -->
+  <div style="flex:1;overflow-y:auto;padding:1.5rem">
+    <div id="series-content">
+      <p style="color:var(--color-text-muted)">Sélectionnez une série dans la liste.</p>
+    </div>
+  </div>
+
+</div>
+
+{% if user.role == 'admin' %}
+<div style="position:fixed;bottom:1rem;right:1rem;z-index:100">
+  <button class="btn btn-danger btn-sm" onclick="confirmPurge()">Purger toutes les séries</button>
+</div>
+{% endif %}
+
+<script>
+let _allSeries = [];
+let _activeSid = null;
+
+async function loadSeries() {
+  const r = await fetch('/api/series');
+  _allSeries = await r.json();
+  document.getElementById('series-count').textContent = _allSeries.length;
+  renderSidebar(_allSeries);
+}
+
+function renderSidebar(list) {
+  const el = document.getElementById('series-list');
+  if (!list.length) {
+    el.innerHTML = '<p style="padding:.75rem 1rem;color:var(--color-text-muted);font-size:.85rem">Aucune série.</p>';
+    return;
+  }
+  el.innerHTML = list.map(s => `
+    <button onclick="selectSeries(${s.id})" id="sidebar-${s.id}"
+      style="display:block;width:100%;text-align:left;padding:.45rem 1rem;border:none;background:none;cursor:pointer;font-size:.85rem;color:var(--color-text);border-left:3px solid transparent"
+      class="series-sidebar-btn">
+      <span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(s.name)}</span>
+      <span style="font-size:.72rem;color:var(--color-text-muted)">${s.book_count} livre${s.book_count !== 1 ? 's' : ''}</span>
+    </button>`).join('');
+}
+
+async function selectSeries(sid) {
+  _activeSid = sid;
+  document.querySelectorAll('.series-sidebar-btn').forEach(b => {
+    b.style.background = 'none';
+    b.style.borderLeftColor = 'transparent';
+    b.style.fontWeight = 'normal';
+  });
+  const active = document.getElementById(`sidebar-${sid}`);
+  if (active) {
+    active.style.background = 'var(--color-primary-light, color-mix(in srgb,var(--color-primary) 10%,transparent))';
+    active.style.borderLeftColor = 'var(--color-primary)';
+    active.style.fontWeight = '600';
+  }
+
+  document.getElementById('series-content').innerHTML = '<p style="color:var(--color-text-muted)">Chargement…</p>';
+  const r = await fetch(`/api/series/${sid}/books`);
+  const data = await r.json();
+  renderSeriesDetail(data);
+}
+
+function renderSeriesDetail(data) {
+  const books = data.books;
+  const grid = books.map(b => `
+    <a href="/book/${b.id}" style="text-decoration:none;color:inherit">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:.4rem;cursor:pointer">
+        ${b.cover_url
+          ? `<img src="${b.cover_url}" style="width:80px;height:115px;object-fit:cover;border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.15)">`
+          : `<div style="width:80px;height:115px;background:var(--color-border);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:1.5rem">📖</div>`}
+        ${b.series_position != null ? `<span style="font-size:.7rem;font-weight:700;color:var(--color-primary)">T.${b.series_position}</span>` : ''}
+        <span style="font-size:.75rem;text-align:center;max-width:90px;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escHtml(b.title)}</span>
+        <span style="font-size:.68rem;color:var(--color-text-muted);text-align:center;max-width:90px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml((b.authors||[]).join(', '))}</span>
+      </div>
+    </a>`).join('');
+
+  document.getElementById('series-content').innerHTML = `
+    <div style="display:flex;align-items:baseline;gap:.75rem;margin-bottom:1.25rem;flex-wrap:wrap">
+      <h2 style="margin:0">${escHtml(data.name)}</h2>
+      <span style="color:var(--color-text-muted);font-size:.85rem">${data.books.length} livre${data.books.length !== 1 ? 's' : ''}</span>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:1.25rem;align-items:flex-start">
+      ${grid}
+    </div>`;
+}
+
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function confirmPurge() {
+  if (!confirm('Supprimer toutes les séries, propositions et réinitialiser les livres ?\nCette action est irréversible.')) return;
+  const r = await fetch('/api/series/purge', {method:'POST'});
+  if (r.ok) {
+    _allSeries = [];
+    document.getElementById('series-count').textContent = '0';
+    document.getElementById('series-list').innerHTML = '<p style="padding:.75rem 1rem;color:var(--color-text-muted);font-size:.85rem">Aucune série.</p>';
+    document.getElementById('series-content').innerHTML = '<p style="color:var(--color-text-muted)">Toutes les séries ont été supprimées.</p>';
+  }
+}
+
+loadSeries();
+</script>
+{% endblock %}

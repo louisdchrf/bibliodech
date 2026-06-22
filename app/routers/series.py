@@ -352,3 +352,42 @@ def list_series(request: Request, db: Session = Depends(get_db)):
         {"id": s.id, "name": s.name, "book_count": len(s.books)}
         for s in series
     ]
+
+
+@router.get("/api/series/{series_id}/books")
+def get_series_books(series_id: int, request: Request, db: Session = Depends(get_db)):
+    get_current_user(request, db)
+    from fastapi import HTTPException
+    series = db.query(Series).filter(Series.id == series_id).first()
+    if not series:
+        raise HTTPException(404)
+    books = sorted(series.books, key=lambda b: (b.series_position is None, b.series_position or 0))
+    return {
+        "id": series.id,
+        "name": series.name,
+        "books": [
+            {
+                "id": b.id,
+                "title": b.title,
+                "authors": json.loads(b.authors or "[]"),
+                "cover_url": b.cover_url,
+                "series_position": b.series_position,
+                "publisher": b.publisher,
+            }
+            for b in books
+        ],
+    }
+
+
+@router.post("/api/series/purge")
+def purge_series(request: Request, db: Session = Depends(get_db)):
+    """Supprime toutes les séries, proposals et réinitialise les livres."""
+    user = get_current_user(request, db)
+    require_admin(user)
+    from sqlalchemy import text
+    db.execute(text("UPDATE books SET series_id = NULL, series_position = NULL"))
+    db.execute(text("DELETE FROM series_proposals"))
+    db.execute(text("DELETE FROM series_missing_volumes"))
+    db.execute(text("DELETE FROM series"))
+    db.commit()
+    return {"ok": True}

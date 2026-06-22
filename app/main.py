@@ -523,6 +523,17 @@ async def page_logs(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse("applogs.html", {"request": request, "user": user, "active": "logs", "build_version": BUILD_VERSION})
 
 
+@app.get("/series", response_class=HTMLResponse)
+def series_browse_page(request: Request, db: Session = Depends(get_db)):
+    try:
+        user = get_current_user(request, db)
+    except Exception:
+        return RedirectResponse(url="/login", status_code=302)
+    return templates.TemplateResponse("series_browse.html", {
+        "request": request, "user": user, "active": "series-browse", "build_version": BUILD_VERSION,
+    })
+
+
 @app.get("/series/proposals", response_class=HTMLResponse)
 def series_proposals_page(request: Request, db: Session = Depends(get_db)):
     try:
