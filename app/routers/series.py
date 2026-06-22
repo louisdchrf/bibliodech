@@ -42,13 +42,16 @@ def _norm_authors(a: str | None) -> frozenset:
 
 
 def _first_word(title: str) -> str | None:
-    """Premier mot significatif du titre (ignore les articles)."""
+    """Deux premiers mots significatifs du titre (ignore les articles)."""
     t = _norm(title)
+    words = []
     for word in t.split():
         w = re.sub(r"[^a-z0-9]", "", word)
         if w and w not in _ARTICLES and len(w) >= 3:
-            return w
-    return None
+            words.append(w)
+            if len(words) == 2:
+                break
+    return " ".join(words) if words else None
 
 
 # ── Parsing du titre ─────────────────────────────────────────────────────────
