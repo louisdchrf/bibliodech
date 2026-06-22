@@ -113,16 +113,16 @@ async def _execute_task(task_id: str, db) -> str:
 
     if task_id == "clean-authors":
         from app.routers.books import _clean_authors_logic
-        return _clean_authors_logic(db)
+        return _clean_authors_logic(db, task_id=task_id)
 
     if task_id == "detect-series":
         from app.routers.series import _detect
-        result = await _detect(db)
+        result = await _detect(db, task_id=task_id)
         return f"{result['auto_assigned']} assignés, {result['proposals']} propositions"
 
     if task_id == "ocr-series":
         from app.routers.series import _ocr_detect
-        result = await _ocr_detect(db)
+        result = await _ocr_detect(db, task_id=task_id)
         return f"{result['auto_assigned']} assignés, {result['proposals']} propositions"
 
     return "tâche inconnue"

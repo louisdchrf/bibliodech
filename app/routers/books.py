@@ -175,7 +175,9 @@ def patch_book(
     return book_to_dict(book)
 
 
-def _clean_authors_logic(db) -> str:
+def _clean_authors_logic(db, task_id: str = "clean-authors") -> str:
+    from app import scheduler as sched
+
     def _normalize(author: str) -> str:
         if '(' in author or author.count(',') != 1:
             return author
@@ -185,9 +187,13 @@ def _clean_authors_logic(db) -> str:
             return author
         return f"{prenom} {nom}"
 
-    updated = 0
     books = db.query(Book).filter(Book.authors.isnot(None)).all()
-    for book in books:
+    total = len(books)
+    if task_id in sched._running:
+        sched._running[task_id]["progress"] = {"current": 0, "total": total}
+
+    updated = 0
+    for i, book in enumerate(books):
         try:
             authors = json.loads(book.authors)
         except Exception:
@@ -196,6 +202,8 @@ def _clean_authors_logic(db) -> str:
         if cleaned != authors:
             book.authors = json.dumps(cleaned, ensure_ascii=False)
             updated += 1
+        if task_id in sched._running:
+            sched._running[task_id]["progress"]["current"] = i + 1
     db.commit()
     return f"{updated} livre(s) mis à jour"
 

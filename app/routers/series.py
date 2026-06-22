@@ -251,11 +251,13 @@ def _ocr_series_from_cover(cover_url: str, known_series: list[str]) -> str | Non
     return None
 
 
-async def _ocr_detect(db: Session) -> dict:
+async def _ocr_detect(db: Session, task_id: str = "ocr-series") -> dict:
     """
     Signal OCR : pour chaque livre orphelin avec couverture locale,
     tente de lire le nom de série sur l'image.
     """
+    from app import scheduler as sched
+
     books = (
         db.query(Book)
         .filter(
@@ -267,18 +269,23 @@ async def _ocr_detect(db: Session) -> dict:
         .all()
     )
 
+    total = len(books)
+    if task_id in sched._running:
+        sched._running[task_id]["progress"] = {"current": 0, "total": total}
+
     known_series = [s.name for s in db.query(Series).all()]
     known_norm = {_norm(s): s for s in known_series}
 
     assigned = 0
     proposed = 0
-    # nom_normalisé → liste de livres
     ocr_groups: dict[str, list[Book]] = defaultdict(list)
 
-    for b in books:
+    for i, b in enumerate(books):
         name = _ocr_series_from_cover(b.cover_url, known_series)
         if name:
             ocr_groups[_norm(name)].append(b)
+        if task_id in sched._running:
+            sched._running[task_id]["progress"]["current"] = i + 1
 
     for norm_name, group in ocr_groups.items():
         # Chercher série existante
@@ -324,7 +331,8 @@ async def _ocr_detect(db: Session) -> dict:
 
 # ── Algorithme de détection ───────────────────────────────────────────────────
 
-async def _detect(db: Session) -> dict:
+async def _detect(db: Session, task_id: str = "detect-series") -> dict:
+    from app import scheduler as sched
     import app.settings as cfg
     gb_key = cfg.get(db, "googlebooks_api_key") or ""
 
@@ -333,6 +341,10 @@ async def _detect(db: Session) -> dict:
         .filter(Book.enrichment_status == "ok", Book.series_id.is_(None))
         .all()
     )
+
+    total = len(books)
+    if task_id in sched._running:
+        sched._running[task_id]["progress"] = {"current": 0, "total": total}
 
     auto_assigned = 0
     proposals_created = 0
@@ -353,12 +365,14 @@ async def _detect(db: Session) -> dict:
     title_groups: dict[str, list[tuple[Book, int | None]]] = defaultdict(list)
     parsed_books: set[int] = set()
 
-    for b in books:
+    for i, b in enumerate(books):
         result = _parse_title(b.title)
         if result:
             series_name, position = result
             title_groups[_norm(series_name)].append((b, position))
             parsed_books.add(b.id)
+        if task_id in sched._running:
+            sched._running[task_id]["progress"]["current"] = i + 1
 
     for norm_name, entries in title_groups.items():
         # Trouver le nom cannonique (le plus fréquent dans le groupe)
