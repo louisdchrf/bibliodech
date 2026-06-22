@@ -19,10 +19,10 @@
     <div class="nav-links">
       <a href="/scanner" {% if active=='scanner' %}class="active"{% endif %}>Scanner</a>
       <div class="nav-menu" id="nav-menu-library">
-        <button class="nav-menu-btn {% if active in ['library','series-browse'] %}active{% endif %}" id="nav-menu-library-btn">
+        <span class="nav-menu-trigger {% if active in ['library','series-browse'] %}active{% endif %}" id="nav-menu-library-btn">
           Bibliothèque <span class="nav-menu-chevron">▾</span>
-        </button>
-        <div class="nav-menu-dropdown" id="nav-menu-library-drop">
+        </span>
+        <div class="nav-menu-dropdown">
           <a href="/library" class="nav-menu-item {% if active=='library' %}active{% endif %}">Ouvrages</a>
           <a href="/series" class="nav-menu-item {% if active=='series-browse' %}active{% endif %}">Séries</a>
         </div>
@@ -32,10 +32,10 @@
       <a href="/stats" {% if active=='stats' %}class="active"{% endif %}>Statistiques</a>
       {% if user.role == 'admin' %}
       <div class="nav-menu" id="nav-menu-detection">
-        <button class="nav-menu-btn {% if active in ['series','series-proposals'] %}active{% endif %}" id="nav-menu-detection-btn">
+        <span class="nav-menu-trigger {% if active in ['series','tasks'] %}active{% endif %}" id="nav-menu-detection-btn">
           Détection <span class="nav-menu-chevron">▾</span>
-        </button>
-        <div class="nav-menu-dropdown" id="nav-menu-detection-drop">
+        </span>
+        <div class="nav-menu-dropdown">
           <a href="/series/proposals" class="nav-menu-item {% if active=='series' %}active{% endif %}">Propositions</a>
           <a href="/tasks" class="nav-menu-item {% if active=='tasks' %}active{% endif %}">Tâches</a>
         </div>
@@ -88,25 +88,19 @@
       }
 
       // Dropdowns nav-menu
-      var menus = document.querySelectorAll('.nav-menu');
-      menus.forEach(function(menu) {
-        var menuBtn = menu.querySelector('.nav-menu-btn');
-        var drop = menu.querySelector('.nav-menu-dropdown');
-        if (!menuBtn || !drop) return;
-        menuBtn.addEventListener('click', function(e) {
+      document.querySelectorAll('.nav-menu').forEach(function(menu) {
+        menu.querySelector('.nav-menu-trigger').addEventListener('click', function(e) {
           e.stopPropagation();
-          var isOpen = drop.classList.contains('open');
-          // Fermer tous les autres
-          document.querySelectorAll('.nav-menu-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
-          if (!isOpen) drop.classList.add('open');
+          var isOpen = menu.classList.contains('open');
+          document.querySelectorAll('.nav-menu.open').forEach(function(m) { m.classList.remove('open'); });
+          if (!isOpen) menu.classList.add('open');
         });
       });
 
-      // Fermer dropdowns au clic extérieur
+      // Fermer au clic extérieur
       document.addEventListener('click', function(e) {
-        if (!e.target.closest('.nav-menu')) {
-          document.querySelectorAll('.nav-menu-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
-        }
+        if (!e.target.closest('.nav-menu'))
+          document.querySelectorAll('.nav-menu.open').forEach(function(m) { m.classList.remove('open'); });
         if (btn && links && !btn.contains(e.target) && !links.contains(e.target)) {
           links.classList.remove('open');
           btn.setAttribute('aria-expanded', false);
