@@ -160,7 +160,14 @@ def _ocr_text(img, lang: str = "fra+eng") -> str:
         return ""
 
 
-def _ocr_series_from_cover(cover_url: str, known_series: list[str]) -> str | None:
+_KNOWN_PUBLISHERS = {
+    "dupuis", "dargaud", "casterman", "lombard", "glenat", "delcourt",
+    "soleil", "bamboo", "lucky", "comics", "marvel", "dc", "editions",
+    "rue", "de", "la", "moisson", "futuropolis", "humanoides", "associes",
+}
+
+
+def _ocr_series_from_cover(cover_url: str, known_series: list[str], book_authors: list[str] | None = None) -> str | None:
     """
     Lance l'OCR sur la couverture et tente d'extraire un nom de série.
     Stratégie :
@@ -252,20 +259,35 @@ def _ocr_series_from_cover(cover_url: str, known_series: list[str]) -> str | Non
         if words and all(w in full_norm for w in words):
             return ks
 
-    _KNOWN_PUBLISHERS = {
-        "dupuis", "dargaud", "casterman", "lombard", "glenat", "delcourt",
-        "soleil", "bamboo", "lucky", "comics", "marvel", "dc", "editions",
-    }
+    # Construire le set des mots d'auteurs à exclure
+    author_norms: set[str] = set()
+    if book_authors:
+        for a in book_authors:
+            author_norms.add(_norm(a))
+            # Ajouter aussi chaque mot du nom (nom, prénom séparément)
+            for word in _norm(a).split():
+                if len(word) >= 3:
+                    author_norms.add(word)
 
-    def _is_author_line(s: str) -> bool:
-        """Deux mots en majuscules ou mixte = probablement un auteur."""
-        words = s.split()
-        if len(words) == 2:
-            # "BRUNO DEQUIER" ou "Bruno Dequier" → auteur
-            if all(w[0].isupper() for w in words if w):
-                return True
-        if len(words) == 3 and all(w[0].isupper() for w in words if w):
+    def _is_excluded(s: str) -> bool:
+        """Retourne True si la ligne ressemble à un auteur ou éditeur connu."""
+        n = _norm(s)
+        # Éditeur connu
+        if n in _KNOWN_PUBLISHERS:
             return True
+        # Correspond exactement à un auteur connu
+        if n in author_norms:
+            return True
+        # Ligne dont tous les mots principaux sont des mots d'auteur
+        words = [w for w in n.split() if len(w) >= 3]
+        if words and all(w in author_norms for w in words):
+            return True
+        # Pattern "Prénom Nom" ou "NOM Prénom" en 2-3 mots initiaux majuscules
+        raw_words = s.split()
+        if 2 <= len(raw_words) <= 3 and all(w[0].isupper() for w in raw_words if w):
+            # Exception : si c'est une série connue, ne pas exclure
+            if n not in known_norm and not any(n in kn or kn in n for kn in known_norm):
+                return True
         return False
 
     # ── Passe 3 : heuristique — lignes en majuscules dans toutes les bandes ────
@@ -274,9 +296,7 @@ def _ocr_series_from_cover(cover_url: str, known_series: list[str]) -> str | Non
         clean = _SERIE_PREFIXES.sub("", line).strip()
         if len(clean) < 3 or len(clean) > 60:
             continue
-        if _is_author_line(clean):
-            continue
-        if _norm(clean) in _KNOWN_PUBLISHERS:
+        if _is_excluded(clean):
             continue
         if clean.isupper() or (clean[0].isupper() and sum(1 for c in clean if c.isupper()) >= 2):
             n = _norm(clean)
@@ -284,16 +304,13 @@ def _ocr_series_from_cover(cover_url: str, known_series: list[str]) -> str | Non
             for kn, ks in known_norm.items():
                 if len(n) >= 4 and (n in kn or kn in n):
                     return ks
-            # Conserver comme candidat si assez long et vraiment en majuscules (1 mot)
+            # Conserver comme candidat uppercase (1 ou 2 mots max)
             if clean.isupper() and len(clean) >= 4 and best_candidate is None:
-                words = clean.split()
-                if len(words) == 1:  # un seul mot en majuscules → probablement titre de série
+                words_count = len(clean.split())
+                if words_count <= 2:
                     best_candidate = clean.title()
 
-    # Retourner le meilleur candidat uppercase même sans série connue
     return best_candidate
-
-    return None
 
 
 async def _ocr_detect(db: Session, task_id: str = "ocr-series") -> dict:
@@ -331,8 +348,9 @@ async def _ocr_detect(db: Session, task_id: str = "ocr-series") -> dict:
     loop = asyncio.get_event_loop()
     for i, b in enumerate(books):
         # Exécuter l'OCR (bloquant) dans le thread pool pour ne pas bloquer l'event loop
+        authors = json.loads(b.authors or "[]")
         name = await loop.run_in_executor(
-            None, _ocr_series_from_cover, b.cover_url, known_series
+            None, _ocr_series_from_cover, b.cover_url, known_series, authors
         )
         if name:
             ocr_groups[_norm(name)].append(b)
@@ -656,9 +674,10 @@ async def ocr_cover_single(request: Request, db: Session = Depends(get_db)):
     require_admin(user)
     body = await request.json()
     cover_url: str = body.get("cover_url", "")
+    book_authors: list[str] = body.get("authors", [])
     known_series = [s.name for s in db.query(Series).all()]
     loop = asyncio.get_event_loop()
-    name = await loop.run_in_executor(None, _ocr_series_from_cover, cover_url, known_series)
+    name = await loop.run_in_executor(None, _ocr_series_from_cover, cover_url, known_series, book_authors)
     return {"name": name}
 
 
