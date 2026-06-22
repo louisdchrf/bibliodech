@@ -163,8 +163,8 @@ img { display: block; max-width: 100%; }
 
 .btn-ghost    { background: transparent; color: var(--color-text); border: 1px solid var(--color-border); }
 .btn-ghost:hover { background: var(--color-surface-2); }
-.navbar .btn-ghost { color: #fff; border-color: rgba(255,255,255,.4); }
-.navbar .btn-ghost:hover { background: rgba(255,255,255,.1); }
+.navbar .btn-ghost { color: var(--color-primary); background: #fff; border-color: #fff; }
+.navbar .btn-ghost:hover { background: rgba(255,255,255,.85); }
 
 .btn-danger   { background: var(--color-error); color: #fff; }
 .btn-danger:hover { opacity: .85; }
