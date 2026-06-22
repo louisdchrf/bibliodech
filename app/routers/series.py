@@ -347,6 +347,59 @@ def _ocr_series_from_cover(cover_url: str, known_series: list[str], book_authors
     return best_candidate
 
 
+async def _sudoc_detect(db: Session, task_id: str = "sudoc-series") -> dict:
+    """
+    Interroge SUDOC + lookup_isbn pour chaque livre orphelin avec ISBN.
+    Auto-assigne si la série existe déjà, sinon crée une proposition.
+    """
+    from app.routers.scan import _lookup_series_sudoc
+    from app.lookup import lookup_isbn
+
+    books = (
+        db.query(Book)
+        .filter(Book.enrichment_status == "ok", Book.series_id.is_(None), Book.isbn.isnot(None))
+        .all()
+    )
+    total = len(books)
+    if task_id in sched._running:
+        sched._running[task_id]["progress"] = {"current": 0, "total": total}
+
+    assigned = 0
+    proposed = 0
+
+    for i, b in enumerate(books):
+        series_name = None
+        series_vol = None
+
+        result = await _lookup_series_sudoc(b.isbn)
+        if result:
+            series_name, series_vol = result
+        else:
+            info = await lookup_isbn(b.isbn)
+            if info and info.get("series_name"):
+                series_name = info["series_name"]
+                series_vol = info.get("series_position")
+
+        if series_name:
+            existing = db.query(Series).all()
+            series = next((s for s in existing if _norm(s.name) == _norm(series_name)), None)
+            if not series:
+                series = Series(name=series_name, source="sudoc")
+                db.add(series)
+                db.flush()
+            b.series_id = series.id
+            if series_vol is not None and b.series_position is None:
+                b.series_position = int(series_vol)
+            assigned += 1
+            db.commit()
+
+        if task_id in sched._running:
+            sched._running[task_id]["progress"]["current"] = i + 1
+        await asyncio.sleep(0)
+
+    return {"auto_assigned": assigned, "proposals": proposed}
+
+
 async def _ocr_detect(db: Session, task_id: str = "ocr-series") -> dict:
     """
     Signal OCR : pour chaque livre orphelin avec couverture locale,

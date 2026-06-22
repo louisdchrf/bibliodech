@@ -40,6 +40,7 @@ SCHEDULABLE_TASKS = {
     "refresh-covers":  "Re-télécharger toutes les couvertures (HD)",
     "clean-authors":   "Normaliser les auteurs",
     "detect-series":   "Détecter les séries",
+    "sudoc-series":    "Chercher les séries dans le catalogue (SUDOC)",
     "ocr-series":      "Lire les séries sur les couvertures (OCR)",
 }
 
@@ -124,6 +125,11 @@ async def _execute_task(task_id: str, db) -> str:
     if task_id == "detect-series":
         from app.routers.series import _detect
         result = await _detect(db, task_id=task_id)
+        return f"{result['auto_assigned']} assignés, {result['proposals']} propositions"
+
+    if task_id == "sudoc-series":
+        from app.routers.series import _sudoc_detect
+        result = await _sudoc_detect(db, task_id=task_id)
         return f"{result['auto_assigned']} assignés, {result['proposals']} propositions"
 
     if task_id == "ocr-series":
