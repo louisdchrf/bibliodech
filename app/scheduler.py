@@ -42,6 +42,7 @@ SCHEDULABLE_TASKS = {
     "detect-series":   "Détecter les séries",
     "sudoc-series":    "Chercher les séries dans le catalogue (SUDOC)",
     "ocr-series":      "Lire les séries sur les couvertures (OCR)",
+    "clean-series":    "Normaliser les noms de séries",
 }
 
 _DEFAULT_CONFIG = {
@@ -136,6 +137,10 @@ async def _execute_task(task_id: str, db) -> str:
         from app.routers.series import _ocr_detect
         result = await _ocr_detect(db, task_id=task_id)
         return f"{result['auto_assigned']} assignés, {result['proposals']} propositions"
+
+    if task_id == "clean-series":
+        from app.routers.series import _clean_series_names_logic
+        return _clean_series_names_logic(db, task_id=task_id)
 
     return "tâche inconnue"
 

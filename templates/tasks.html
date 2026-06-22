@@ -55,6 +55,7 @@
     { id: 'detect-series', name: 'Détecter les séries',                   desc: 'Regroupe les livres par série selon le titre et les auteurs. Assigne automatiquement les cas certains, propose les cas ambigus dans la page Séries.' },
     { id: 'sudoc-series',  name: 'Chercher les séries dans le catalogue', desc: 'Interroge SUDOC et Open Library par ISBN pour trouver le nom de série. Très efficace pour les BDs françaises.' },
     { id: 'ocr-series',   name: 'Lire les séries sur les couvertures',   desc: 'Reconnaissance de caractères (OCR Tesseract) sur les couvertures pour trouver le nom de série imprimé sur l\'image. Complète la détection par titre.' },
+    { id: 'clean-series', name: 'Normaliser les noms de séries',         desc: 'Capitalise la première lettre et supprime les espaces superflus dans les noms de séries.' },
   ];
 
   // Tâches planifiables : toutes passent par /api/tasks/run/{id}

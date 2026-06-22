@@ -952,6 +952,46 @@ def get_series_books(series_id: int, request: Request, db: Session = Depends(get
     }
 
 
+def _clean_series_names_logic(db, task_id: str = "clean-series") -> str:
+    """Normalise les noms de séries : capitalise la première lettre, supprime les espaces superflus."""
+    from app import scheduler as sched
+
+    def _normalize(name: str) -> str:
+        # Supprimer les espaces superflus
+        name = re.sub(r"\s+", " ", name).strip()
+        # Capitaliser uniquement la première lettre (respecte les majuscules intérieures)
+        if name and name[0].islower():
+            name = name[0].upper() + name[1:]
+        return name
+
+    all_series = db.query(Series).all()
+    total = len(all_series)
+    if task_id in sched._running:
+        sched._running[task_id]["progress"] = {"current": 0, "total": total}
+
+    updated = 0
+    for i, s in enumerate(all_series):
+        cleaned = _normalize(s.name)
+        if cleaned != s.name:
+            # Vérifier qu'un autre série ne porte pas déjà ce nom
+            conflict = db.query(Series).filter(Series.name == cleaned, Series.id != s.id).first()
+            if not conflict:
+                s.name = cleaned
+                updated += 1
+        if task_id in sched._running:
+            sched._running[task_id]["progress"]["current"] = i + 1
+    db.commit()
+    return f"{updated} série(s) normalisée(s)"
+
+
+@router.post("/api/series/clean-names")
+def clean_series_names(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user(request, db)
+    require_admin(user)
+    result = _clean_series_names_logic(db)
+    return {"result": result}
+
+
 @router.get("/api/series/missing")
 def get_missing_volumes(request: Request, db: Session = Depends(get_db)):
     """Retourne les trous de tomes pour chaque série ayant des positions renseignées."""
