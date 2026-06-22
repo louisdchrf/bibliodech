@@ -775,6 +775,12 @@ def patch_proposal(proposal_id: int, body: dict, request: Request, db: Session =
         p.proposed_name = body["proposed_name"]
     if "signal" in body:
         p.signal = body["signal"]
+    if "add_signal" in body:
+        existing = [s for s in (p.signal or "").split(",") if s]
+        new_sig = body["add_signal"]
+        if new_sig not in existing:
+            existing.append(new_sig)
+        p.signal = ",".join(existing)
     db.commit()
     return {"ok": True}
 

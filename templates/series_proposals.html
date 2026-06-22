@@ -65,10 +65,13 @@ function renderCard(p) {
     prefix: { label: 'Préfixe commun',    color: 'var(--color-primary)' },
     author: { label: 'Auteur + éditeur',  color: 'var(--color-warning, #d97706)' },
     ocr:    { label: '🔍 OCR couverture', color: 'var(--color-success, #16a34a)' },
+    title:  { label: 'Titre',             color: 'var(--color-primary)' },
   };
-  const sig = SIGNAL_META[p.signal] || { label: p.signal, color: 'var(--color-text-muted)' };
-  const signalLabel = sig.label;
-  const signalColor = sig.color;
+  const signals = (p.signal || '').split(',').map(s => s.trim()).filter(Boolean);
+  const signalBadges = signals.map(s => {
+    const meta = SIGNAL_META[s] || { label: s, color: 'var(--color-text-muted)' };
+    return `<span style="font-size:.72rem;font-weight:600;color:${meta.color};background:color-mix(in srgb,${meta.color} 12%,transparent);padding:.15rem .5rem;border-radius:99px;border:1px solid color-mix(in srgb,${meta.color} 30%,transparent)">${meta.label}</span>`;
+  }).join(' ');
 
   const books = p.books.map(b => `
     <div style="display:flex;align-items:center;gap:.5rem;padding:.35rem 0;border-bottom:1px solid var(--color-border)">
@@ -92,11 +95,11 @@ function renderCard(p) {
   const canOcr = (p.signal === 'prefix' || p.signal === 'author') && coverUrls.length > 0;
 
   return `
-  <div class="card" id="proposal-${p.id}" style="margin-bottom:1.25rem">
+  <div class="card" id="proposal-${p.id}" data-signals="${p.signal || ''}" style="margin-bottom:1.25rem">
     <div style="display:flex;align-items:flex-start;gap:1rem;flex-wrap:wrap">
       <div style="flex:1;min-width:260px">
         <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.75rem">
-          <span style="font-size:.72rem;font-weight:600;color:${signalColor};background:color-mix(in srgb,${signalColor} 12%,transparent);padding:.15rem .5rem;border-radius:99px;border:1px solid color-mix(in srgb,${signalColor} 30%,transparent)">${signalLabel}</span>
+          <span class="signal-badges" style="display:flex;gap:.3rem;flex-wrap:wrap">${signalBadges}</span>
           <span style="font-size:.75rem;color:var(--color-text-muted)">${p.books.length} livre(s)</span>
         </div>
         <div style="max-height:260px;overflow-y:auto">${books}</div>
@@ -169,20 +172,29 @@ async function ocrProposal(id, coverUrls, authors = []) {
     input.value = best;
     bar.innerHTML = `<span style="color:var(--color-success,#16a34a)">✓ Nom détecté : <strong>${best}</strong></span>`;
     if (btn) { btn.textContent = '✓'; btn.style.color = 'var(--color-success,#16a34a)'; }
-    // Sauvegarder dans la DB + marquer comme trouvé par OCR
+    // Sauvegarder dans la DB + ajouter "ocr" aux signaux
     await fetch(`/api/series/proposals/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ proposed_name: best, signal: 'ocr' }),
+      body: JSON.stringify({ proposed_name: best, add_signal: 'ocr' }),
     });
-    // Mettre à jour le badge signal dans la carte
+    // Re-rendre la carte avec les badges mis à jour
     const card = document.getElementById(`proposal-${id}`);
-    const badge = card?.querySelector('span[style*="border-radius:99px"]');
-    if (badge) {
-      badge.textContent = '🔍 OCR couverture';
-      badge.style.color = 'var(--color-success, #16a34a)';
-      badge.style.background = 'color-mix(in srgb, var(--color-success, #16a34a) 12%, transparent)';
-      badge.style.borderColor = 'color-mix(in srgb, var(--color-success, #16a34a) 30%, transparent)';
+    if (card) {
+      const updatedSignals = [...new Set([...(card.dataset.signals || '').split(','), 'ocr'])].filter(Boolean).join(',');
+      card.dataset.signals = updatedSignals;
+      const badgesEl = card.querySelector('.signal-badges');
+      if (badgesEl) {
+        const SIGNAL_META = {
+          prefix: { label: 'Préfixe commun', color: 'var(--color-primary)' },
+          author: { label: 'Auteur + éditeur', color: 'var(--color-warning, #d97706)' },
+          ocr:    { label: '🔍 OCR couverture', color: 'var(--color-success, #16a34a)' },
+        };
+        badgesEl.innerHTML = updatedSignals.split(',').map(s => {
+          const m = SIGNAL_META[s] || { label: s, color: 'var(--color-text-muted)' };
+          return `<span style="font-size:.72rem;font-weight:600;color:${m.color};background:color-mix(in srgb,${m.color} 12%,transparent);padding:.15rem .5rem;border-radius:99px;border:1px solid color-mix(in srgb,${m.color} 30%,transparent)">${m.label}</span>`;
+        }).join(' ');
+      }
     }
   } else {
     bar.innerHTML = `<span style="color:var(--color-text-muted)">Aucun nom détecté sur les couvertures</span>`;
