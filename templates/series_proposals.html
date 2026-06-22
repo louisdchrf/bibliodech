@@ -104,7 +104,7 @@ function renderCard(p) {
           <label style="font-size:.8rem;font-weight:600;display:block;margin-bottom:.3rem">Nom de la série</label>
           <div style="display:flex;gap:.4rem;align-items:center">
             <input type="text" id="name-${p.id}" class="form-control" placeholder="Nom de la série…" value="${nameVal}" style="flex:1;min-width:0">
-            ${canOcr ? `<button class="btn btn-ghost btn-sm" title="Lire les couvertures (OCR)" onclick="ocrProposal(${p.id}, ${JSON.stringify(coverUrls)})" id="ocr-btn-${p.id}" style="white-space:nowrap;flex-shrink:0">🔍</button>` : ''}
+            ${canOcr ? `<button class="btn btn-ghost btn-sm" title="Lire les couvertures (OCR)" id="ocr-btn-${p.id}" data-proposal-id="${p.id}" data-cover-urls="${encodeURIComponent(JSON.stringify(coverUrls))}" style="white-space:nowrap;flex-shrink:0">🔍</button>` : ''}
           </div>
         </div>
         <div style="margin-bottom:1rem">
@@ -218,5 +218,14 @@ async function rejectProposal(id) {
 }
 
 loadProposals();
+
+// Délégation d'événement pour les boutons OCR (générés dynamiquement)
+document.getElementById('proposals-container').addEventListener('click', e => {
+  const btn = e.target.closest('[id^="ocr-btn-"]');
+  if (!btn) return;
+  const proposalId = parseInt(btn.dataset.proposalId);
+  const coverUrls = JSON.parse(decodeURIComponent(btn.dataset.coverUrls));
+  ocrProposal(proposalId, coverUrls);
+});
 </script>
 {% endblock %}
