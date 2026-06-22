@@ -974,40 +974,61 @@ def _clean_series_names_logic(db, task_id: str = "clean-series") -> str:
     renamed = 0
     merged = 0
 
+    def _merge_into(keeper: Series, duplicate: Series):
+        """Déplace les livres de duplicate vers keeper puis supprime duplicate."""
+        for b in list(duplicate.books):
+            if b.series_position is not None:
+                conflict = next(
+                    (ob for ob in keeper.books if ob.series_position == b.series_position), None
+                )
+                if conflict:
+                    b.series_position = None
+            b.series_id = keeper.id
+        db.query(SeriesProposal).filter(SeriesProposal.existing_series_id == duplicate.id).update(
+            {"existing_series_id": keeper.id}
+        )
+        db.delete(duplicate)
+
+    # Passe 1 : renommer (ponctuation, espaces, première lettre)
     for i, s in enumerate(all_series):
         if task_id in sched._running:
             sched._running[task_id]["progress"]["current"] = i + 1
-
-        # Série peut avoir été supprimée lors d'une fusion précédente
-        db.refresh(s)
+        try:
+            db.refresh(s)
+        except Exception:
+            continue
         cleaned = _normalize(s.name)
-
         if cleaned == s.name:
             continue
-
-        # Chercher si une série avec ce nom nettoyé existe déjà
         existing = db.query(Series).filter(Series.name == cleaned, Series.id != s.id).first()
         if existing:
-            # Fusionner : déplacer les livres de s vers existing
-            for b in list(s.books):
-                if b.series_position is not None:
-                    conflict = next(
-                        (ob for ob in existing.books if ob.series_position == b.series_position), None
-                    )
-                    if conflict:
-                        b.series_position = None
-                b.series_id = existing.id
-            # Mettre à jour les proposals qui pointaient vers s
-            db.query(SeriesProposal).filter(SeriesProposal.existing_series_id == s.id).update(
-                {"existing_series_id": existing.id}
-            )
-            db.delete(s)
+            # Garder celui qui a le plus de livres
+            keeper, dup = (existing, s) if len(existing.books) >= len(s.books) else (s, existing)
+            keeper.name = cleaned
+            _merge_into(keeper, dup)
             merged += 1
         else:
             s.name = cleaned
             renamed += 1
-
     db.commit()
+
+    # Passe 2 : fusionner les séries avec le même _norm() (casse, accents)
+    all_series2 = db.query(Series).order_by(Series.id).all()
+    norm_map: dict[str, Series] = {}
+    for s in all_series2:
+        key = _norm(s.name)
+        if key in norm_map:
+            keeper = norm_map[key]
+            # Garder le nom du keeper (celui avec le plus de livres)
+            if len(s.books) > len(keeper.books):
+                keeper, s = s, keeper
+                norm_map[key] = keeper
+            _merge_into(keeper, s)
+            merged += 1
+        else:
+            norm_map[key] = s
+    db.commit()
+
     parts = []
     if renamed:
         parts.append(f"{renamed} renommée(s)")
