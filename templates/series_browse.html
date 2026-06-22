@@ -1,37 +1,35 @@
 {% extends "base.html" %}
 {% block title %}Séries — Bibliodech{% endblock %}
+
 {% block content %}
-<div style="display:flex;height:calc(100vh - 56px);overflow:hidden;gap:0">
-
-  <!-- Sidebar séries -->
-  <div id="series-sidebar" style="width:260px;min-width:200px;border-right:1px solid var(--color-border);flex-shrink:0;background:var(--color-surface);display:flex;flex-direction:column">
-    <div style="padding:.75rem 1rem;border-bottom:1px solid var(--color-border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
-      <span style="font-weight:600;font-size:.9rem">Séries</span>
-      <span id="series-count" style="font-size:.75rem;color:var(--color-text-muted)"></span>
-    </div>
-    <div style="padding:.5rem .75rem;border-bottom:1px solid var(--color-border);display:flex;flex-direction:column;gap:.4rem;flex-shrink:0">
-      <div style="position:relative">
-        <input id="series-search" type="search" placeholder="Rechercher une série…"
-          style="width:100%;padding:.35rem .6rem .35rem 1.8rem;font-size:.82rem;border:1px solid var(--color-border);border-radius:6px;background:var(--color-bg);color:var(--color-text);box-sizing:border-box;outline:none">
-        <span style="position:absolute;left:.5rem;top:50%;transform:translateY(-50%);font-size:.8rem;pointer-events:none;color:var(--color-text-muted)">🔍</span>
-      </div>
-      <div style="display:flex;gap:.35rem;flex-wrap:wrap">
-        <button class="filter-btn active" data-min="0">Toutes</button>
-        <button class="filter-btn" data-min="2">≥ 2</button>
-        <button class="filter-btn" data-min="5">≥ 5</button>
-        <button class="filter-btn" data-min="10">≥ 10</button>
-      </div>
-    </div>
-    <div id="series-list" style="padding:.25rem 0;flex:1;overflow-y:auto"></div>
-  </div>
-
-  <!-- Contenu -->
-  <div style="flex:1;overflow-y:auto;padding:1.5rem">
-    <div id="series-content">
-      <p style="color:var(--color-text-muted)">Sélectionnez une série dans la liste.</p>
+<div class="library-page">
+  <div class="library-toolbar">
+    <input type="text" id="search" placeholder="Rechercher une série…" class="search-input">
+    <div class="filter-row">
+      <select id="filter-size" class="select-input">
+        <option value="0">Toutes les tailles</option>
+        <option value="2">≥ 2 livres</option>
+        <option value="5">≥ 5 livres</option>
+        <option value="10">≥ 10 livres</option>
+      </select>
+      <select id="sort-by" class="select-input">
+        <option value="name">Trier par titre</option>
+        <option value="count_desc">Trier par taille (↓)</option>
+        <option value="count_asc">Trier par taille (↑)</option>
+      </select>
+      <button id="btn-view-toggle" class="btn btn-ghost btn-icon" title="Changer l'affichage" aria-label="Vue liste / grille">
+        <svg id="icon-grid" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <svg id="icon-list" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3" cy="6" r="1" fill="currentColor" stroke="none"/><circle cx="3" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="3" cy="18" r="1" fill="currentColor" stroke="none"/></svg>
+      </button>
     </div>
   </div>
 
+  <div id="series-count" class="book-count"></div>
+  <div id="series-grid" class="book-grid"></div>
+  <div id="empty-state" class="empty-state" style="display:none">
+    <div class="empty-icon">📚</div>
+    <p>Aucune série trouvée</p>
+  </div>
 </div>
 
 {% if user.role == 'admin' %}
@@ -40,133 +38,166 @@
 </div>
 {% endif %}
 
-<style>
-.filter-btn {
-  padding:.2rem .55rem;font-size:.72rem;border:1px solid var(--color-border);
-  border-radius:4px;cursor:pointer;background:none;color:var(--color-text);transition:background .1s,color .1s;
-}
-.filter-btn:hover { background:var(--color-border); }
-.filter-btn.active { background:var(--color-primary);color:#fff;border-color:var(--color-primary); }
-</style>
+<!-- Panneau latéral série -->
+<div id="series-panel" style="position:fixed;top:56px;right:0;bottom:0;width:480px;max-width:100vw;background:var(--color-surface);border-left:1px solid var(--color-border);z-index:200;display:none;flex-direction:column;box-shadow:-4px 0 20px rgba(0,0,0,.12)">
+  <div style="display:flex;align-items:center;gap:.75rem;padding:.85rem 1.25rem;border-bottom:1px solid var(--color-border);flex-shrink:0">
+    <button onclick="closePanel()" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--color-text-muted);line-height:1;padding:.1rem .3rem">←</button>
+    <div style="flex:1;min-width:0">
+      <div id="panel-title" style="font-weight:700;font-size:1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+      <div id="panel-subtitle" style="font-size:.78rem;color:var(--color-text-muted)"></div>
+    </div>
+  </div>
+  <div id="panel-content" style="flex:1;overflow-y:auto;padding:1.25rem">
+    <p style="color:var(--color-text-muted)">Chargement…</p>
+  </div>
+</div>
+<div id="panel-backdrop" onclick="closePanel()" style="display:none;position:fixed;inset:0;z-index:199;background:rgba(0,0,0,.2)"></div>
 
 <script>
-let _allSeries = [];
-let _activeSid = null;
-let _filterMin = 0;
-let _searchQ = '';
+(function() {
+  const grid = document.getElementById('series-grid');
+  const emptyState = document.getElementById('empty-state');
+  const countEl = document.getElementById('series-count');
+  const searchInput = document.getElementById('search');
+  const filterSize = document.getElementById('filter-size');
+  const sortBy = document.getElementById('sort-by');
 
-async function loadSeries() {
-  const r = await fetch('/api/series');
-  _allSeries = await r.json();
-  updateCount();
-  applyFilters();
-}
+  let _all = [];
+  let debounceTimer;
 
-function updateCount() {
-  const visible = _filtered();
-  document.getElementById('series-count').textContent =
-    visible.length === _allSeries.length ? _allSeries.length : `${visible.length}/${_allSeries.length}`;
-}
-
-function _filtered() {
-  const q = _searchQ.toLowerCase().trim();
-  return _allSeries.filter(s =>
-    s.book_count >= _filterMin &&
-    (!q || s.name.toLowerCase().includes(q))
-  );
-}
-
-function applyFilters() {
-  updateCount();
-  renderSidebar(_filtered());
-}
-
-function renderSidebar(list) {
-  const el = document.getElementById('series-list');
-  if (!list.length) {
-    el.innerHTML = '<p style="padding:.75rem 1rem;color:var(--color-text-muted);font-size:.85rem">Aucune série.</p>';
-    return;
+  function escHtml(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
-  el.innerHTML = list.map(s => `
-    <button onclick="selectSeries(${s.id})" id="sidebar-${s.id}"
-      style="display:block;width:100%;text-align:left;padding:.45rem 1rem;border:none;background:none;cursor:pointer;font-size:.85rem;color:var(--color-text);border-left:3px solid transparent${_activeSid === s.id ? ';background:var(--color-primary-light,color-mix(in srgb,var(--color-primary) 10%,transparent));border-left-color:var(--color-primary);font-weight:600' : ''}"
-      class="series-sidebar-btn">
-      <span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${highlight(escHtml(s.name), _searchQ)}</span>
-      <span style="font-size:.72rem;color:var(--color-text-muted)">${s.book_count} livre${s.book_count !== 1 ? 's' : ''}</span>
-    </button>`).join('');
-}
 
-function highlight(html, q) {
-  if (!q) return html;
-  const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return html.replace(new RegExp(`(${esc})`, 'gi'), '<mark style="background:var(--color-primary);color:#fff;border-radius:2px;padding:0 1px">$1</mark>');
-}
+  // ── Vue grille / liste ────────────────────────────────────────────────────
+  let listView = localStorage.getItem('bib_series_list_view') === '1';
+  const btnViewToggle = document.getElementById('btn-view-toggle');
+  const iconGrid = document.getElementById('icon-grid');
+  const iconList = document.getElementById('icon-list');
 
-async function selectSeries(sid) {
-  _activeSid = sid;
-  // re-render sidebar to reflect active state
-  renderSidebar(_filtered());
-
-  document.getElementById('series-content').innerHTML = '<p style="color:var(--color-text-muted)">Chargement…</p>';
-  const r = await fetch(`/api/series/${sid}/books`);
-  const data = await r.json();
-  renderSeriesDetail(data);
-}
-
-function renderSeriesDetail(data) {
-  const books = data.books;
-  const grid = books.map(b => `
-    <a href="/book/${b.id}" style="text-decoration:none;color:inherit">
-      <div style="display:flex;flex-direction:column;align-items:center;gap:.4rem;cursor:pointer">
-        ${b.cover_url
-          ? `<img src="${b.cover_url}" style="width:80px;height:115px;object-fit:cover;border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.15)">`
-          : `<div style="width:80px;height:115px;background:var(--color-border);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:1.5rem">📖</div>`}
-        ${b.series_position != null ? `<span style="font-size:.7rem;font-weight:700;color:var(--color-primary)">T.${b.series_position}</span>` : ''}
-        <span style="font-size:.75rem;text-align:center;max-width:90px;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escHtml(b.title)}</span>
-        <span style="font-size:.68rem;color:var(--color-text-muted);text-align:center;max-width:90px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml((b.authors||[]).join(', '))}</span>
-      </div>
-    </a>`).join('');
-
-  document.getElementById('series-content').innerHTML = `
-    <div style="display:flex;align-items:baseline;gap:.75rem;margin-bottom:1.25rem;flex-wrap:wrap">
-      <h2 style="margin:0">${escHtml(data.name)}</h2>
-      <span style="color:var(--color-text-muted);font-size:.85rem">${data.books.length} livre${data.books.length !== 1 ? 's' : ''}</span>
-    </div>
-    <div style="display:flex;flex-wrap:wrap;gap:1.25rem;align-items:flex-start">
-      ${grid}
-    </div>`;
-}
-
-function escHtml(s) {
-  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-async function confirmPurge() {
-  if (!confirm('Supprimer toutes les séries, propositions et réinitialiser les livres ?\nCette action est irréversible.')) return;
-  const r = await fetch('/api/series/purge', {method:'POST'});
-  if (r.ok) {
-    _allSeries = [];
-    document.getElementById('series-count').textContent = '0';
-    document.getElementById('series-list').innerHTML = '<p style="padding:.75rem 1rem;color:var(--color-text-muted);font-size:.85rem">Aucune série.</p>';
-    document.getElementById('series-content').innerHTML = '<p style="color:var(--color-text-muted)">Toutes les séries ont été supprimées.</p>';
+  function applyViewMode() {
+    grid.classList.toggle('list-view', listView);
+    iconGrid.style.display = listView ? '' : 'none';
+    iconList.style.display = listView ? 'none' : '';
   }
-}
+  applyViewMode();
 
-// Wiring
-document.getElementById('series-search').addEventListener('input', e => {
-  _searchQ = e.target.value;
-  applyFilters();
-});
-
-document.querySelectorAll('.filter-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    _filterMin = parseInt(btn.dataset.min);
-    applyFilters();
+  btnViewToggle.addEventListener('click', () => {
+    listView = !listView;
+    localStorage.setItem('bib_series_list_view', listView ? '1' : '0');
+    applyViewMode();
   });
-});
 
-loadSeries();
+  // ── Filtrage / tri ────────────────────────────────────────────────────────
+  function filtered() {
+    const q = searchInput.value.trim().toLowerCase();
+    const minSize = parseInt(filterSize.value) || 0;
+    let list = _all.filter(s =>
+      s.book_count >= minSize &&
+      (!q || s.name.toLowerCase().includes(q))
+    );
+    const sort = sortBy.value;
+    if (sort === 'count_desc') list.sort((a, b) => b.book_count - a.book_count);
+    else if (sort === 'count_asc') list.sort((a, b) => a.book_count - b.book_count);
+    else list.sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    return list;
+  }
+
+  function render() {
+    const list = filtered();
+    const n = list.length;
+    countEl.textContent = n === 0 ? '' : `${n} série${n > 1 ? 's' : ''}${n < _all.length ? ` sur ${_all.length}` : ''}`;
+    emptyState.style.display = list.length === 0 ? 'flex' : 'none';
+    grid.innerHTML = '';
+    list.forEach(s => grid.appendChild(seriesCard(s)));
+  }
+
+  function seriesCard(s) {
+    const div = document.createElement('div');
+    div.className = 'book-card';
+    div.style.cursor = 'pointer';
+    const cover = s.cover_url
+      ? `<img src="${escHtml(s.cover_url)}" alt="couverture" class="book-cover" loading="lazy" onerror="this.src='/static/img/no-cover.svg'">`
+      : `<img src="/static/img/no-cover.svg" alt="couverture" class="book-cover">`;
+    div.innerHTML = `
+      <div class="book-cover-wrap">${cover}</div>
+      <div class="book-meta">
+        <div class="book-title" title="${escHtml(s.name)}">${escHtml(s.name)}</div>
+        <div class="book-author">${s.book_count} livre${s.book_count !== 1 ? 's' : ''}</div>
+      </div>`;
+    div.addEventListener('click', () => openPanel(s.id, s.name, s.book_count));
+    return div;
+  }
+
+  async function loadSeries() {
+    const r = await fetch('/api/series');
+    _all = await r.json();
+    render();
+  }
+
+  // ── Panneau latéral ───────────────────────────────────────────────────────
+  const panel = document.getElementById('series-panel');
+  const backdrop = document.getElementById('panel-backdrop');
+
+  async function openPanel(sid, name, count) {
+    document.getElementById('panel-title').textContent = name;
+    document.getElementById('panel-subtitle').textContent = `${count} livre${count !== 1 ? 's' : ''}`;
+    document.getElementById('panel-content').innerHTML = '<p style="color:var(--color-text-muted)">Chargement…</p>';
+    panel.style.display = 'flex';
+    backdrop.style.display = '';
+
+    const r = await fetch(`/api/series/${sid}/books`);
+    const data = await r.json();
+    renderPanelContent(data);
+  }
+
+  function closePanel() {
+    panel.style.display = 'none';
+    backdrop.style.display = 'none';
+  }
+
+  function renderPanelContent(data) {
+    const books = data.books;
+    if (!books.length) {
+      document.getElementById('panel-content').innerHTML = '<p style="color:var(--color-text-muted)">Aucun livre dans cette série.</p>';
+      return;
+    }
+    const items = books.map(b => `
+      <a href="/book/${b.id}" style="text-decoration:none;color:inherit;display:flex;align-items:center;gap:.85rem;padding:.6rem .5rem;border-radius:6px;transition:background .1s" onmouseover="this.style.background='var(--color-surface-2,var(--color-border))'" onmouseout="this.style.background=''">
+        ${b.cover_url
+          ? `<img src="${escHtml(b.cover_url)}" style="width:42px;height:60px;object-fit:cover;border-radius:3px;flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">`
+          : `<div style="width:42px;height:60px;background:var(--color-border);border-radius:3px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:1rem">📖</div>`}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:.88rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${b.series_position != null ? `<span style="font-weight:700;color:var(--color-primary);margin-right:.35rem">T.${b.series_position}</span>` : ''}${escHtml(b.title)}</div>
+          <div style="font-size:.75rem;color:var(--color-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml((b.authors||[]).join(', '))}</div>
+          ${b.publisher ? `<div style="font-size:.72rem;color:var(--color-text-muted)">${escHtml(b.publisher)}</div>` : ''}
+        </div>
+      </a>`).join('');
+    document.getElementById('panel-content').innerHTML = `<div style="display:flex;flex-direction:column;gap:.15rem">${items}</div>`;
+  }
+
+  // Fermer avec Escape
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closePanel(); });
+
+  // ── Wiring ────────────────────────────────────────────────────────────────
+  searchInput.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(render, 200);
+  });
+  filterSize.addEventListener('change', render);
+  sortBy.addEventListener('change', render);
+
+  loadSeries();
+
+  // ── Purge (admin) ─────────────────────────────────────────────────────────
+  window.confirmPurge = async function() {
+    if (!confirm('Supprimer toutes les séries, propositions et réinitialiser les livres ?\nCette action est irréversible.')) return;
+    const r = await fetch('/api/series/purge', {method:'POST'});
+    if (r.ok) { _all = []; render(); closePanel(); }
+  };
+
+  // Exposer closePanel globalement pour le bouton ←
+  window.closePanel = closePanel;
+})();
 </script>
 {% endblock %}

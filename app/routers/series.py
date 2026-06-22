@@ -348,10 +348,12 @@ def reject_proposal(proposal_id: int, request: Request, db: Session = Depends(ge
 def list_series(request: Request, db: Session = Depends(get_db)):
     get_current_user(request, db)
     series = db.query(Series).order_by(Series.name).all()
-    return [
-        {"id": s.id, "name": s.name, "book_count": len(s.books)}
-        for s in series
-    ]
+    out = []
+    for s in series:
+        books = sorted(s.books, key=lambda b: (b.series_position is None, b.series_position or 0))
+        cover = next((b.cover_url for b in books if b.cover_url), None)
+        out.append({"id": s.id, "name": s.name, "book_count": len(books), "cover_url": cover})
+    return out
 
 
 @router.get("/api/series/{series_id}/books")
