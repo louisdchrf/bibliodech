@@ -118,6 +118,159 @@ async def _google_series_name(isbn: str, api_key: str = "") -> str | None:
         return None
 
 
+# ── OCR couverture ────────────────────────────────────────────────────────────
+
+_COVERS_DIR = "/app/data/covers"
+
+# Formules courantes qui précèdent le nom de série sur les couvertures BD
+_SERIE_PREFIXES = re.compile(
+    r"(?:les?\s+aventures?\s+(?:de|du|des?)\s+|"
+    r"une?\s+aventure\s+(?:de|du|des?)\s+|"
+    r"les?\s+histoires?\s+(?:de|du|des?)\s+|"
+    r"collection\s+)",
+    re.I,
+)
+
+
+def _ocr_image_path(cover_url: str) -> str | None:
+    """Convertit une cover_url (/covers/xxx.jpg) en chemin local."""
+    if cover_url.startswith("/covers/"):
+        return f"{_COVERS_DIR}/{cover_url[len('/covers/'):]}"
+    return None
+
+
+def _ocr_series_from_cover(cover_url: str, known_series: list[str]) -> str | None:
+    """
+    Lance l'OCR sur la couverture et tente d'extraire un nom de série.
+    Retourne le nom normalisé (ou None si non trouvé).
+    """
+    try:
+        import pytesseract
+        from PIL import Image
+    except ImportError:
+        return None
+
+    path = _ocr_image_path(cover_url)
+    if not path:
+        return None
+
+    try:
+        img = Image.open(path)
+    except Exception:
+        return None
+
+    # Recadrer le tiers supérieur (là où est souvent le nom de série)
+    w, h = img.size
+    top_band = img.crop((0, 0, w, h // 3))
+
+    try:
+        raw = pytesseract.image_to_string(top_band, lang="fra+eng", config="--psm 6")
+    except Exception:
+        return None
+
+    lines = [l.strip() for l in raw.splitlines() if len(l.strip()) >= 3]
+    if not lines:
+        return None
+
+    known_norm = {_norm(s): s for s in known_series}
+
+    for line in lines:
+        # Retirer les préfixes formule ("Les aventures de …")
+        clean = _SERIE_PREFIXES.sub("", line).strip().rstrip(".,;:!? ")
+        if len(clean) < 2:
+            continue
+
+        # Correspondance exacte avec une série connue
+        n = _norm(clean)
+        if n in known_norm:
+            return known_norm[n]
+
+        # Correspondance partielle : la ligne est contenue dans un nom connu
+        for kn, ks in known_norm.items():
+            if n and (n in kn or kn in n):
+                return ks
+
+    # Aucune correspondance avec une série connue → retourner la première ligne
+    # significative (en majuscules = titre de série probable sur couverture BD)
+    for line in lines:
+        clean = _SERIE_PREFIXES.sub("", line).strip().rstrip(".,;:!? ")
+        if len(clean) >= 3 and (clean.isupper() or clean[0].isupper()):
+            return clean
+
+    return None
+
+
+async def _ocr_detect(db: Session) -> dict:
+    """
+    Signal OCR : pour chaque livre orphelin avec couverture locale,
+    tente de lire le nom de série sur l'image.
+    """
+    books = (
+        db.query(Book)
+        .filter(
+            Book.enrichment_status == "ok",
+            Book.series_id.is_(None),
+            Book.cover_url.isnot(None),
+            Book.cover_url.like("/covers/%"),
+        )
+        .all()
+    )
+
+    known_series = [s.name for s in db.query(Series).all()]
+    known_norm = {_norm(s): s for s in known_series}
+
+    assigned = 0
+    proposed = 0
+    # nom_normalisé → liste de livres
+    ocr_groups: dict[str, list[Book]] = defaultdict(list)
+
+    for b in books:
+        name = _ocr_series_from_cover(b.cover_url, known_series)
+        if name:
+            ocr_groups[_norm(name)].append(b)
+
+    for norm_name, group in ocr_groups.items():
+        # Chercher série existante
+        series = None
+        if norm_name in known_norm:
+            series = db.query(Series).filter(Series.name == known_norm[norm_name]).first()
+        if not series:
+            series = next(
+                (s for s in db.query(Series).all() if _norm(s.name) == norm_name),
+                None,
+            )
+
+        if series:
+            # Relier directement à la série connue
+            for b in group:
+                b.series_id = series.id
+                assigned += 1
+            db.commit()
+        elif len(group) >= 2:
+            # Nouvelle série potentielle → proposition
+            ids = [b.id for b in group]
+            existing = [
+                frozenset(json.loads(p.book_ids))
+                for p in db.query(SeriesProposal).filter(SeriesProposal.status == "pending").all()
+            ]
+            if frozenset(ids) not in existing:
+                # Nom canonique = ligne OCR la plus fréquente du groupe
+                from collections import Counter
+                names = [_ocr_series_from_cover(b.cover_url, known_series) or "" for b in group]
+                canon = Counter(names).most_common(1)[0][0] if names else None
+                p = SeriesProposal(
+                    book_ids=json.dumps(ids),
+                    proposed_name=canon,
+                    signal="ocr",
+                    status="pending",
+                )
+                db.add(p)
+                proposed += 1
+                db.commit()
+
+    return {"auto_assigned": assigned, "proposals": proposed}
+
+
 # ── Algorithme de détection ───────────────────────────────────────────────────
 
 async def _detect(db: Session) -> dict:

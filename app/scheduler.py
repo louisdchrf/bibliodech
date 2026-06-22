@@ -39,6 +39,7 @@ SCHEDULABLE_TASKS = {
     "fetch-covers":   "Rechercher les couvertures manquantes",
     "clean-authors":  "Normaliser les auteurs",
     "detect-series":  "Détecter les séries",
+    "ocr-series":     "Lire les séries sur les couvertures (OCR)",
 }
 
 _DEFAULT_CONFIG = {
@@ -117,6 +118,11 @@ async def _execute_task(task_id: str, db) -> str:
     if task_id == "detect-series":
         from app.routers.series import _detect
         result = await _detect(db)
+        return f"{result['auto_assigned']} assignés, {result['proposals']} propositions"
+
+    if task_id == "ocr-series":
+        from app.routers.series import _ocr_detect
+        result = await _ocr_detect(db)
         return f"{result['auto_assigned']} assignés, {result['proposals']} propositions"
 
     return "tâche inconnue"
