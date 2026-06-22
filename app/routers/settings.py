@@ -8,6 +8,12 @@ import app.settings as cfg
 router = APIRouter()
 
 
+@router.get("/api/settings/sources")
+def read_sources(request: Request, db: Session = Depends(get_db)):
+    get_current_user(request, db)
+    return cfg.get(db, "lookup_sources") or []
+
+
 @router.get("/api/settings")
 def read_settings(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
