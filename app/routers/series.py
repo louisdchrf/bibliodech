@@ -259,6 +259,34 @@ def _ocr_series_from_cover(cover_url: str, known_series: list[str], book_authors
         if words and all(w in full_norm for w in words):
             return ks
 
+    # ── Passe 2b : fuzzy matching (distance d'édition) contre les séries connues ─
+    # Pour les erreurs OCR type "Rabh Alan" → "Ralph Azham"
+    def _levenshtein(a: str, b: str) -> int:
+        if len(a) < len(b):
+            return _levenshtein(b, a)
+        if not b:
+            return len(a)
+        prev = list(range(len(b) + 1))
+        for i, ca in enumerate(a):
+            curr = [i + 1]
+            for j, cb in enumerate(b):
+                curr.append(min(prev[j + 1] + 1, curr[j] + 1, prev[j] + (ca != cb)))
+            prev = curr
+        return prev[-1]
+
+    for line in all_lines:
+        ln = _norm(line)
+        if len(ln) < 4:
+            continue
+        for kn, ks in known_norm.items():
+            if len(kn) < 4:
+                continue
+            max_len = max(len(ln), len(kn))
+            dist = _levenshtein(ln, kn)
+            # Similarité ≥ 70% (distance ≤ 30% des caractères)
+            if dist <= max_len * 0.30:
+                return ks
+
     # Construire le set des mots d'auteurs à exclure
     author_norms: set[str] = set()
     if book_authors:
@@ -282,12 +310,14 @@ def _ocr_series_from_cover(cover_url: str, known_series: list[str], book_authors
         words = [w for w in n.split() if len(w) >= 3]
         if words and all(w in author_norms for w in words):
             return True
-        # Pattern "Prénom Nom" ou "NOM Prénom" en 2-3 mots initiaux majuscules
-        raw_words = s.split()
-        if 2 <= len(raw_words) <= 3 and all(w[0].isupper() for w in raw_words if w):
-            # Exception : si c'est une série connue, ne pas exclure
-            if n not in known_norm and not any(n in kn or kn in n for kn in known_norm):
-                return True
+        # Exclure uniquement si ça ressemble à un des auteurs du livre (fuzzy)
+        if author_norms:
+            raw_words = s.split()
+            if 2 <= len(raw_words) <= 3:
+                # Chaque mot est-il proche d'un mot d'auteur connu ?
+                words_norm = [_norm(w) for w in raw_words if w]
+                if all(any(abs(len(wn) - len(an)) <= 1 and wn[:2] == an[:2] for an in author_norms) for wn in words_norm):
+                    return True
         return False
 
     # ── Passe 3 : heuristique — lignes en majuscules dans toutes les bandes ────
@@ -304,11 +334,15 @@ def _ocr_series_from_cover(cover_url: str, known_series: list[str], book_authors
             for kn, ks in known_norm.items():
                 if len(n) >= 4 and (n in kn or kn in n):
                     return ks
-            # Conserver comme candidat uppercase (1 ou 2 mots max)
-            if clean.isupper() and len(clean) >= 4 and best_candidate is None:
-                words_count = len(clean.split())
-                if words_count <= 2:
+            # Conserver comme candidat (1 ou 2 mots, majuscules ou initiales)
+            if len(clean) >= 4 and best_candidate is None:
+                words_list = clean.split()
+                # 1 mot tout en majuscules → très probable série (LOUCA, TINTIN…)
+                if len(words_list) == 1 and clean.isupper():
                     best_candidate = clean.title()
+                # 2 mots avec initiales majuscules, pas un auteur connu → possible série
+                elif len(words_list) == 2 and all(w[0].isupper() for w in words_list if w):
+                    best_candidate = clean
 
     return best_candidate
 
