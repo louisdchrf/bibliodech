@@ -7,10 +7,7 @@
       <h1 class="settings-title">Tâches</h1>
       <p class="settings-desc">Lancez manuellement ou planifiez les traitements automatiques.</p>
     </div>
-    <div style="display:flex;align-items:center;gap:.75rem">
-      <span class="task-status" id="sched-save-status"></span>
-      <button class="btn btn-primary btn-sm" id="btn-save-schedules">Enregistrer la planification</button>
-    </div>
+    <span class="task-status" id="sched-save-status"></span>
   </div>
 
   <div class="tasks-list" id="tasks-list">
@@ -136,16 +133,16 @@
     _schedules = await r1.json();
     _nextRuns = await r2.json();
     renderSchedulableCards();
+    wireAutoSave();
     wireTaskBtns();
     updateNextRunLabels();
     setInterval(updateNextRunLabels, 30000);
   }
 
-  // ── Sauvegarder la planification ─────────────────────────────────────────
-  document.getElementById('btn-save-schedules').addEventListener('click', async () => {
-    const btn = document.getElementById('btn-save-schedules');
+  // ── Auto-save à chaque changement ────────────────────────────────────────
+  let _saveTimer = null;
+  async function autoSave() {
     const statusEl = document.getElementById('sched-save-status');
-    btn.disabled = true;
     const body = {};
     for (const t of SCHEDULABLE) {
       body[t.id] = {
@@ -157,7 +154,6 @@
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    btn.disabled = false;
     if (res.ok) {
       _schedules = await res.json();
       statusEl.textContent = '✓ Enregistré';
@@ -166,8 +162,16 @@
       statusEl.textContent = 'Erreur';
       statusEl.className = 'task-status task-status-err';
     }
-    setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'task-status'; }, 3000);
-  });
+    clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'task-status'; }, 2000);
+  }
+
+  function wireAutoSave() {
+    for (const t of SCHEDULABLE) {
+      document.getElementById(`sched-enabled-${t.id}`)?.addEventListener('change', autoSave);
+      document.getElementById(`sched-interval-${t.id}`)?.addEventListener('change', autoSave);
+    }
+  }
 
   // ── Boutons Lancer ────────────────────────────────────────────────────────
   function wireTaskBtns() {
