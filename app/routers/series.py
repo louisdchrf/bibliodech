@@ -280,12 +280,36 @@ async def _ocr_detect(db: Session, task_id: str = "ocr-series") -> dict:
     proposed = 0
     ocr_groups: dict[str, list[Book]] = defaultdict(list)
 
+    # raw_names : norm_key → nom brut le plus fréquent (pour le nom canonique)
+    raw_names: dict[str, list[str]] = defaultdict(list)
+
     for i, b in enumerate(books):
         name = _ocr_series_from_cover(b.cover_url, known_series)
         if name:
             ocr_groups[_norm(name)].append(b)
+            raw_names[_norm(name)].append(name)
         if task_id in sched._running:
             sched._running[task_id]["progress"]["current"] = i + 1
+
+    # ── Fusionner les groupes dont les clés se contiennent mutuellement ──────
+    # ex: "tintin" et "les aventures de tintin" → même groupe
+    keys = list(ocr_groups.keys())
+    merged: dict[str, str] = {}  # clé secondaire → clé principale
+    for i, k1 in enumerate(keys):
+        for k2 in keys[i + 1:]:
+            if k2 in merged or k1 in merged:
+                continue
+            words1 = {w for w in k1.split() if w not in _ARTICLES and len(w) >= 3}
+            words2 = {w for w in k2.split() if w not in _ARTICLES and len(w) >= 3}
+            # Fusionner si l'un contient l'autre, ou si ≥50% de mots en commun
+            if (k1 in k2 or k2 in k1) or (
+                words1 and words2 and len(words1 & words2) / max(len(words1), len(words2)) >= 0.5
+            ):
+                # Garder la clé la plus courte (nom le plus concis) comme principale
+                main, sec = (k1, k2) if len(k1) <= len(k2) else (k2, k1)
+                merged[sec] = main
+                ocr_groups[main].extend(ocr_groups.pop(sec, []))
+                raw_names[main].extend(raw_names.pop(sec, []))
 
     for norm_name, group in ocr_groups.items():
         # Chercher série existante
@@ -312,10 +336,9 @@ async def _ocr_detect(db: Session, task_id: str = "ocr-series") -> dict:
                 for p in db.query(SeriesProposal).filter(SeriesProposal.status == "pending").all()
             ]
             if frozenset(ids) not in existing:
-                # Nom canonique = ligne OCR la plus fréquente du groupe
                 from collections import Counter
-                names = [_ocr_series_from_cover(b.cover_url, known_series) or "" for b in group]
-                canon = Counter(names).most_common(1)[0][0] if names else None
+                canon_raw = Counter(raw_names.get(norm_name, [])).most_common(1)
+                canon = canon_raw[0][0] if canon_raw else norm_name
                 p = SeriesProposal(
                     book_ids=json.dumps(ids),
                     proposed_name=canon,
