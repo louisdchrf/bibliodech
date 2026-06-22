@@ -82,16 +82,19 @@
   const content = document.getElementById('book-modal-content');
   let locTree = [];
   let allSources = [];
+  let allSeries = [];
   let _coverBookId = null;
 
-  // ── Init (charge locTree + sources une seule fois) ────────────────────────
+  // ── Init (charge locTree + sources + séries une seule fois) ──────────────
   async function _init() {
-    const [r1, r2] = await Promise.all([
+    const [r1, r2, r3] = await Promise.all([
       fetch('/api/locations/tree'),
       fetch('/api/settings/sources'),
+      fetch('/api/series'),
     ]);
     locTree = r1.ok ? await r1.json() : [];
     allSources = r2.ok ? await r2.json() : [];
+    allSeries = r3.ok ? await r3.json() : [];
   }
   const _ready = _init();
 
@@ -228,6 +231,18 @@
             <div class="field"><label>Auteurs (séparés par virgule)</label><input type="text" name="authors" value="${escHtml(authors)}"></div>
             <div class="field"><label>Éditeur</label><input type="text" name="publisher" value="${escHtml(book.publisher || '')}"></div>
           </div>
+          <div class="field-separator">Série</div>
+          <div class="form-grid form-grid-2">
+            <div class="field"><label>Série</label>
+              <select id="bm-series" class="input-full">
+                <option value="">— Aucune série —</option>
+                ${allSeries.map(s => `<option value="${s.id}" ${book.series_id == s.id ? 'selected' : ''}>${escHtml(s.name)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="field"><label>Tome</label>
+              <input type="number" id="bm-series-pos" step="0.5" min="0" placeholder="ex: 1" value="${book.series_position ?? ''}">
+            </div>
+          </div>
           <div class="field-separator">Localisation</div>
           <div class="form-grid form-grid-2">
             <div class="field"><label>Adresse</label>
@@ -333,7 +348,11 @@
       const bookId = fd.get('book_id');
       const authorsList = (fd.get('authors')||'').split(',').map(a=>a.trim()).filter(Boolean);
       const roomId = document.getElementById('bm-loc-room')?.value ? parseInt(document.getElementById('bm-loc-room').value) : null;
-      const payload = { title: fd.get('title'), authors: authorsList, publisher: fd.get('publisher')||null, room_id: roomId };
+      const seriesVal = document.getElementById('bm-series')?.value;
+      const seriesId = seriesVal ? parseInt(seriesVal) : null;
+      const seriesPosVal = document.getElementById('bm-series-pos')?.value;
+      const seriesPos = seriesPosVal !== '' && seriesPosVal !== null ? parseFloat(seriesPosVal) : null;
+      const payload = { title: fd.get('title'), authors: authorsList, publisher: fd.get('publisher')||null, room_id: roomId, series_id: seriesId, series_position: seriesPos };
       const res = await fetch(`/api/books/${bookId}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
       const msg = document.getElementById('bm-edit-msg');
       if (res.ok) {
