@@ -146,6 +146,9 @@
       <button class="modal-close" id="activity-modal-close">&times;</button>
       <h3 style="margin-bottom:1rem">Activité en cours</h3>
       <div id="activity-modal-content"></div>
+      <div style="margin-top:1rem;text-align:right">
+        <button class="btn btn-danger btn-sm" id="activity-cancel-btn" onclick="cancelAll()">Tout arrêter</button>
+      </div>
     </div>
   </div>
 
@@ -163,6 +166,14 @@
       var s = Math.round((Date.now() - new Date(isoStart)) / 1000);
       if (s < 60) return s + 's';
       return Math.floor(s / 60) + 'min ' + (s % 60) + 's';
+    }
+
+    async function cancelAll() {
+      await fetch('/api/activity/cancel', {method:'POST'});
+      _tasks = [];
+      renderModal();
+      btn.style.display = 'none';
+      modal.style.display = 'none';
     }
 
     function renderModal() {

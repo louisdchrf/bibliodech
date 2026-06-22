@@ -437,6 +437,14 @@ def get_activity(request: Request, db: Session = Depends(get_db)):
     return sched.get_running()
 
 
+@router.post("/api/activity/cancel")
+def cancel_activity(request: Request, db: Session = Depends(get_db)):
+    get_current_user(request, db)
+    from app import scheduler as sched
+    sched._running.clear()
+    return {"ok": True}
+
+
 @router.get("/api/tasks/next-runs")
 def get_next_runs(request: Request, db: Session = Depends(get_db)):
     from app.auth import require_admin
