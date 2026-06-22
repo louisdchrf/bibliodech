@@ -3,7 +3,10 @@
 
 {% block content %}
 <div class="settings-page">
-  <h1 class="settings-title">Paramètres</h1>
+  <div class="settings-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;margin-bottom:1rem">
+    <h1 class="settings-title" style="margin:0">Paramètres</h1>
+    <span id="save-msg" class="task-status"></span>
+  </div>
 
   <div class="settings-tabs">
     <button class="settings-tab active" data-tab="sources">Sources ISBN</button>
@@ -18,10 +21,6 @@
     <p class="settings-desc">Glissez pour réordonner. Les sources sont interrogées en parallèle mais leur priorité détermine quelle information est retenue en cas de doublon. Désactiver une source accélère la recherche.</p>
 
     <ul id="sources-list" class="sources-list"></ul>
-
-    <div class="settings-actions">
-      <span id="save-msg" class="save-msg"></span>
-    </div>
   </div>
 
   <!-- Onglet Affichage -->
@@ -53,7 +52,6 @@
         </datalist>
       </li>
     </ul>
-    <span id="display-msg" class="save-msg" style="margin-top:.75rem;display:block"></span>
   </div>
 
   <!-- Onglet Email -->
@@ -101,7 +99,6 @@
         <input type="email" id="smtp-test-to" class="input-sm" placeholder="Adresse de test…" style="width:220px">
         <button id="btn-test-smtp" class="btn btn-ghost">Envoyer un test</button>
       </div>
-      <span id="smtp-msg" class="save-msg"></span>
     </div>
 
     <h3 class="settings-group-title" style="font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-muted);margin-bottom:.75rem">Scénarios automatiques</h3>
@@ -337,9 +334,18 @@
     });
   });
 
+  // ── Message d'état global ─────────────────────────────────────────────────
+  const saveMsg = document.getElementById('save-msg');
+  let _saveMsgTimer = null;
+  function showSaveMsg(text, ok) {
+    clearTimeout(_saveMsgTimer);
+    saveMsg.textContent = text;
+    saveMsg.className = 'task-status ' + (ok ? 'task-status-ok' : 'task-status-err');
+    _saveMsgTimer = setTimeout(() => { saveMsg.textContent = ''; saveMsg.className = 'task-status'; }, 2000);
+  }
+
   // ── Sources ───────────────────────────────────────────────────────────────
   const list = document.getElementById('sources-list');
-  const saveMsg = document.getElementById('save-msg');
   let sources = [];
 
   async function loadSources() {
@@ -472,9 +478,7 @@
       if (src) src.timeout = parseFloat(inp.value) || 5;
     });
     const r1 = await fetch('/api/settings/lookup_sources', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ value: sources }) });
-    saveMsg.textContent = r1.ok ? '✓ Enregistré' : 'Erreur';
-    saveMsg.className = 'save-msg ' + (r1.ok ? 'save-msg-ok' : 'save-msg-err');
-    setTimeout(() => { saveMsg.textContent = ''; saveMsg.className = 'save-msg'; }, 2000);
+    showSaveMsg(r1.ok ? '✓ Enregistré' : 'Erreur', r1.ok);
   }
 
   // ── Users ─────────────────────────────────────────────────────────────────
@@ -721,12 +725,7 @@
     document.getElementById('mail-reset-password').checked = !!data.mail_reset_password;
   }
 
-  function smtpMsg(text, ok) {
-    const el = document.getElementById('smtp-msg');
-    el.textContent = text;
-    el.className = 'save-msg ' + (ok ? 'save-msg-ok' : 'save-msg-err');
-    if (ok) setTimeout(() => { el.textContent = ''; el.className = 'save-msg'; }, 3500);
-  }
+  function smtpMsg(text, ok) { showSaveMsg(text, ok); }
 
   document.getElementById('smtp-pw-toggle').addEventListener('click', () => {
     const inp = document.getElementById('smtp-password');
@@ -802,8 +801,6 @@
     locationCb.checked = getPref('badgeLocation');
 
     const tzInput = document.getElementById('pref-timezone');
-    const displayMsg = document.getElementById('display-msg');
-
     darkCb.addEventListener('change', () => {
       setPref('dark', darkCb.checked);
       applyDark(darkCb.checked);
@@ -818,13 +815,8 @@
       const tz = tzInput.value.trim();
       if (!tz) return;
       const r = await fetch('/api/settings/timezone', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(tz) });
-      if (r.ok) {
-        window.APP_TIMEZONE = tz;
-        displayMsg.textContent = '✓ Enregistré'; displayMsg.className = 'save-msg save-msg-ok';
-      } else {
-        displayMsg.textContent = 'Erreur'; displayMsg.className = 'save-msg save-msg-err';
-      }
-      setTimeout(() => { displayMsg.textContent = ''; displayMsg.className = 'save-msg'; }, 2000);
+      if (r.ok) window.APP_TIMEZONE = tz;
+      showSaveMsg(r.ok ? '✓ Enregistré' : 'Erreur', r.ok);
     });
   }
 

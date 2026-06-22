@@ -16,7 +16,7 @@ def read_settings(request: Request, db: Session = Depends(get_db)):
 
 
 @router.put("/api/settings/{key}")
-def write_setting(key: str, body, request: Request, db: Session = Depends(get_db)):
+def write_setting(key: str, body: dict, request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     require_admin(user)
     if key not in cfg.DEFAULTS:
