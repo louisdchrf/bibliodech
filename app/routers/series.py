@@ -953,35 +953,67 @@ def get_series_books(series_id: int, request: Request, db: Session = Depends(get
 
 
 def _clean_series_names_logic(db, task_id: str = "clean-series") -> str:
-    """Normalise les noms de séries : capitalise la première lettre, supprime les espaces superflus."""
+    """Normalise les noms de séries et fusionne les doublons."""
     from app import scheduler as sched
+    from app.models import SeriesProposal
 
     def _normalize(name: str) -> str:
-        # Supprimer les espaces superflus
         name = re.sub(r"\s+", " ", name).strip()
-        # Capitaliser uniquement la première lettre (respecte les majuscules intérieures)
+        # Supprimer la ponctuation en fin de nom (., !, ?, :, …)
+        name = re.sub(r"[.!?:…]+$", "", name).strip()
+        # Capitaliser uniquement la première lettre
         if name and name[0].islower():
             name = name[0].upper() + name[1:]
         return name
 
-    all_series = db.query(Series).all()
+    all_series = db.query(Series).order_by(Series.id).all()
     total = len(all_series)
     if task_id in sched._running:
         sched._running[task_id]["progress"] = {"current": 0, "total": total}
 
-    updated = 0
+    renamed = 0
+    merged = 0
+
     for i, s in enumerate(all_series):
-        cleaned = _normalize(s.name)
-        if cleaned != s.name:
-            # Vérifier qu'un autre série ne porte pas déjà ce nom
-            conflict = db.query(Series).filter(Series.name == cleaned, Series.id != s.id).first()
-            if not conflict:
-                s.name = cleaned
-                updated += 1
         if task_id in sched._running:
             sched._running[task_id]["progress"]["current"] = i + 1
+
+        # Série peut avoir été supprimée lors d'une fusion précédente
+        db.refresh(s)
+        cleaned = _normalize(s.name)
+
+        if cleaned == s.name:
+            continue
+
+        # Chercher si une série avec ce nom nettoyé existe déjà
+        existing = db.query(Series).filter(Series.name == cleaned, Series.id != s.id).first()
+        if existing:
+            # Fusionner : déplacer les livres de s vers existing
+            for b in list(s.books):
+                if b.series_position is not None:
+                    conflict = next(
+                        (ob for ob in existing.books if ob.series_position == b.series_position), None
+                    )
+                    if conflict:
+                        b.series_position = None
+                b.series_id = existing.id
+            # Mettre à jour les proposals qui pointaient vers s
+            db.query(SeriesProposal).filter(SeriesProposal.existing_series_id == s.id).update(
+                {"existing_series_id": existing.id}
+            )
+            db.delete(s)
+            merged += 1
+        else:
+            s.name = cleaned
+            renamed += 1
+
     db.commit()
-    return f"{updated} série(s) normalisée(s)"
+    parts = []
+    if renamed:
+        parts.append(f"{renamed} renommée(s)")
+    if merged:
+        parts.append(f"{merged} fusionnée(s)")
+    return ", ".join(parts) if parts else "Aucun changement"
 
 
 @router.post("/api/series/clean-names")
