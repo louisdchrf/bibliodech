@@ -219,13 +219,14 @@ img { display: block; max-width: 100%; }
   display: block;
   padding: .55rem 1rem;
   font-size: .85rem;
-  color: var(--color-text);
-  text-decoration: none;
+  color: var(--color-text) !important;
+  text-decoration: none !important;
   white-space: nowrap;
+  background: none;
   transition: background .1s;
 }
-.nav-menu-item:hover { background: var(--color-surface-2); }
-.nav-menu-item.active { font-weight: 600; color: var(--color-primary); }
+.nav-menu-item:hover { background: var(--color-surface-2) !important; color: var(--color-text) !important; }
+.nav-menu-item.active { font-weight: 600; color: var(--color-primary) !important; }
 
 .nav-user-dropdown {
   display: none;
