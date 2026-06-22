@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 import unicodedata
@@ -283,8 +284,12 @@ async def _ocr_detect(db: Session, task_id: str = "ocr-series") -> dict:
     # raw_names : norm_key → nom brut le plus fréquent (pour le nom canonique)
     raw_names: dict[str, list[str]] = defaultdict(list)
 
+    loop = asyncio.get_event_loop()
     for i, b in enumerate(books):
-        name = _ocr_series_from_cover(b.cover_url, known_series)
+        # Exécuter l'OCR (bloquant) dans le thread pool pour ne pas bloquer l'event loop
+        name = await loop.run_in_executor(
+            None, _ocr_series_from_cover, b.cover_url, known_series
+        )
         if name:
             ocr_groups[_norm(name)].append(b)
             raw_names[_norm(name)].append(name)
@@ -396,6 +401,8 @@ async def _detect(db: Session, task_id: str = "detect-series") -> dict:
             parsed_books.add(b.id)
         if task_id in sched._running:
             sched._running[task_id]["progress"]["current"] = i + 1
+        if i % 10 == 0:
+            await asyncio.sleep(0)
 
     for norm_name, entries in title_groups.items():
         # Trouver le nom cannonique (le plus fréquent dans le groupe)
@@ -470,6 +477,8 @@ async def _detect(db: Session, task_id: str = "detect-series") -> dict:
             author_groups[(au, pub)].append(b)
         if task_id in sched._running:
             sched._running[task_id]["progress"]["current"] = i + 1
+        if i % 10 == 0:
+            await asyncio.sleep(0)
 
     # ── Signal 1 : préfixe + éditeur ────────────────────────────────────────
     for (fw, pub), group in prefix_groups.items():
