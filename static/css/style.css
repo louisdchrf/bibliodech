@@ -216,9 +216,11 @@ img { display: block; max-width: 100%; }
 
 /* ── Main content ───────────────────────────────────────────────────────── */
 .main-content {
+  width: 100%;
   max-width: 1400px;
   margin: 0 auto;
   padding: 2rem 1.5rem;
+  box-sizing: border-box;
 }
 
 /* ── Footer ─────────────────────────────────────────────────────────────── */
