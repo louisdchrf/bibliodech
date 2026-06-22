@@ -59,81 +59,15 @@
   </div>
 </div>
 
-<!-- Modal livre / édition bulk -->
-<div id="modal-overlay" class="modal-overlay" style="display:none" role="dialog" aria-modal="true">
+<!-- Modal bulk (auteurs, localisation) -->
+<div id="bulk-modal-overlay" class="modal-overlay" style="display:none" role="dialog" aria-modal="true">
   <div class="modal-card">
-    <button class="modal-close" id="modal-close" aria-label="Fermer">&times;</button>
-    <div id="modal-content"></div>
+    <button class="modal-close" id="bulk-modal-close" aria-label="Fermer">&times;</button>
+    <div id="bulk-modal-content"></div>
   </div>
 </div>
 
-<!-- Modal prêt (depuis bibliothèque) -->
-<div id="lib-loan-modal" class="modal-overlay" style="display:none">
-  <div class="modal-card" style="max-width:440px">
-    <div class="modal-header">
-      <h2 class="modal-title">Prêter un livre</h2>
-      <button class="modal-close" onclick="document.getElementById('lib-loan-modal').style.display='none'">✕</button>
-    </div>
-    <div class="modal-body" style="display:flex;flex-direction:column;gap:1rem">
-      <div>
-        <label class="field-label">Livre</label>
-        <div id="lib-loan-book-title" style="font-weight:500"></div>
-      </div>
-      <div>
-        <label class="field-label">Emprunteur</label>
-        <select id="lib-loan-borrower" class="select-input" style="width:100%">
-          <option value="">— choisir —</option>
-        </select>
-        <a href="/loans" style="font-size:.8rem;color:var(--primary);margin-top:.25rem;display:inline-block">+ Gérer les emprunteurs</a>
-      </div>
-      <div>
-        <label class="field-label">Date de retour prévue <span style="color:var(--text-muted);font-weight:400">(optionnel)</span></label>
-        <input type="date" id="lib-loan-due-date" class="search-input" style="width:100%">
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" id="lib-loan-cancel">Annuler</button>
-      <button class="btn btn-primary" id="lib-loan-submit">Prêter</button>
-    </div>
-  </div>
-</div>
-<!-- Popup import couverture -->
-<div id="cover-modal" class="modal-overlay" style="display:none" role="dialog" aria-modal="true">
-  <div class="modal-card" style="max-width:420px">
-    <button class="modal-close" id="cover-modal-close">&times;</button>
-    <h3 style="margin-bottom:1.25rem;font-size:1.05rem">Modifier la couverture</h3>
-
-    <div style="display:flex;gap:1rem;align-items:flex-start;margin-bottom:1.25rem">
-      <img id="cover-modal-preview" src="/static/img/no-cover.svg" alt="aperçu"
-           style="width:72px;height:100px;object-fit:cover;border-radius:4px;background:var(--color-surface-2);flex-shrink:0"
-           onerror="this.src='/static/img/no-cover.svg'">
-      <div style="flex:1;min-width:0">
-        <p style="font-size:.82rem;color:var(--color-text-muted);margin:0 0 .75rem">
-          Choisissez un fichier image depuis votre appareil, ou collez l'URL directe d'une image.
-        </p>
-        <span id="cover-modal-status" style="font-size:.82rem"></span>
-      </div>
-    </div>
-
-    <div style="display:flex;flex-direction:column;gap:.9rem">
-      <div>
-        <p style="font-size:.78rem;font-weight:600;color:var(--color-text-muted);margin:0 0 .35rem;text-transform:uppercase;letter-spacing:.04em">Depuis un fichier</p>
-        <label class="btn btn-ghost btn-sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:.4rem">
-          Choisir une image…
-          <input type="file" id="cover-modal-file" accept="image/*" style="display:none">
-        </label>
-        <span id="cover-modal-filename" style="font-size:.8rem;color:var(--color-text-muted);margin-left:.5rem"></span>
-      </div>
-      <div>
-        <p style="font-size:.78rem;font-weight:600;color:var(--color-text-muted);margin:0 0 .35rem;text-transform:uppercase;letter-spacing:.04em">Depuis une URL</p>
-        <div style="display:flex;gap:.4rem">
-          <input type="url" id="cover-modal-url" placeholder="https://…" class="input-full" style="flex:1;min-width:0">
-          <button type="button" id="cover-modal-url-btn" class="btn btn-ghost btn-sm">Importer</button>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+{% include "_book_modal.html" %}
 {% endblock %}
 
 {% block scripts %}
@@ -148,9 +82,9 @@
   const filterCover = document.getElementById('filter-cover');
   const filterSource = document.getElementById('filter-source');
   const sortBy = document.getElementById('sort-by');
-  const modalOverlay = document.getElementById('modal-overlay');
-  const modalContent = document.getElementById('modal-content');
-  const modalClose = document.getElementById('modal-close');
+  const modalOverlay = document.getElementById('bulk-modal-overlay');
+  const modalContent = document.getElementById('bulk-modal-content');
+  const modalClose = document.getElementById('bulk-modal-close');
   const btnSelect = document.getElementById('btn-select');
   const bulkBar = document.getElementById('bulk-bar');
   const bulkCount = document.getElementById('bulk-count');
@@ -191,126 +125,6 @@
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  const DESC_LIMIT = 300;
-  function descriptionBlock(desc) {
-    if (!desc) return '';
-    if (desc.length <= DESC_LIMIT) {
-      return `<div class="modal-description">${escHtml(desc)}</div>`;
-    }
-    const short = escHtml(desc.slice(0, DESC_LIMIT).trimEnd());
-    const full  = escHtml(desc);
-    return `<div class="modal-description">
-      <span class="desc-short">${short}… <button type="button" class="btn-link" onclick="this.closest('.modal-description').querySelector('.desc-short').style.display='none';this.closest('.modal-description').querySelector('.desc-full').style.display='inline'">Voir plus</button></span>
-      <span class="desc-full" style="display:none">${full} <button type="button" class="btn-link" onclick="this.closest('.modal-description').querySelector('.desc-full').style.display='none';this.closest('.modal-description').querySelector('.desc-short').style.display='inline'">Voir moins</button></span>
-    </div>`;
-  }
-
-  const SOURCE_LABELS = {
-    sudoc:              '📚 SUDOC',
-    bnf:                '🏛 BNF',
-    decitre:            '🛍 Decitre',
-    googlebooks:        '🔍 Google Books',
-    openlibrary:        '📖 Open Library',
-    openlibrary_search: '📖 OL Search',
-    isbndb:             '🗄 ISBNdb',
-    manual:             '✏️ Manuel',
-    pending:            '⏳ En cours…',
-  };
-  function sourceLabel(src) {
-    return SOURCE_LABELS[src] || escHtml(src);
-  }
-
-  // Toutes les sources configurées (injectées depuis le backend)
-  const ALL_SOURCES = {{ sources_cfg | tojson }};
-
-  const SOURCE_FIELDS = [
-    { key: 'title',           label: 'Titre' },
-    { key: 'subtitle',        label: 'Sous-titre' },
-    { key: 'authors',         label: 'Auteurs' },
-    { key: 'publisher',       label: 'Éditeur' },
-    { key: 'publish_date',    label: 'Date' },
-    { key: 'language',        label: 'Langue' },
-    { key: 'page_count',      label: 'Pages' },
-  ];
-
-  function renderSourcesTab(book) {
-    const sd = book.source_data || {};
-
-    // Colonnes = toutes les sources configurées (activées ou non)
-    // + les sources présentes dans source_data mais absentes de la config
-    const configIds = ALL_SOURCES.map(s => s.id);
-    const dataIds   = Object.keys(sd).filter(id => !configIds.includes(id));
-    const allCols   = [...configIds, ...dataIds];
-
-    const noData = !Object.keys(sd).length;
-
-    const rows = SOURCE_FIELDS.map(({ key, label }) => {
-      const bookVal = key === 'authors'
-        ? (book.authors || []).join(', ')
-        : book[key];
-
-      const cells = allCols.map(sid => {
-        const data = sd[sid];
-        if (!data) return `<td class="src-cell src-empty src-no-data">—</td>`;
-        let val = data[key];
-        if (val === null || val === undefined || val === '') return `<td class="src-cell src-empty">—</td>`;
-        if (Array.isArray(val)) val = val.join(', ');
-        const isChosen = String(val) === String(bookVal ?? '');
-        return `<td class="src-cell ${isChosen ? 'src-chosen' : ''}">${escHtml(String(val))}</td>`;
-      });
-      return `<tr><th class="src-row-label">${label}</th>${cells.join('')}</tr>`;
-    }).join('');
-
-    const headers = allCols.map(sid => {
-      const cfg = ALL_SOURCES.find(s => s.id === sid);
-      const hasData = !!sd[sid];
-      const enabled = cfg ? cfg.enabled : true;
-      return `<th class="src-col-head ${!enabled ? 'src-col-disabled' : ''}">
-        <div class="src-col-head-inner">
-          <span>${sourceLabel(sid)}</span>
-          <button class="btn btn-xs btn-ghost src-reload-btn" data-source="${sid}" title="Recharger depuis ${sourceLabel(sid)}">↺</button>
-        </div>
-        ${!hasData ? '<span class="src-col-badge">pas de données</span>' : ''}
-      </th>`;
-    }).join('');
-
-    return `
-      <div class="src-table-wrap">
-        <table class="src-table">
-          <thead><tr><th class="src-corner"></th>${headers}</tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-      <p class="src-legend">
-        <span class="src-chosen-dot"></span> Valeur retenue dans la fiche
-        ${noData ? ' &nbsp;·&nbsp; <em>Aucune donnée source — lancez 🔄 Relancer depuis la fiche pour peupler.</em>' : ''}
-      </p>`;
-  }
-
-  const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-  function fmtDateFr(raw) {
-    if (!raw) return '';
-    // Formats connus : "2024", "2024-03", "2024-03-15", "15/03/2024", "March 2024", etc.
-    const s = String(raw).trim();
-    // YYYY-MM-DD ou YYYY-MM
-    let m = s.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?$/);
-    if (m) {
-      const y = m[1], mo = parseInt(m[2]) - 1, d = m[3] ? parseInt(m[3]) : null;
-      if (d === 1) return `1er ${MOIS_FR[mo]} ${y}`;
-      if (d)       return `${d} ${MOIS_FR[mo]} ${y}`;
-      return `${MOIS_FR[mo]} ${y}`;
-    }
-    // YYYY seul
-    if (/^\d{4}$/.test(s)) return s;
-    // DD/MM/YYYY
-    m = s.match(/^(\d{1,2})\/(\d{2})\/(\d{4})$/);
-    if (m) {
-      const d = parseInt(m[1]), mo = parseInt(m[2]) - 1, y = m[3];
-      return d === 1 ? `1er ${MOIS_FR[mo]} ${y}` : `${d} ${MOIS_FR[mo]} ${y}`;
-    }
-    // Fallback : retourner tel quel
-    return escHtml(s);
-  }
 
   // ── Locations ─────────────────────────────────────────────────────────────
   async function loadLocations() {
@@ -378,7 +192,7 @@
     `;
     div.addEventListener('click', () => {
       if (selectionMode) toggleSelect(book.id, div);
-      else openModal(book.id);
+      else openBookModal(book.id);
     });
     return div;
   }
@@ -571,7 +385,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids: [...selectedIds], action: 'update', data }),
       });
-      if (res.ok) { closeModal(); exitSelectionMode(); loadBooks(); }
+      if (res.ok) { closeBulkModal(); exitSelectionMode(); loadBooks(); }
       else alert('Erreur lors de la mise à jour.');
     });
 
@@ -579,464 +393,18 @@
     document.body.classList.add('modal-open');
   }
 
-  // ── Modal livre ───────────────────────────────────────────────────────────
-  async function openModal(bookId) {
-    const res = await fetch(`/api/books/${bookId}`);
-    const book = await res.json();
-    renderModal(book);
-    modalOverlay.style.display = 'flex';
-    document.body.classList.add('modal-open');
-  }
-
-  function renderModal(book) {
-    const authors = Array.isArray(book.authors) ? book.authors.join(', ') : '';
-    const coverSrc = book.cover_url || '/static/img/no-cover.svg';
-    modalContent.innerHTML = `
-      <div class="modal-header">
-        <img src="${escHtml(coverSrc)}" alt="couverture" class="modal-cover" onerror="this.src='/static/img/no-cover.svg'">
-        <div class="modal-header-info">
-          <h2 class="modal-title">${escHtml(book.title)}</h2>
-          ${book.subtitle ? `<p class="modal-subtitle">${escHtml(book.subtitle)}</p>` : ''}
-          ${authors ? `<p class="modal-authors">${escHtml(authors)}</p>` : ''}
-          ${book.publisher ? `<p class="modal-publisher">${escHtml(book.publisher)} ${book.publish_date ? '· ' + fmtDateFr(book.publish_date) : ''}</p>` : ''}
-          ${book.page_count ? `<p class="modal-pages">${book.page_count} pages</p>` : ''}
-          <div class="modal-badges">
-            ${book.isbn ? `<span class="badge badge-isbn">ISBN: ${escHtml(book.isbn)}</span>` : ''}
-            <span class="badge badge-source badge-source-${escHtml(book.source)}" title="Source des métadonnées">${sourceLabel(book.source)}</span>
-          </div>
-        </div>
-      </div>
-      ${book.description ? descriptionBlock(book.description) : ''}
-
-      <!-- Onglets -->
-      <div class="modal-tabs">
-        <button class="modal-tab active" data-tab="edit">Édition</button>
-        <button class="modal-tab" data-tab="sources">Sources <span class="modal-tab-count">${book.source_data ? Object.keys(book.source_data).length : 0}</span></button>
-        <button class="modal-tab" data-tab="logs">Historique</button>
-      </div>
-
-      <!-- Onglet Édition -->
-      <div class="modal-tab-panel" id="tab-edit">
-      <form id="edit-form" class="edit-form">
-        <input type="hidden" name="book_id" value="${book.id}">
-        <div class="form-grid">
-          <div class="field">
-            <label>Titre</label>
-            <input type="text" name="title" value="${escHtml(book.title)}" required>
-          </div>
-          <div class="field">
-            <label>Auteurs (séparés par virgule)</label>
-            <input type="text" name="authors" value="${escHtml(authors)}">
-          </div>
-          <div class="field">
-            <label>Éditeur</label>
-            <input type="text" name="publisher" value="${escHtml(book.publisher || '')}">
-          </div>
-        </div>
-        <div class="field-separator">Localisation</div>
-        <div class="form-grid form-grid-2">
-          <div class="field">
-            <label>Adresse</label>
-            <select id="modal-loc-site" class="input-full">
-              <option value="">— Choisir —</option>
-              ${locTree.map(s => `<option value="${s.id}" ${book.location?.site_id == s.id ? 'selected' : ''}>${escHtml(s.name)}</option>`).join('')}
-            </select>
-          </div>
-          <div class="field">
-            <label>Pièce</label>
-            <select id="modal-loc-room" class="input-full">
-              <option value="">— Choisir —</option>
-              ${(locTree.find(s => s.id == book.location?.site_id)?.rooms || []).map(r => `<option value="${r.id}" ${book.location?.room_id == r.id ? 'selected' : ''}>${escHtml(r.name)}</option>`).join('')}
-            </select>
-          </div>
-        </div>
-        <div class="modal-actions">
-          <button type="submit" class="btn btn-primary">Enregistrer</button>
-          <button type="button" class="btn btn-ghost" id="cover-btn">Modifier la couverture</button>
-          ${book.active_loan
-            ? `<button type="button" class="btn btn-ghost" id="return-btn">Rendu ✓ (${escHtml(book.active_loan.borrower_name||'')})</button>`
-            : `<button type="button" class="btn btn-ghost" id="loan-btn">Prêter…</button>`
-          }
-          ${book.isbn ? `<button type="button" class="btn btn-ghost" id="reenrich-btn" title="Relancer la recherche en ligne">🔄 Relancer</button>` : ''}
-          ${isAdmin ? `<button type="button" class="btn btn-danger" id="delete-btn">Supprimer</button>` : ''}
-        </div>
-        <div id="reenrich-msg" class="edit-msg"></div>
-        <div id="edit-msg" class="edit-msg"></div>
-      </form>
-      </div><!-- /tab-edit -->
-
-      <!-- Onglet Sources -->
-      <div class="modal-tab-panel" id="tab-sources" style="display:none">
-        ${renderSourcesTab(book)}
-      </div>
-
-      <!-- Onglet Historique -->
-      <div class="modal-tab-panel" id="tab-logs" style="display:none">
-        <div id="logs-content" class="logs-loading">Chargement…</div>
-      </div>
-    `;
-
-    // ── Onglets ───────────────────────────────────────────────────────────
-    const ACTION_LABELS = {
-      created:  { label: 'Créé',       cls: 'log-created'  },
-      updated:  { label: 'Modifié',    cls: 'log-updated'  },
-      enriched: { label: 'Enrichi',    cls: 'log-enriched' },
-      deleted:  { label: 'Supprimé',   cls: 'log-deleted'  },
-    };
-    const FIELD_LABELS = {
-      title: 'Titre', subtitle: 'Sous-titre', authors: 'Auteurs',
-      publisher: 'Éditeur', publish_date: 'Date', language: 'Langue',
-      page_count: 'Pages',
-      location_id: 'Localisation', room_id: 'Salle', cover_url: 'Couverture',
-    };
-
-    function renderLogs(logs) {
-      if (!logs.length) return '<p class="stat-empty" style="margin:2rem 0">Aucun historique disponible.</p>';
-      return logs.map(l => {
-        const meta = ACTION_LABELS[l.action] || { label: l.action, cls: '' };
-        const date = l.created_at ? new Date(l.created_at).toLocaleString('fr-FR') : '';
-        let detail = '';
-        if (l.action === 'updated' && l.detail) {
-          const fields = Object.entries(l.detail)
-            .filter(([k]) => !['source_data'].includes(k))
-            .map(([k, v]) => {
-              const label = FIELD_LABELS[k] || k;
-              const to = typeof v === 'object' && v !== null ? v.to : v;
-              return `<span class="log-field">${escHtml(label)} → <em>${escHtml(String(to ?? ''))}</em></span>`;
-            });
-          if (fields.length) detail = `<div class="log-detail">${fields.join('')}</div>`;
-        } else if (l.action === 'enriched' && l.detail?.source) {
-          detail = `<div class="log-detail"><span class="log-field">via ${escHtml(l.detail.source)}</span></div>`;
-        } else if (l.action === 'created' && l.detail?.isbn) {
-          detail = `<div class="log-detail"><span class="log-field">ISBN ${escHtml(l.detail.isbn)}</span></div>`;
-        }
-        return `<div class="log-entry">
-          <span class="log-badge ${meta.cls}">${meta.label}</span>
-          <span class="log-who">${l.username ? escHtml(l.username) : 'système'}</span>
-          <span class="log-date">${date}</span>
-          ${detail}
-        </div>`;
-      }).join('');
-    }
-
-    let logsLoaded = false;
-    modalContent.querySelectorAll('.modal-tab').forEach(tab => {
-      tab.addEventListener('click', async () => {
-        modalContent.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
-        modalContent.querySelectorAll('.modal-tab-panel').forEach(p => p.style.display = 'none');
-        tab.classList.add('active');
-        document.getElementById('tab-' + tab.dataset.tab).style.display = '';
-        if (tab.dataset.tab === 'logs' && !logsLoaded) {
-          logsLoaded = true;
-          const res = await fetch(`/api/books/${book.id}/logs`);
-          const logs = await res.json();
-          document.getElementById('logs-content').innerHTML = renderLogs(logs);
-        }
-      });
-    });
-
-    // ── Rechargement par source ───────────────────────────────────────────
-    function wireSourceBtns() {
-      modalContent.querySelectorAll('.src-reload-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const sourceId = btn.dataset.source;
-          btn.disabled = true;
-          btn.textContent = '⏳';
-          const res = await fetch(`/api/books/${book.id}/re-enrich-source/${sourceId}`, { method: 'POST' });
-          const data = await res.json();
-          if (!res.ok) {
-            btn.disabled = false;
-            btn.textContent = '✗';
-            btn.title = data.detail || 'Erreur';
-            return;
-          }
-          book.source_data = data.source_data;
-          // Re-rendre uniquement le panneau Sources et rebrancher
-          document.getElementById('tab-sources').innerHTML = renderSourcesTab(book);
-          const badge = modalContent.querySelector('.modal-tab[data-tab="sources"] .modal-tab-count');
-          if (badge) badge.textContent = Object.keys(data.source_data || {}).length;
-          wireSourceBtns();
-        });
-      });
-    }
-    wireSourceBtns();
-
-    // ── Cascade localisation dans le modal ────────────────────────────────
-    const mSite = document.getElementById('modal-loc-site');
-    const mRoom = document.getElementById('modal-loc-room');
-
-    if (mSite) {
-      mSite.addEventListener('change', () => {
-        const site = locTree.find(s => s.id == mSite.value);
-        mRoom.innerHTML = '<option value="">— Choisir —</option>'
-          + (site ? site.rooms.map(r => `<option value="${r.id}">${escHtml(r.name)}</option>`).join('') : '');
-        mRoom.disabled = !site || !site.rooms.length;
-      });
-    }
-
-    document.getElementById('edit-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const fd = new FormData(e.target);
-      const bookId = fd.get('book_id');
-      const authorsList = (fd.get('authors') || '').split(',').map(a => a.trim()).filter(Boolean);
-      const roomSel = document.getElementById('modal-loc-room');
-      const roomId = roomSel?.value ? parseInt(roomSel.value) : null;
-
-      const payload = {
-        title: fd.get('title'),
-        authors: authorsList,
-        publisher: fd.get('publisher') || null,
-        room_id: roomId,
-      };
-      const res = await fetch(`/api/books/${bookId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const msg = document.getElementById('edit-msg');
-      if (res.ok) {
-        msg.textContent = 'Enregistré !';
-        msg.className = 'edit-msg edit-msg-ok';
-        loadBooks();
-        setTimeout(() => closeModal(), 800);
-      } else {
-        const err = await res.json();
-        msg.textContent = err.detail || 'Erreur';
-        msg.className = 'edit-msg edit-msg-err';
-      }
-    });
-
-    if (isAdmin) {
-      document.getElementById('delete-btn').addEventListener('click', async () => {
-        if (!confirm('Supprimer ce livre définitivement ?')) return;
-        const bookId = document.querySelector('[name="book_id"]').value;
-        const res = await fetch(`/api/books/${bookId}`, { method: 'DELETE' });
-        if (res.ok) { closeModal(); loadBooks(); }
-      });
-    }
-
-    const loanBtn = document.getElementById('loan-btn');
-    if (loanBtn) {
-      loanBtn.addEventListener('click', () => {
-        const bookId = parseInt(document.querySelector('[name="book_id"]').value);
-        const title = document.querySelector('[name="title"]').value;
-        closeModal();
-        openLoanModal(bookId, title);
-      });
-    }
-
-    const returnBtn = document.getElementById('return-btn');
-    if (returnBtn) {
-      returnBtn.addEventListener('click', async () => {
-        const loanId = book.active_loan.id;
-        await fetch(`/api/loans/${loanId}/return`, { method: 'POST' });
-        closeModal();
-        loadBooks();
-      });
-    }
-
-    // ── Bouton "Modifier la couverture" → ouvre la popup dédiée ──────────
-    document.getElementById('cover-btn').addEventListener('click', () => {
-      const bookId = document.querySelector('[name="book_id"]').value;
-      const currentSrc = document.querySelector('.modal-cover')?.src || '/static/img/no-cover.svg';
-      openCoverModal(bookId, currentSrc);
-    });
-    // ─────────────────────────────────────────────────────────────────────
-
-    const reenrichBtn = document.getElementById('reenrich-btn');
-    if (reenrichBtn) {
-      reenrichBtn.addEventListener('click', async () => {
-        const bookId = document.querySelector('[name="book_id"]').value;
-        const msg = document.getElementById('reenrich-msg');
-        reenrichBtn.disabled = true;
-        reenrichBtn.textContent = '⏳ Recherche…';
-        msg.textContent = '';
-        const res = await fetch(`/api/books/${bookId}/re-enrich`, { method: 'POST' });
-        if (!res.ok) {
-          msg.textContent = 'Erreur lors du lancement.';
-          msg.className = 'edit-msg edit-msg-err';
-          reenrichBtn.disabled = false;
-          reenrichBtn.textContent = '🔄 Relancer';
-          return;
-        }
-        // Polling jusqu'au résultat
-        let dots = 0;
-        const pollTimer = setInterval(async () => {
-          dots = (dots + 1) % 4;
-          reenrichBtn.textContent = '⏳' + '.'.repeat(dots + 1);
-          try {
-            const r = await fetch(`/api/scan/status/${bookId}`);
-            const d = await r.json();
-            if (d.enrichment_status === 'ok') {
-              clearInterval(pollTimer);
-              renderModal(d.book);
-              loadBooks();
-              updateReenrichCount();
-            } else if (d.enrichment_status === 'not_found') {
-              clearInterval(pollTimer);
-              msg.textContent = 'Introuvable dans toutes les sources.';
-              msg.className = 'edit-msg edit-msg-err';
-              reenrichBtn.disabled = false;
-              reenrichBtn.textContent = '🔄 Relancer';
-              updateReenrichCount();
-            }
-          } catch { /* réseau — on réessaie au prochain tick */ }
-        }, 1500);
-      });
-    }
-  }
-
-  function closeModal() {
+  function closeBulkModal() {
     modalOverlay.style.display = 'none';
     document.body.classList.remove('modal-open');
   }
 
-  // ── Popup couverture ───────────────────────────────────────────────────────
-  const coverModal      = document.getElementById('cover-modal');
-  const coverModalClose = document.getElementById('cover-modal-close');
-  const coverModalFile  = document.getElementById('cover-modal-file');
-  const coverModalUrl   = document.getElementById('cover-modal-url');
-  const coverModalUrlBtn = document.getElementById('cover-modal-url-btn');
-  const coverModalPreview  = document.getElementById('cover-modal-preview');
-  const coverModalFilename = document.getElementById('cover-modal-filename');
-  const coverModalStatus   = document.getElementById('cover-modal-status');
-  let _coverBookId = null;
+  // ── Modal livre (délégué à _book_modal.html via openBookModal) ─────────────
+  // Callbacks après sauvegarde/suppression
+  window.onBookModalSaved = () => { loadBooks(); updateReenrichCount(); };
+  window.onBookModalDeleted = () => loadBooks();
 
-  function openCoverModal(bookId, currentSrc) {
-    _coverBookId = bookId;
-    coverModalPreview.src = currentSrc;
-    coverModalUrl.value = '';
-    coverModalFilename.textContent = '';
-    coverModalStatus.textContent = '';
-    coverModal.style.display = 'flex';
-  }
-
-  function closeCoverModal() { coverModal.style.display = 'none'; }
-
-  coverModalClose.addEventListener('click', closeCoverModal);
-  coverModal.addEventListener('click', e => { if (e.target === coverModal) closeCoverModal(); });
-
-  async function _submitCover(fd) {
-    coverModalStatus.style.color = 'var(--color-text-muted)';
-    coverModalStatus.textContent = 'Envoi…';
-    const res = await fetch(`/api/books/${_coverBookId}/cover`, { method: 'POST', body: fd });
-    if (res.ok) {
-      const updated = await res.json();
-      const newSrc = updated.cover_url + '?t=' + Date.now();
-      coverModalPreview.src = newSrc;
-      // Met à jour la couverture dans le modal livre derrière
-      const mainCover = document.querySelector('.modal-cover');
-      if (mainCover) mainCover.src = newSrc;
-      coverModalStatus.style.color = 'var(--color-success,#22c55e)';
-      coverModalStatus.textContent = 'Couverture mise à jour.';
-      loadBooks();
-      setTimeout(closeCoverModal, 900);
-    } else {
-      const err = await res.json().catch(() => ({}));
-      coverModalStatus.style.color = 'var(--color-danger)';
-      coverModalStatus.textContent = err.detail || 'Erreur.';
-    }
-  }
-
-  coverModalFile.addEventListener('change', async () => {
-    const f = coverModalFile.files[0];
-    if (!f) return;
-    coverModalFilename.textContent = f.name;
-    coverModalPreview.src = URL.createObjectURL(f);
-    const fd = new FormData();
-    fd.append('file', f);
-    await _submitCover(fd);
-  });
-
-  coverModalUrlBtn.addEventListener('click', async () => {
-    const url = coverModalUrl.value.trim();
-    if (!url) return;
-    const fd = new FormData();
-    fd.append('url', url);
-    await _submitCover(fd);
-  });
-
-  coverModalUrl.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); coverModalUrlBtn.click(); }
-  });
-
-  // ── Helpers prêt (users + emprunteurs dans le même select) ─────────────
-  async function populateLoanSelect(sel) {
-    const [resUsers, resBorrowers] = await Promise.all([
-      fetch('/api/users/active'),
-      fetch('/api/borrowers'),
-    ]);
-    const users = resUsers.ok ? await resUsers.json() : [];
-    const borrowers = resBorrowers.ok ? await resBorrowers.json() : [];
-    sel.innerHTML = '<option value="">— choisir —</option>';
-    if (users.length) {
-      const grp = document.createElement('optgroup');
-      grp.label = 'Utilisateurs du site';
-      users.forEach(u => {
-        const opt = document.createElement('option');
-        opt.value = 'u:' + u.id;
-        opt.textContent = u.username;
-        grp.appendChild(opt);
-      });
-      sel.appendChild(grp);
-    }
-    if (borrowers.length) {
-      const grp = document.createElement('optgroup');
-      grp.label = 'Emprunteurs externes';
-      borrowers.forEach(b => {
-        const opt = document.createElement('option');
-        opt.value = 'b:' + b.id;
-        opt.textContent = b.name;
-        grp.appendChild(opt);
-      });
-      sel.appendChild(grp);
-    }
-  }
-
-  function parseLoanSelectValue(val) {
-    if (!val) return {};
-    if (val.startsWith('u:')) return { user_id: parseInt(val.slice(2)) };
-    if (val.startsWith('b:')) return { borrower_id: parseInt(val.slice(2)) };
-    return {};
-  }
-
-  // ── Prêt depuis la bibliothèque ──────────────────────────────────────────
-  async function openLoanModal(bookId, bookTitle) {
-    document.getElementById('lib-loan-book-title').textContent = bookTitle;
-    document.getElementById('lib-loan-due-date').value = '';
-    document.getElementById('lib-loan-modal').dataset.bookId = bookId;
-    await populateLoanSelect(document.getElementById('lib-loan-borrower'));
-    document.getElementById('lib-loan-modal').style.display = 'flex';
-  }
-
-  document.getElementById('lib-loan-cancel').addEventListener('click', () => {
-    document.getElementById('lib-loan-modal').style.display = 'none';
-  });
-
-  document.getElementById('lib-loan-submit').addEventListener('click', async () => {
-    const modal = document.getElementById('lib-loan-modal');
-    const bookId = parseInt(modal.dataset.bookId);
-    const who = parseLoanSelectValue(document.getElementById('lib-loan-borrower').value);
-    if (!who.borrower_id && !who.user_id) { alert('Choisissez un emprunteur.'); return; }
-    const dueDate = document.getElementById('lib-loan-due-date').value || null;
-
-    const res = await fetch('/api/loans', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ book_id: bookId, ...who, due_date: dueDate }),
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      alert(err.detail || 'Erreur');
-      return;
-    }
-    modal.style.display = 'none';
-    loadBooks();
-  });
-
-  modalClose.addEventListener('click', closeModal);
-  modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+  modalClose.addEventListener("click", closeBulkModal);
+  modalOverlay.addEventListener("click", (e) => { if (e.target === modalOverlay) closeBulkModal(); });
 
   searchInput.addEventListener('input', () => {
     clearTimeout(debounceTimer);
@@ -1159,7 +527,7 @@
     updateReenrichCount();
     // Ouvrir directement un livre si ?book=ID dans l'URL
     const bookId = new URLSearchParams(window.location.search).get('book');
-    if (bookId) openModal(parseInt(bookId));
+    if (bookId) openBookModal(parseInt(bookId));
   });
 
   // Rechargement des localisations si on revient sur l'onglet après en avoir créé une

@@ -140,9 +140,7 @@ def library_page(request: Request, db: Session = Depends(get_db)):
     except Exception:
         return RedirectResponse(url="/login", status_code=302)
     if redir := _require_pw_changed(user): return redir
-    from app import settings as settings_mod
-    sources_cfg = settings_mod.get(db, "lookup_sources") or []
-    return templates.TemplateResponse("library.html", {"request": request, "user": user, "active": "library", "build_version": BUILD_VERSION, "sources_cfg": sources_cfg})
+    return templates.TemplateResponse("library.html", {"request": request, "user": user, "active": "library", "build_version": BUILD_VERSION})
 
 
 
