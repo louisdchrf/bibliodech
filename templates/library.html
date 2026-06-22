@@ -8,6 +8,17 @@
     <div class="filter-row">
       <select id="filter-location" class="select-input">
         <option value="">Toutes les localisations</option>
+        <option value="none">— Sans localisation</option>
+      </select>
+      <select id="filter-series" class="select-input">
+        <option value="">Toutes les séries</option>
+        <option value="none">— Sans série</option>
+        <option value="any">— Avec série</option>
+      </select>
+      <select id="filter-cover" class="select-input">
+        <option value="">Toutes les couvertures</option>
+        <option value="no">— Sans couverture</option>
+        <option value="yes">— Avec couverture</option>
       </select>
       <select id="filter-source" class="select-input">
         <option value="">Toutes les sources</option>
@@ -133,6 +144,8 @@
   const bookCount = document.getElementById('book-count');
   const searchInput = document.getElementById('search');
   const filterLocation = document.getElementById('filter-location');
+  const filterSeries = document.getElementById('filter-series');
+  const filterCover = document.getElementById('filter-cover');
   const filterSource = document.getElementById('filter-source');
   const sortBy = document.getElementById('sort-by');
   const modalOverlay = document.getElementById('modal-overlay');
@@ -322,6 +335,10 @@
     if (lid) params.set('room_id', lid);
     const src = filterSource.value;
     if (src) params.set('source', src);
+    const ser = filterSeries.value;
+    if (ser) params.set('series_id', ser);
+    const cov = filterCover.value;
+    if (cov) params.set('has_cover', cov);
     params.set('sort_by', sortBy.value);
     params.set('limit', '1000');  // pagination : suffisant pour une biblio personnelle
     const res = await fetch('/api/books?' + params.toString());
@@ -1026,6 +1043,8 @@
     debounceTimer = setTimeout(loadBooks, 300);
   });
   filterLocation.addEventListener('change', loadBooks);
+  filterSeries.addEventListener('change', loadBooks);
+  filterCover.addEventListener('change', loadBooks);
   filterSource.addEventListener('change', loadBooks);
   sortBy.addEventListener('change', loadBooks);
 
@@ -1125,7 +1144,17 @@
       + sources.map(s => `<option value="${s.id}">${escHtml(s.label)} (${s.count})</option>`).join('');
   }
 
-  Promise.all([loadLocations(), loadSourceFilter()]).then(async () => {
+  async function loadSeriesFilter() {
+    const res = await fetch('/api/series');
+    if (!res.ok) return;
+    const series = await res.json();
+    filterSeries.innerHTML = '<option value="">Toutes les séries</option>'
+      + '<option value="none">— Sans série</option>'
+      + '<option value="any">— Avec série</option>'
+      + series.map(s => `<option value="${s.id}">${escHtml(s.name)} (${s.book_count})</option>`).join('');
+  }
+
+  Promise.all([loadLocations(), loadSourceFilter(), loadSeriesFilter()]).then(async () => {
     await loadBooks();
     updateReenrichCount();
     // Ouvrir directement un livre si ?book=ID dans l'URL

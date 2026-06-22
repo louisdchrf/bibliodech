@@ -19,8 +19,10 @@ router = APIRouter()
 def list_books(
     request: Request,
     search: Optional[str] = Query(None),
-    room_id: Optional[str] = Query(None),  # int ou "none" pour livres sans localisation
-    source: Optional[str] = Query(None),   # filtre par source d'enrichissement
+    room_id: Optional[str] = Query(None),    # int ou "none" pour livres sans localisation
+    source: Optional[str] = Query(None),     # filtre par source d'enrichissement
+    series_id: Optional[str] = Query(None),  # int, "none" (sans série), ou "any" (avec série)
+    has_cover: Optional[str] = Query(None),  # "yes" ou "no"
     sort_by: str = Query("title"),
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
@@ -41,6 +43,18 @@ def list_books(
         q = q.filter(Book.enrichment_source.is_(None))
     elif source is not None:
         q = q.filter(Book.enrichment_source == source)
+
+    if series_id == "none":
+        q = q.filter(Book.series_id.is_(None))
+    elif series_id == "any":
+        q = q.filter(Book.series_id.isnot(None))
+    elif series_id is not None:
+        q = q.filter(Book.series_id == int(series_id))
+
+    if has_cover == "no":
+        q = q.filter(Book.cover_url.is_(None))
+    elif has_cover == "yes":
+        q = q.filter(Book.cover_url.isnot(None))
 
     if sort_by == "author":
         q = q.order_by(Book.authors)
