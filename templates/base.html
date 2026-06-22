@@ -18,13 +18,29 @@
     <a href="/scanner" class="nav-logo"><span style="line-height:1">📚</span> Bibliodech</a>
     <div class="nav-links">
       <a href="/scanner" {% if active=='scanner' %}class="active"{% endif %}>Scanner</a>
-      <a href="/library" {% if active=='library' %}class="active"{% endif %}>Bibliothèque</a>
+      <div class="nav-menu" id="nav-menu-library">
+        <button class="nav-menu-btn {% if active in ['library','series-browse'] %}active{% endif %}" id="nav-menu-library-btn">
+          Bibliothèque <span class="nav-menu-chevron">▾</span>
+        </button>
+        <div class="nav-menu-dropdown" id="nav-menu-library-drop">
+          <a href="/library" class="nav-menu-item {% if active=='library' %}active{% endif %}">Ouvrages</a>
+          <a href="/series" class="nav-menu-item {% if active=='series-browse' %}active{% endif %}">Séries</a>
+        </div>
+      </div>
       <a href="/locations" {% if active=='locations' %}class="active"{% endif %}>Localisations</a>
       <a href="/loans" {% if active=='loans' %}class="active"{% endif %}>Prêts</a>
       <a href="/stats" {% if active=='stats' %}class="active"{% endif %}>Statistiques</a>
-      <a href="/series" {% if active=='series-browse' %}class="active"{% endif %}>Séries</a>
-      {% if user.role == 'admin' %}<a href="/series/proposals" {% if active=='series' %}class="active"{% endif %}>Détection</a>{% endif %}
-      {% if user.role == 'admin' %}<a href="/tasks" {% if active=='tasks' %}class="active"{% endif %}>Tâches</a>{% endif %}
+      {% if user.role == 'admin' %}
+      <div class="nav-menu" id="nav-menu-detection">
+        <button class="nav-menu-btn {% if active in ['series','series-proposals'] %}active{% endif %}" id="nav-menu-detection-btn">
+          Détection <span class="nav-menu-chevron">▾</span>
+        </button>
+        <div class="nav-menu-dropdown" id="nav-menu-detection-drop">
+          <a href="/series/proposals" class="nav-menu-item {% if active=='series' %}active{% endif %}">Propositions</a>
+          <a href="/tasks" class="nav-menu-item {% if active=='tasks' %}active{% endif %}">Tâches</a>
+        </div>
+      </div>
+      {% endif %}
       {% if user.role == 'admin' %}<a href="/logs" {% if active=='logs' %}class="active"{% endif %}>Logs</a>{% endif %}
       {% if user.role == 'admin' %}<a href="/settings" {% if active=='settings' or active=='users' %}class="active"{% endif %}>Paramètres</a>{% endif %}
     </div>
@@ -61,15 +77,37 @@
   </nav>
   <script>
     (function(){
+      // Hamburger mobile
       var btn = document.getElementById('nav-hamburger');
       var links = document.querySelector('.nav-links');
-      if (!btn || !links) return;
-      btn.addEventListener('click', function(){
-        var open = links.classList.toggle('open');
-        btn.setAttribute('aria-expanded', open);
+      if (btn && links) {
+        btn.addEventListener('click', function(){
+          var open = links.classList.toggle('open');
+          btn.setAttribute('aria-expanded', open);
+        });
+      }
+
+      // Dropdowns nav-menu
+      var menus = document.querySelectorAll('.nav-menu');
+      menus.forEach(function(menu) {
+        var menuBtn = menu.querySelector('.nav-menu-btn');
+        var drop = menu.querySelector('.nav-menu-dropdown');
+        if (!menuBtn || !drop) return;
+        menuBtn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          var isOpen = drop.classList.contains('open');
+          // Fermer tous les autres
+          document.querySelectorAll('.nav-menu-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
+          if (!isOpen) drop.classList.add('open');
+        });
       });
-      document.addEventListener('click', function(e){
-        if (!btn.contains(e.target) && !links.contains(e.target)) {
+
+      // Fermer dropdowns au clic extérieur
+      document.addEventListener('click', function(e) {
+        if (!e.target.closest('.nav-menu')) {
+          document.querySelectorAll('.nav-menu-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
+        }
+        if (btn && links && !btn.contains(e.target) && !links.contains(e.target)) {
           links.classList.remove('open');
           btn.setAttribute('aria-expanded', false);
         }
