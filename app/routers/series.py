@@ -605,25 +605,17 @@ async def detect_series(request: Request, db: Session = Depends(get_db)):
     return result
 
 
-@router.post("/api/series/ocr-covers")
-async def ocr_covers(request: Request, db: Session = Depends(get_db)):
-    """OCR sur une liste de cover_url → retourne le nom de série détecté (ou null)."""
+@router.post("/api/series/ocr-cover-single")
+async def ocr_cover_single(request: Request, db: Session = Depends(get_db)):
+    """OCR sur une seule couverture → retourne le nom détecté (ou null)."""
     user = get_current_user(request, db)
     require_admin(user)
     body = await request.json()
-    cover_urls: list[str] = body.get("cover_urls", [])
+    cover_url: str = body.get("cover_url", "")
     known_series = [s.name for s in db.query(Series).all()]
     loop = asyncio.get_event_loop()
-    names: list[str] = []
-    for url in cover_urls[:5]:  # max 5 couvertures par appel
-        name = await loop.run_in_executor(None, _ocr_series_from_cover, url, known_series)
-        if name:
-            names.append(name)
-    if not names:
-        return {"name": None}
-    from collections import Counter
-    canon_raw = Counter(names).most_common(1)[0][0]
-    return {"name": canon_raw}
+    name = await loop.run_in_executor(None, _ocr_series_from_cover, cover_url, known_series)
+    return {"name": name}
 
 
 @router.get("/api/series/proposals")

@@ -126,25 +126,52 @@ function renderCard(p) {
 async function ocrProposal(id, coverUrls) {
   const btn = document.getElementById(`ocr-btn-${id}`);
   const input = document.getElementById(`name-${id}`);
-  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
-  try {
-    const r = await fetch('/api/series/ocr-covers', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cover_urls: coverUrls }),
-    });
-    const data = await r.json();
-    if (data.name) {
-      input.value = data.name;
-      if (btn) { btn.textContent = '✓'; btn.style.color = 'var(--color-success, #16a34a)'; }
-    } else {
-      if (btn) { btn.textContent = '?'; btn.title = 'Aucun nom détecté'; }
-    }
-  } catch {
-    if (btn) { btn.textContent = '!'; }
-  } finally {
-    if (btn) btn.disabled = false;
+  const total = Math.min(coverUrls.length, 5);
+  if (btn) { btn.disabled = true; }
+
+  // Barre de progression inline sous le champ
+  let bar = document.getElementById(`ocr-progress-${id}`);
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = `ocr-progress-${id}`;
+    bar.style.cssText = 'margin-top:.35rem;font-size:.75rem;color:var(--color-text-muted)';
+    input.parentNode.after(bar);
   }
+
+  const names = [];
+  for (let i = 0; i < total; i++) {
+    bar.innerHTML = `<div style="display:flex;align-items:center;gap:.5rem">
+      <div style="flex:1;height:4px;background:var(--color-border);border-radius:2px;overflow:hidden">
+        <div style="height:100%;width:${Math.round((i/total)*100)}%;background:var(--color-primary);transition:width .3s"></div>
+      </div>
+      <span>${i}/${total}</span>
+    </div>`;
+    if (btn) btn.textContent = `${i+1}/${total}`;
+    try {
+      const r = await fetch('/api/series/ocr-cover-single', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cover_url: coverUrls[i] }),
+      });
+      const data = await r.json();
+      if (data.name) names.push(data.name);
+    } catch { /* skip */ }
+  }
+
+  // Résultat
+  if (names.length > 0) {
+    // Nom le plus fréquent
+    const freq = {};
+    names.forEach(n => { freq[n] = (freq[n] || 0) + 1; });
+    const best = Object.entries(freq).sort((a,b) => b[1]-a[1])[0][0];
+    input.value = best;
+    bar.innerHTML = `<span style="color:var(--color-success,#16a34a)">✓ Nom détecté : <strong>${best}</strong></span>`;
+    if (btn) { btn.textContent = '✓'; btn.style.color = 'var(--color-success,#16a34a)'; }
+  } else {
+    bar.innerHTML = `<span style="color:var(--color-text-muted)">Aucun nom détecté sur les couvertures</span>`;
+    if (btn) { btn.textContent = '🔍'; }
+  }
+  if (btn) btn.disabled = false;
 }
 
 function onSeriesSelect(id) {
