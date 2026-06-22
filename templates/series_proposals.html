@@ -66,6 +66,7 @@ function renderCard(p) {
     author: { label: 'Auteur + éditeur',  color: 'var(--color-warning, #d97706)' },
     ocr:    { label: '🔍 OCR couverture', color: 'var(--color-success, #16a34a)' },
     title:  { label: 'Titre',             color: 'var(--color-primary)' },
+    sudoc:  { label: '📚 SUDOC',          color: '#7c3aed' },
   };
   const signals = (p.signal || '').split(',').map(s => s.trim()).filter(Boolean);
   const signalBadges = signals.map(s => {
@@ -90,9 +91,10 @@ function renderCard(p) {
 
   const nameVal = p.proposed_name || p.existing_series_name || '';
   const coverUrls = p.books.map(b => b.cover_url).filter(Boolean);
-  // Auteurs uniques du groupe pour filtrage OCR
   const allAuthors = [...new Set(p.books.flatMap(b => b.authors || []))];
+  const bookIds = p.books.map(b => b.id);
   const canOcr = (p.signal === 'prefix' || p.signal === 'author') && coverUrls.length > 0;
+  const canSudoc = p.books.some(b => b.isbn);
 
   return `
   <div class="card" id="proposal-${p.id}" data-signals="${p.signal || ''}" style="margin-bottom:1.25rem">
@@ -109,6 +111,7 @@ function renderCard(p) {
           <label style="font-size:.8rem;font-weight:600;display:block;margin-bottom:.3rem">Nom de la série</label>
           <div style="display:flex;gap:.4rem;align-items:center">
             <input type="text" id="name-${p.id}" class="form-control" placeholder="Nom de la série…" value="${nameVal}" style="flex:1;min-width:0">
+            ${canSudoc ? `<button class="btn btn-ghost btn-sm" title="Rechercher dans le catalogue SUDOC" id="sudoc-btn-${p.id}" data-proposal-id="${p.id}" data-book-ids="${encodeURIComponent(JSON.stringify(bookIds))}" style="white-space:nowrap;flex-shrink:0">📚</button>` : ''}
             ${canOcr ? `<button class="btn btn-ghost btn-sm" title="Lire les couvertures (OCR)" id="ocr-btn-${p.id}" data-proposal-id="${p.id}" data-cover-urls="${encodeURIComponent(JSON.stringify(coverUrls))}" data-authors="${encodeURIComponent(JSON.stringify(allAuthors))}" style="white-space:nowrap;flex-shrink:0">🔍</button>` : ''}
           </div>
         </div>
@@ -126,6 +129,64 @@ function renderCard(p) {
       </div>
     </div>
   </div>`;
+}
+
+async function sudocProposal(id, bookIds) {
+  const btn = document.getElementById(`sudoc-btn-${id}`);
+  const input = document.getElementById(`name-${id}`);
+  let bar = document.getElementById(`ocr-progress-${id}`);
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = `ocr-progress-${id}`;
+    bar.style.cssText = 'margin-top:.35rem;font-size:.75rem;color:var(--color-text-muted)';
+    input.parentNode.after(bar);
+  }
+  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+  bar.innerHTML = `<span>Interrogation du catalogue SUDOC…</span>`;
+  try {
+    const r = await fetch('/api/series/sudoc-lookup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ book_ids: bookIds }),
+    });
+    const data = await r.json();
+    if (data.name) {
+      input.value = data.name;
+      bar.innerHTML = `<span style="color:var(--color-success,#16a34a)">✓ Trouvé via SUDOC : <strong>${data.name}</strong>${data.volume ? ` (tome ${data.volume})` : ''}</span>`;
+      if (btn) { btn.textContent = '✓'; btn.style.color = 'var(--color-success,#16a34a)'; }
+      await fetch(`/api/series/proposals/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proposed_name: data.name, add_signal: 'sudoc' }),
+      });
+      const card = document.getElementById(`proposal-${id}`);
+      if (card) {
+        const updatedSignals = [...new Set([...(card.dataset.signals || '').split(','), 'sudoc'])].filter(Boolean).join(',');
+        card.dataset.signals = updatedSignals;
+        const badgesEl = card.querySelector('.signal-badges');
+        if (badgesEl) {
+          const SIGNAL_META = {
+            prefix: { label: 'Préfixe commun', color: 'var(--color-primary)' },
+            author: { label: 'Auteur + éditeur', color: 'var(--color-warning, #d97706)' },
+            ocr:    { label: '🔍 OCR couverture', color: 'var(--color-success, #16a34a)' },
+            sudoc:  { label: '📚 SUDOC', color: '#7c3aed' },
+          };
+          badgesEl.innerHTML = updatedSignals.split(',').map(s => {
+            const m = SIGNAL_META[s] || { label: s, color: 'var(--color-text-muted)' };
+            return `<span style="font-size:.72rem;font-weight:600;color:${m.color};background:color-mix(in srgb,${m.color} 12%,transparent);padding:.15rem .5rem;border-radius:99px;border:1px solid color-mix(in srgb,${m.color} 30%,transparent)">${m.label}</span>`;
+          }).join(' ');
+        }
+      }
+    } else {
+      bar.innerHTML = `<span style="color:var(--color-text-muted)">Non trouvé dans SUDOC</span>`;
+      if (btn) { btn.textContent = '📚'; }
+    }
+  } catch {
+    bar.innerHTML = `<span style="color:var(--color-error,#dc2626)">Erreur SUDOC</span>`;
+    if (btn) { btn.textContent = '📚'; }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 async function ocrProposal(id, coverUrls, authors = []) {
@@ -248,14 +309,22 @@ async function rejectProposal(id) {
 
 loadProposals();
 
-// Délégation d'événement pour les boutons OCR (générés dynamiquement)
+// Délégation d'événement pour les boutons OCR et SUDOC (générés dynamiquement)
 document.getElementById('proposals-container').addEventListener('click', e => {
-  const btn = e.target.closest('[id^="ocr-btn-"]');
-  if (!btn) return;
-  const proposalId = parseInt(btn.dataset.proposalId);
-  const coverUrls = JSON.parse(decodeURIComponent(btn.dataset.coverUrls));
-  const authors = JSON.parse(decodeURIComponent(btn.dataset.authors || '%5B%5D'));
-  ocrProposal(proposalId, coverUrls, authors);
+  const ocrBtn = e.target.closest('[id^="ocr-btn-"]');
+  if (ocrBtn) {
+    const proposalId = parseInt(ocrBtn.dataset.proposalId);
+    const coverUrls = JSON.parse(decodeURIComponent(ocrBtn.dataset.coverUrls));
+    const authors = JSON.parse(decodeURIComponent(ocrBtn.dataset.authors || '%5B%5D'));
+    ocrProposal(proposalId, coverUrls, authors);
+    return;
+  }
+  const sudocBtn = e.target.closest('[id^="sudoc-btn-"]');
+  if (sudocBtn) {
+    const proposalId = parseInt(sudocBtn.dataset.proposalId);
+    const bookIds = JSON.parse(decodeURIComponent(sudocBtn.dataset.bookIds));
+    sudocProposal(proposalId, bookIds);
+  }
 });
 </script>
 {% endblock %}

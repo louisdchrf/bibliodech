@@ -701,6 +701,25 @@ async def detect_series(request: Request, db: Session = Depends(get_db)):
     return result
 
 
+@router.post("/api/series/sudoc-lookup")
+async def sudoc_lookup(request: Request, db: Session = Depends(get_db)):
+    """Interroge SUDOC pour une liste de book_ids → retourne le nom de série trouvé."""
+    user = get_current_user(request, db)
+    require_admin(user)
+    body = await request.json()
+    book_ids: list[int] = body.get("book_ids", [])
+    from app.routers.scan import _lookup_series_sudoc
+    books = db.query(Book).filter(Book.id.in_(book_ids)).all()
+    for b in books:
+        if not b.isbn:
+            continue
+        result = await _lookup_series_sudoc(b.isbn)
+        if result:
+            name, vol = result
+            return {"name": name, "volume": vol, "isbn": b.isbn}
+    return {"name": None}
+
+
 @router.post("/api/series/ocr-cover-single")
 async def ocr_cover_single(request: Request, db: Session = Depends(get_db)):
     """OCR sur une seule couverture → retourne le nom détecté (ou null)."""
