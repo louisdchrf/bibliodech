@@ -100,13 +100,13 @@ async def _run_task(task_id: str):
 
 async def _execute_task(task_id: str, db) -> str:
     if task_id == "reenrich":
-        from app.routers.books import _reenrich_missing
-        result = await _reenrich_missing(db, force=False)
+        from app.routers.scan import _reenrich_missing
+        result = await _reenrich_missing(db, force=False, task_id=task_id)
         return f"{result.get('queued', 0)} livres enrichis"
 
     if task_id == "fetch-covers":
         from app.routers.books import _fetch_covers_logic
-        result = await _fetch_covers_logic(db)
+        result = await _fetch_covers_logic(db, task_id=task_id)
         return f"{result['updated']} couvertures récupérées"
 
     if task_id == "clean-authors":

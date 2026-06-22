@@ -104,7 +104,7 @@ async def _resolve_cover(isbn: str, info: dict) -> str | None:
     return None
 
 
-async def _enrich_book(book_id: int, isbn: str) -> None:
+async def _enrich_book(book_id: int, isbn: str, _progress_key: str | None = None) -> None:
     """Lookup + mise à jour du livre en arrière-plan."""
     db = SessionLocal()
     try:
@@ -143,7 +143,47 @@ async def _enrich_book(book_id: int, isbn: str) -> None:
         db.commit()
 
     finally:
+        if _progress_key:
+            from app import scheduler as sched
+            if _progress_key in sched._running:
+                p = sched._running[_progress_key].get("progress")
+                if p:
+                    p["current"] += 1
         db.close()
+
+
+async def _reenrich_missing(db, force: bool = False, task_id: str = "reenrich") -> dict:
+    """Enrichit les livres manquants en séquence (usage scheduler, avec progression)."""
+    from app import scheduler as sched
+
+    if force:
+        books = db.query(Book).filter(Book.isbn.isnot(None)).all()
+    else:
+        books = db.query(Book).filter(
+            (Book.enrichment_status == "not_found") |
+            (Book.enrichment_status == "pending")
+        ).all()
+        for b in db.query(Book).filter(Book.enrichment_status == "ok").all():
+            if b.isbn and b.title == b.isbn:
+                books.append(b)
+
+    seen, unique = set(), []
+    for b in books:
+        if b.id not in seen and b.isbn:
+            seen.add(b.id)
+            unique.append(b)
+    for b in unique:
+        b.enrichment_status = "pending"
+    db.commit()
+
+    total = len(unique)
+    if task_id in sched._running:
+        sched._running[task_id]["progress"] = {"current": 0, "total": total}
+
+    for b in unique:
+        await _enrich_book(b.id, b.isbn, _progress_key=task_id)
+
+    return {"queued": total}
 
 
 
@@ -310,13 +350,15 @@ async def re_enrich_all(
     if unique:
         from app import scheduler as sched
         from datetime import datetime, timezone
-        sched._running["reenrich-bg"] = {
+        key = "reenrich-bg"
+        sched._running[key] = {
             "label": f"Enrichissement ({len(unique)} livres)",
             "started_at": datetime.now(timezone.utc).isoformat(),
+            "progress": {"current": 0, "total": len(unique)},
         }
         for b in unique:
-            background_tasks.add_task(_enrich_book, b.id, b.isbn)
-        background_tasks.add_task(lambda: sched._running.pop("reenrich-bg", None))
+            background_tasks.add_task(_enrich_book, b.id, b.isbn, key)
+        background_tasks.add_task(lambda: sched._running.pop(key, None))
     return {"queued": len(unique), "book_ids": [b.id for b in unique]}
 
 

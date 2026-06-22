@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Bibliodech{% endblock %}</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=4">
+  <link rel="stylesheet" href="/static/css/style.css?v=5">
   <script>
     (function(){
       try {
@@ -170,14 +170,33 @@
         contentEl.innerHTML = '<p style="color:var(--color-text-muted)">Aucune tâche en cours.</p>';
         return;
       }
-      contentEl.innerHTML = _tasks.map(t => `
-        <div style="display:flex;align-items:center;gap:.75rem;padding:.6rem 0;border-bottom:1px solid var(--color-border)">
-          <span class="activity-spinner" style="flex-shrink:0"></span>
-          <div style="flex:1">
-            <div style="font-weight:500;font-size:.9rem">${t.label}</div>
-            <div style="font-size:.75rem;color:var(--color-text-muted)">Démarré il y a ${fmtDuration(t.started_at)}</div>
+      contentEl.innerHTML = _tasks.map(t => {
+        var p = t.progress;
+        var pct = (p && p.total > 0) ? Math.round(p.current / p.total * 100) : null;
+        var progressHtml = '';
+        if (p && p.total > 0) {
+          progressHtml = `
+            <div style="margin-top:.45rem">
+              <div style="display:flex;justify-content:space-between;font-size:.72rem;color:var(--color-text-muted);margin-bottom:.25rem">
+                <span>${p.current} / ${p.total}</span><span>${pct}%</span>
+              </div>
+              <div class="progress-bar-track">
+                <div class="progress-bar-fill" style="width:${pct}%"></div>
+              </div>
+            </div>`;
+        }
+        return `
+        <div style="padding:.7rem 0;border-bottom:1px solid var(--color-border)">
+          <div style="display:flex;align-items:center;gap:.75rem">
+            <span class="activity-spinner" style="flex-shrink:0"></span>
+            <div style="flex:1">
+              <div style="font-weight:500;font-size:.9rem">${t.label}</div>
+              <div style="font-size:.75rem;color:var(--color-text-muted)">Démarré il y a ${fmtDuration(t.started_at)}</div>
+            </div>
           </div>
-        </div>`).join('');
+          ${progressHtml}
+        </div>`;
+      }).join('');
     }
 
     async function poll() {

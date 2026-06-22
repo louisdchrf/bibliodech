@@ -209,29 +209,38 @@ def clean_authors(request: Request, db: Session = Depends(get_db)):
     return {"ok": True}
 
 
-async def _fetch_covers_logic(db) -> dict:
+async def _fetch_covers_logic(db, task_id: str = "fetch-covers") -> dict:
     """Cherche et sauvegarde les couvertures pour les livres qui n'en ont pas."""
     import asyncio
     from app.routers.scan import _resolve_cover
+    from app import scheduler as sched
 
     books = db.query(Book).filter(
         (Book.cover_url.is_(None)) | (Book.cover_url == "")
     ).filter(Book.isbn.isnot(None)).all()
 
+    total = len(books)
     updated = 0
+    done = 0
     sem = asyncio.Semaphore(3)
 
+    if task_id in sched._running:
+        sched._running[task_id]["progress"] = {"current": 0, "total": total}
+
     async def _try_one(book):
-        nonlocal updated
+        nonlocal updated, done
         async with sem:
             url = await _resolve_cover(book.isbn, {})
             if url:
                 book.cover_url = url
                 db.commit()
                 updated += 1
+            done += 1
+            if task_id in sched._running:
+                sched._running[task_id]["progress"] = {"current": done, "total": total}
 
     await asyncio.gather(*[_try_one(b) for b in books])
-    return {"updated": updated, "total": len(books)}
+    return {"updated": updated, "total": total}
 
 
 @router.post("/api/books/bulk")
