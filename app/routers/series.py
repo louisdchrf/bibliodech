@@ -434,6 +434,10 @@ async def _detect(db: Session, task_id: str = "detect-series") -> dict:
         .all()
     )
 
+    # Remettre le compteur à zéro pour les signaux 1+2
+    if task_id in sched._running:
+        sched._running[task_id]["progress"] = {"current": 0, "total": len(books)}
+
     # Index : livres déjà en série
     series_books = db.query(Book).filter(Book.series_id.isnot(None)).all()
 
@@ -456,7 +460,7 @@ async def _detect(db: Session, task_id: str = "detect-series") -> dict:
     prefix_groups: dict[tuple, list] = defaultdict(list)
     author_groups: dict[tuple, list] = defaultdict(list)
 
-    for b in books:
+    for i, b in enumerate(books):
         fw = _first_word(b.title)
         pub = _norm_pub(b.publisher)
         if fw:
@@ -464,6 +468,8 @@ async def _detect(db: Session, task_id: str = "detect-series") -> dict:
         au = _norm_authors(b.authors)
         if au:
             author_groups[(au, pub)].append(b)
+        if task_id in sched._running:
+            sched._running[task_id]["progress"]["current"] = i + 1
 
     # ── Signal 1 : préfixe + éditeur ────────────────────────────────────────
     for (fw, pub), group in prefix_groups.items():

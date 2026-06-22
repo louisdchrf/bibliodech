@@ -61,8 +61,14 @@ function renderProposals(proposals) {
 }
 
 function renderCard(p) {
-  const signalLabel = p.signal === 'prefix' ? 'Préfixe commun' : 'Auteur + éditeur';
-  const signalColor = p.signal === 'prefix' ? 'var(--color-primary)' : 'var(--color-warning, #d97706)';
+  const SIGNAL_META = {
+    prefix: { label: 'Préfixe commun',    color: 'var(--color-primary)' },
+    author: { label: 'Auteur + éditeur',  color: 'var(--color-warning, #d97706)' },
+    ocr:    { label: '🔍 OCR couverture', color: 'var(--color-success, #16a34a)' },
+  };
+  const sig = SIGNAL_META[p.signal] || { label: p.signal, color: 'var(--color-text-muted)' };
+  const signalLabel = sig.label;
+  const signalColor = sig.color;
 
   const books = p.books.map(b => `
     <div style="display:flex;align-items:center;gap:.5rem;padding:.35rem 0;border-bottom:1px solid var(--color-border)">
