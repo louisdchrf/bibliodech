@@ -910,7 +910,6 @@
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(loadBooks, 300);
   });
-  filterSeries.addEventListener('change', loadBooks);
   filterLocation.addEventListener('change', loadBooks);
   filterSource.addEventListener('change', loadBooks);
   sortBy.addEventListener('change', loadBooks);
@@ -1011,7 +1010,7 @@
       + sources.map(s => `<option value="${s.id}">${escHtml(s.label)} (${s.count})</option>`).join('');
   }
 
-  Promise.all([loadSeries(), loadLocations(), loadSourceFilter()]).then(() => { loadBooks(); updateReenrichCount(); });
+  Promise.all([loadLocations(), loadSourceFilter()]).then(() => { loadBooks(); updateReenrichCount(); });
 
   // Rechargement des localisations si on revient sur l'onglet après en avoir créé une
   document.addEventListener('visibilitychange', () => {
