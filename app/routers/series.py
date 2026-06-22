@@ -761,6 +761,7 @@ def list_proposals(request: Request, db: Session = Depends(get_db)):
                     "title": b.title,
                     "authors": json.loads(b.authors or "[]"),
                     "cover_url": b.cover_url,
+                    "isbn": b.isbn,
                     "series_id": b.series_id,
                 }
                 for b in books
