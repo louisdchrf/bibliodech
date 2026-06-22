@@ -24,26 +24,29 @@ def _normalize_isbn(isbn: str) -> str:
 
 
 async def _decitre_cover_url(client, isbn: str) -> str | None:
-    """Récupère l'URL de couverture depuis la page Decitre (JSON-LD)."""
-    import re as _re
-    _JSONLD_RE = _re.compile(r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', _re.DOTALL)
+    """Récupère l'URL de couverture depuis la page Decitre (pattern di-static CDN)."""
+    from app.lookup import _DECITRE_HEADERS
+    # L'URL de couverture principale (sans suffixe _N) est encodée dans le HTML
+    # sous la forme : products-images.di-static.com/image/{slug}/{isbn}-{size}-1.webp
+    # On prend la plus grande résolution disponible (475x500 > 200x303 > 120x160)
+    _SIZES = ["475x500", "200x303", "120x160"]
     try:
-        resp = await client.get(f"https://www.decitre.fr/livres/{isbn}.html", follow_redirects=True)
+        resp = await client.get(
+            f"https://www.decitre.fr/livres/{isbn}.html",
+            headers=_DECITRE_HEADERS,
+            follow_redirects=True,
+        )
         if resp.status_code != 200:
             return None
-        for match in _JSONLD_RE.finditer(resp.text):
-            try:
-                obj = json.loads(match.group(1))
-                items = obj if isinstance(obj, list) else [obj]
-                for item in items:
-                    if item.get("@type") in ("Book", "Product") and item.get("name"):
-                        img = item.get("image")
-                        if isinstance(img, list):
-                            img = img[0] if img else None
-                        if img:
-                            return img
-            except (json.JSONDecodeError, AttributeError):
-                continue
+        # Chercher le pattern avec l'ISBN exact (couverture principale, pas _N)
+        for size in _SIZES:
+            m = re.search(
+                r'(https://products-images\.di-static\.com/image/[^"\'>\s]+/'
+                + re.escape(isbn) + r'-' + re.escape(size) + r'-1\.(webp|jpg|png))',
+                resp.text,
+            )
+            if m:
+                return m.group(1)
     except Exception:
         pass
     return None
