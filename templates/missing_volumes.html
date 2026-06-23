@@ -121,12 +121,14 @@
       let html = `<div style="font-size:.82rem;margin-top:.25rem">
         <span style="color:var(--color-text-muted)">BnF : ${data.volumes_found.length} tomes référencés (jusqu'au tome ${data.max_known})</span>`;
       if (newTomes.length) {
-        html += `<br><span style="color:var(--color-warn,#e07b00);font-weight:600">
-          Nouveaux tomes non acquis : ${newTomes.map(v => {
-            const t = data.titles && data.titles[v] ? ` — ${data.titles[v]}` : '';
-            return `Tome ${v}${t}`;
-          }).join(', ')}
-        </span>`;
+        html += `<br><span style="color:var(--color-warn,#e07b00);font-weight:600">Nouveaux tomes non acquis :</span>
+          <ul style="margin:.3rem 0 0 1rem;padding:0;font-size:.82rem">
+          ${newTomes.map(v => {
+            const t = data.titles?.[v] ? escHtml(data.titles[v]) : `Tome ${v}`;
+            const isbn = data.isbn_by_volume?.[v];
+            return `<li>${t}${isbn ? ` <span style="color:var(--color-text-muted)">— ISBN ${isbn}</span>` : ''}</li>`;
+          }).join('')}
+          </ul>`;
       } else if (data.max_known <= (s ? s.max_owned : 0)) {
         html += `<br><span style="color:var(--color-ok,#2e9e5b)">Vous avez tous les tomes référencés sur la BnF.</span>`;
       }

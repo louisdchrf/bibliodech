@@ -1113,6 +1113,7 @@ async def check_bnf_volumes(series_id: int, request: Request, db: Session = Depe
 
     volumes_found: set[int] = set()
     titles_found: dict[int, str] = {}
+    isbn_by_volume: dict[int, str] = {}
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -1134,11 +1135,17 @@ async def check_bnf_volumes(series_id: int, request: Request, db: Session = Depe
                     "mxc": "info:lc/xmlns/marcxchange-v2",
                 }
                 for record in root.findall(".//mxc:record", ns):
-                    # Champ 225 = mention de collection, $v = numéro de volume
                     vol_num = None
                     title_val = None
+                    isbn_val = None
                     for df in record.findall("mxc:datafield", ns):
                         tag = df.get("tag", "")
+                        # Champ 010 = ISBN
+                        if tag == "010":
+                            for sf in df.findall("mxc:subfield", ns):
+                                if sf.get("code") == "a" and sf.text:
+                                    isbn_val = re.sub(r"[^\dX]", "", sf.text.upper())
+                        # Champ 225 = mention de collection, $v = numéro de volume
                         if tag == "225":
                             for sf in df.findall("mxc:subfield", ns):
                                 if sf.get("code") == "v":
@@ -1155,6 +1162,8 @@ async def check_bnf_volumes(series_id: int, request: Request, db: Session = Depe
                         volumes_found.add(vol_num)
                         if title_val:
                             titles_found[vol_num] = title_val
+                        if isbn_val and len(isbn_val) in (10, 13):
+                            isbn_by_volume[vol_num] = isbn_val
     except Exception:
         pass
 
@@ -1167,6 +1176,7 @@ async def check_bnf_volumes(series_id: int, request: Request, db: Session = Depe
         "volumes_found": sorted(volumes_found),
         "max_known": max(volumes_found),
         "titles": titles_found,
+        "isbn_by_volume": isbn_by_volume,
         "source": "BnF",
     }
 
