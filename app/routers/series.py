@@ -1173,6 +1173,13 @@ async def check_bnf_volumes(series_id: int, request: Request, db: Session = Depe
     if not volumes_found:
         return {"series_id": series_id, "name": series.name, "volumes_found": [], "max_known": None, "source": None}
 
+    # Vérifier quels ISBNs sont déjà présents dans la bibliothèque
+    in_library: dict[int, int] = {}  # vol → book_id si trouvé
+    for vol, isbn in isbn_by_volume.items():
+        book = db.query(Book).filter(Book.isbn == isbn).first()
+        if book:
+            in_library[vol] = book.id
+
     return {
         "series_id": series_id,
         "name": series.name,
@@ -1180,6 +1187,7 @@ async def check_bnf_volumes(series_id: int, request: Request, db: Session = Depe
         "max_known": max(volumes_found),
         "titles": titles_found,
         "isbn_by_volume": isbn_by_volume,
+        "in_library": in_library,
         "source": "BnF",
     }
 

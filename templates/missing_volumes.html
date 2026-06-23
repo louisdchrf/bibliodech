@@ -118,22 +118,35 @@
       const newTomes = notOwned.filter(v => v > (s ? s.max_owned : 0));
       const gapsToo = notOwned.filter(v => v <= (s ? s.max_owned : 0));
 
+      // Tous les tomes non possédés (nouveaux + trous)
+      const allMissing = [...new Set([...newTomes, ...gapsToo])].sort((a,b) => a-b);
+
+      function renderVolume(v) {
+        const t = data.titles?.[v] ? escHtml(data.titles[v]) : `Tome ${v}`;
+        const isbn = data.isbn_by_volume?.[v];
+        const bookId = data.in_library?.[v];
+        if (bookId) {
+          return `<li style="color:var(--color-text-muted)">
+            ${t}${isbn ? ` <span style="opacity:.7">— ${isbn}</span>` : ''}
+            <span style="color:var(--color-ok,#2e9e5b);margin-left:.4rem">✓ déjà en bibliothèque</span>
+            <a href="#" onclick="event.preventDefault();openBookModal(${bookId})" style="margin-left:.4rem;font-size:.78rem">Voir</a>
+          </li>`;
+        }
+        return `<li>
+          ${t}${isbn ? ` <span style="color:var(--color-text-muted)">— ${isbn}</span>` : ''}
+          <span style="color:var(--color-warn,#e07b00);margin-left:.4rem">À acquérir</span>
+        </li>`;
+      }
+
       let html = `<div style="font-size:.82rem;margin-top:.25rem">
         <span style="color:var(--color-text-muted)">BnF : ${data.volumes_found.length} tomes référencés (jusqu'au tome ${data.max_known})</span>`;
-      if (newTomes.length) {
-        html += `<br><span style="color:var(--color-warn,#e07b00);font-weight:600">Nouveaux tomes non acquis :</span>
-          <ul style="margin:.3rem 0 0 1rem;padding:0;font-size:.82rem">
-          ${newTomes.map(v => {
-            const t = data.titles?.[v] ? escHtml(data.titles[v]) : `Tome ${v}`;
-            const isbn = data.isbn_by_volume?.[v];
-            return `<li>${t}${isbn ? ` <span style="color:var(--color-text-muted)">— ISBN ${isbn}</span>` : ''}</li>`;
-          }).join('')}
-          </ul>`;
-      } else if (data.max_known <= (s ? s.max_owned : 0)) {
+
+      if (allMissing.length) {
+        html += `<ul style="margin:.4rem 0 0 1rem;padding:0;display:flex;flex-direction:column;gap:.2rem">
+          ${allMissing.map(renderVolume).join('')}
+        </ul>`;
+      } else {
         html += `<br><span style="color:var(--color-ok,#2e9e5b)">Vous avez tous les tomes référencés sur la BnF.</span>`;
-      }
-      if (gapsToo.length) {
-        html += `<br><span style="color:var(--color-text-muted)">Trous confirmés par BnF : tomes ${gapsToo.join(', ')}</span>`;
       }
       html += `</div>`;
       el.innerHTML = html;
