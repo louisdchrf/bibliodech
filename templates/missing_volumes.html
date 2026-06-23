@@ -4,7 +4,7 @@
 <div class="page-header">
   <div>
     <h1 class="page-title">Ouvrages manquants</h1>
-    <p class="page-subtitle" id="subtitle">Analyse des trous dans vos séries</p>
+    <p class="page-subtitle" id="subtitle">Tomes manquants dans vos séries</p>
   </div>
 </div>
 
@@ -53,7 +53,7 @@
 
     const hasGaps = s.gaps.length > 0;
     const gapBadge = hasGaps
-      ? `<span class="badge badge-warn">${s.gaps.length} trou${s.gaps.length > 1 ? 's' : ''}</span>`
+      ? `<span class="badge badge-warn">${s.gaps.length} tome${s.gaps.length > 1 ? 's' : ''} manquant${s.gaps.length > 1 ? 's' : ''}</span>`
       : `<span class="badge badge-ok">Collection complète</span>`;
 
     const cover = s.cover_url
