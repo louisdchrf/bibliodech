@@ -91,9 +91,6 @@
           <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:.75rem">
             ${timelineCells.join('')}
           </div>
-          ${hasGaps ? `<p style="font-size:.85rem;color:var(--color-text-muted);margin:0 0 .75rem">
-            Tomes manquants : <strong>${s.gaps.join(', ')}</strong>
-          </p>` : ''}
           <div id="${bnfId}">
             <button class="btn btn-ghost btn-sm" onclick="checkBnF(${s.id}, '${escAttr(s.name)}')">
               Vérifier les nouveaux tomes (BnF)
