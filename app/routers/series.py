@@ -1117,52 +1117,55 @@ async def check_bnf_volumes(series_id: int, request: Request, db: Session = Depe
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            # BnF SRU — recherche par nom de série (champ bib.serie)
+            # BnF SRU — recherche par nom de série via bib.anywhere + filtre sur champ 225
+            # (bib.serie n'est pas un index SRU valide sur le catalogue BnF)
             resp = await client.get(
                 "https://catalogue.bnf.fr/api/SRU",
                 params={
                     "version": "1.2",
                     "operation": "searchRetrieve",
-                    "query": f'bib.serie adj "{series.name}"',
-                    "maximumRecords": "50",
+                    "query": f'bib.anywhere adj "{series.name}" and bib.doctype any "a"',
+                    "maximumRecords": "100",
                     "recordSchema": "unimarcxchange",
                 },
             )
             if resp.status_code == 200:
                 root = ET.fromstring(resp.text)
-                ns = {
+                ns_map = {
                     "srw": "http://www.loc.gov/zing/srw/",
                     "mxc": "info:lc/xmlns/marcxchange-v2",
                 }
-                for record in root.findall(".//mxc:record", ns):
+                norm_series = _norm(series.name)
+                for record in root.findall(".//mxc:record", ns_map):
                     vol_num = None
                     title_val = None
                     isbn_val = None
-                    for df in record.findall("mxc:datafield", ns):
+                    series_match = False
+                    for df in record.findall("mxc:datafield", ns_map):
                         tag = df.get("tag", "")
+                        subs = {sf.get("code"): sf.text for sf in df.findall("mxc:subfield", ns_map)}
                         # Champ 010 = ISBN
-                        if tag == "010":
-                            for sf in df.findall("mxc:subfield", ns):
-                                if sf.get("code") == "a" and sf.text:
-                                    isbn_val = re.sub(r"[^\dX]", "", sf.text.upper())
-                        # Champ 225 = mention de collection, $v = numéro de volume
+                        if tag == "010" and subs.get("a"):
+                            v = re.sub(r"[^\dX]", "", subs["a"].upper())
+                            if len(v) in (10, 13):
+                                isbn_val = v
+                        # Champ 225 = mention de collection : $a = nom, $v = volume
                         if tag == "225":
-                            for sf in df.findall("mxc:subfield", ns):
-                                if sf.get("code") == "v":
-                                    try:
-                                        vol_num = int(re.sub(r"[^\d]", "", sf.text or ""))
-                                    except ValueError:
-                                        pass
+                            col_name = subs.get("a", "")
+                            if _norm(col_name) == norm_series:
+                                series_match = True
+                                try:
+                                    vol_num = int(re.sub(r"[^\d]", "", subs.get("v", "") or ""))
+                                except ValueError:
+                                    pass
                         # Champ 200 = titre propre
-                        if tag == "200":
-                            for sf in df.findall("mxc:subfield", ns):
-                                if sf.get("code") == "a":
-                                    title_val = sf.text
-                    if vol_num and vol_num > 0:
+                        if tag == "200" and subs.get("a"):
+                            title_val = subs["a"]
+                    if series_match and vol_num and vol_num > 0:
                         volumes_found.add(vol_num)
                         if title_val:
                             titles_found[vol_num] = title_val
-                        if isbn_val and len(isbn_val) in (10, 13):
+                        if isbn_val:
                             isbn_by_volume[vol_num] = isbn_val
     except Exception:
         pass
