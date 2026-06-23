@@ -186,6 +186,7 @@
         ${authors ? `<div class="book-author">${escHtml(authors)}</div>` : ''}
         <div class="book-badges">
           ${book.location && getPref('bib_badge_location', true) ? `<span class="badge badge-shelf">${escHtml(book.location.label)}</span>` : ''}
+          ${book.series_name && getPref('bib_badge_series', true) ? `<span class="badge badge-series">${escHtml(book.series_name)}${book.series_position != null ? ` · T.${book.series_position}` : ''}</span>` : ''}
           ${book.active_loan ? `<span class="badge badge-loan${book.active_loan.overdue ? ' badge-loan-overdue' : ''}">Prêté · ${escHtml(book.active_loan.borrower_name||'')}</span>` : ''}
         </div>
       </div>

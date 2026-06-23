@@ -37,6 +37,11 @@
         <label class="toggle-switch"><input type="checkbox" id="pref-badge-location"><span class="toggle-slider"></span></label>
       </li>
       <li class="source-item">
+        <span class="source-label">Badge série</span>
+        <span class="source-id">Affiché sur les cartes de la bibliothèque</span>
+        <label class="toggle-switch"><input type="checkbox" id="pref-badge-series"><span class="toggle-slider"></span></label>
+      </li>
+      <li class="source-item">
         <span class="source-label">Fuseau horaire</span>
         <span class="source-id">Utilisé pour l'affichage des dates et logs</span>
         <input type="text" id="pref-timezone" class="input-sm" style="width:200px" placeholder="Europe/Paris" list="tz-list">
@@ -777,6 +782,7 @@
   const PREFS = {
     dark:          { key: 'bib_dark',          default: false },
     badgeLocation: { key: 'bib_badge_location', default: true  },
+    badgeSeries:   { key: 'bib_badge_series',   default: true  },
   };
 
   function getPref(name) {
@@ -795,10 +801,12 @@
   function initDisplayTab() {
     const darkCb     = document.getElementById('pref-dark');
     const locationCb = document.getElementById('pref-badge-location');
+    const seriesCb   = document.getElementById('pref-badge-series');
     if (!darkCb) return;
 
     darkCb.checked     = getPref('dark');
     locationCb.checked = getPref('badgeLocation');
+    seriesCb.checked   = getPref('badgeSeries');
 
     const tzInput = document.getElementById('pref-timezone');
     darkCb.addEventListener('change', () => {
@@ -806,6 +814,7 @@
       applyDark(darkCb.checked);
     });
     locationCb.addEventListener('change', () => setPref('badgeLocation', locationCb.checked));
+    seriesCb.addEventListener('change',   () => setPref('badgeSeries',   seriesCb.checked));
 
     fetch('/api/settings').then(r => r.json()).then(d => {
       if (tzInput && d.timezone) tzInput.value = d.timezone;

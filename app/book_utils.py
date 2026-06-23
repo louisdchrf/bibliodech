@@ -90,4 +90,7 @@ def book_to_dict(book: Book) -> dict:
         "enrichment_status": book.enrichment_status,
         "active_loan": loan_info,
         "source_data": _safe_json(book.source_data, None, book.id, "source_data"),
+        "series_id": book.series_id,
+        "series_name": book.series.name if book.series else None,
+        "series_position": book.series_position,
     }
