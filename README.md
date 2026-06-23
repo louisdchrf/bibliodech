@@ -20,7 +20,7 @@ Application web auto-hébergée de gestion de bibliothèque personnelle. Scan IS
 ## Installation
 
 ```bash
-git clone <repo>
+git clone https://github.com/louisdchrf/bibliodech.git
 cd bibliodech
 ```
 
