@@ -1,6 +1,7 @@
 import csv
 import io
 import json
+import logging
 import os
 from fastapi import BackgroundTasks, FastAPI, Request, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
@@ -16,6 +17,12 @@ from app.models import User, Book, Series
 from app.routers import scan, books, users, settings as settings_router, locations as locations_router, loans as loans_router, series as series_router
 from app.lookup import debug_isbn
 
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s — %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+)
+
 app = FastAPI(title="Bibliodech")
 
 BUILD_VERSION = os.environ.get("BUILD_VERSION", "dev")
@@ -24,11 +31,11 @@ BUILD_VERSION = os.environ.get("BUILD_VERSION", "dev")
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 
-COVERS_DIR = "/app/data/covers"
+COVERS_DIR = os.environ.get("COVERS_DIR", "/app/data/covers")
 os.makedirs(COVERS_DIR, exist_ok=True)
 app.mount("/covers", StaticFiles(directory=COVERS_DIR), name="covers")
 
-AVATARS_DIR = "/app/data/avatars"
+AVATARS_DIR = os.environ.get("AVATARS_DIR", "/app/data/avatars")
 os.makedirs(AVATARS_DIR, exist_ok=True)
 app.mount("/avatars", StaticFiles(directory=AVATARS_DIR), name="avatars")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))

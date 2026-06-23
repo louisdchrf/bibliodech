@@ -1,10 +1,12 @@
 import html
+import logging
 import re
-import sys
 import json
 import time
 import httpx
 import xml.etree.ElementTree as ET
+
+log = logging.getLogger(__name__)
 
 TIMEOUT = 3.0
 
@@ -192,7 +194,7 @@ async def _lookup_openlibrary_search(client: httpx.AsyncClient, isbn: str) -> di
             "series_position": series_position,
         }
     except Exception as e:
-        print(f"[lookup] OL search error: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+        log.warning("lookup: OL search error: %s: %s", type(e).__name__, e)
         return None
 
 
@@ -210,7 +212,7 @@ async def _lookup_google(client: httpx.AsyncClient, isbn: str, api_key: str = ""
         resp = await client.get(url)
         if resp.status_code == 429:
             _google_blocked_until = time.time() + _GOOGLE_BACKOFF
-            print(f"[lookup] Google Books 429 — pause {_GOOGLE_BACKOFF}s", file=sys.stderr, flush=True)
+            log.warning("lookup: Google Books 429 — pause %ss", _GOOGLE_BACKOFF)
             return None
         resp.raise_for_status()
         data = json.loads(resp.content.decode("utf-8"))
@@ -257,7 +259,7 @@ async def _lookup_google(client: httpx.AsyncClient, isbn: str, api_key: str = ""
             "series_position": series_position,
         }
     except Exception as e:
-        print(f"[lookup] Google Books error: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+        log.warning("lookup: Google Books error: %s: %s", type(e).__name__, e)
         return None
 
 
@@ -310,7 +312,7 @@ async def _lookup_openlibrary(client: httpx.AsyncClient, isbn: str) -> dict | No
                     elif isinstance(d, str):
                         description = d
             except Exception as e:
-                print(f"[lookup] OL work fetch error: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+                log.debug("lookup: OL work fetch error: %s: %s", type(e).__name__, e)
 
         return {
             "title": title,
@@ -328,7 +330,7 @@ async def _lookup_openlibrary(client: httpx.AsyncClient, isbn: str) -> dict | No
             "series_position": series_position,
         }
     except Exception as e:
-        print(f"[lookup] Open Library error: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+        log.warning("lookup: Open Library error: %s: %s", type(e).__name__, e)
         return None
 
 
@@ -497,7 +499,7 @@ async def _lookup_bnf(client: httpx.AsyncClient, isbn: str) -> dict | None:
             "series_position": series_position,
         }
     except Exception as e:
-        print(f"[lookup] BNF error: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+        log.warning("lookup: BNF error: %s: %s", type(e).__name__, e)
         return None
 
 
@@ -541,7 +543,7 @@ async def _lookup_sudoc(client: httpx.AsyncClient, isbn: str) -> dict | None:
             except Exception:
                 continue
         if rec_resp is None:
-            print(f"[lookup] SUDOC: PPN {ppn} introuvable (toutes URLs)", file=sys.stderr, flush=True)
+            log.debug("lookup: SUDOC PPN %s introuvable (toutes URLs)", ppn)
             return None
         root = ET.fromstring(rec_resp.content)
         record = root.find(".//record")
@@ -597,7 +599,7 @@ async def _lookup_sudoc(client: httpx.AsyncClient, isbn: str) -> dict | None:
         # Résumé (330 $a)
         description = _unimarc_subfield(record, "330", "a")
 
-        print(f"[lookup] SUDOC: {isbn} → {title!r} série={series_name!r} pos={series_position}", file=sys.stderr, flush=True)
+        log.debug("lookup: SUDOC %s → %r série=%r pos=%s", isbn, title, series_name, series_position)
 
         return {
             "title": title,
@@ -615,7 +617,7 @@ async def _lookup_sudoc(client: httpx.AsyncClient, isbn: str) -> dict | None:
             "series_position": series_position or _extract_series_position(title, subtitle),
         }
     except Exception as e:
-        print(f"[lookup] SUDOC error: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+        log.warning("lookup: SUDOC error: %s: %s", type(e).__name__, e)
         return None
 
 
@@ -739,7 +741,7 @@ async def _lookup_decitre(client: httpx.AsyncClient, isbn: str) -> dict | None:
         if series_name is None:
             series_name = _extract_series_from_title(title, None)
 
-        print(f"[lookup] Decitre: {isbn} → {title!r} série={series_name!r} pos={series_position}", file=sys.stderr, flush=True)
+        log.debug("lookup: Decitre %s → %r série=%r pos=%s", isbn, title, series_name, series_position)
         return {
             "title": title,
             "subtitle": None,
@@ -756,7 +758,7 @@ async def _lookup_decitre(client: httpx.AsyncClient, isbn: str) -> dict | None:
             "series_position": series_position,
         }
     except Exception as e:
-        print(f"[lookup] Decitre error: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+        log.warning("lookup: Decitre error: %s: %s", type(e).__name__, e)
         return None
 
 
@@ -769,7 +771,7 @@ async def _lookup_isbndb(client: httpx.AsyncClient, isbn: str, api_key: str) -> 
             headers={"Authorization": api_key},
         )
         if resp.status_code == 401:
-            print("[lookup] ISBNdb: clé API invalide ou expirée", file=sys.stderr, flush=True)
+            log.warning("lookup: ISBNdb clé API invalide ou expirée")
             return None
         if resp.status_code == 404:
             return None
@@ -796,7 +798,7 @@ async def _lookup_isbndb(client: httpx.AsyncClient, isbn: str, api_key: str) -> 
         except (ValueError, TypeError):
             pass
 
-        print(f"[lookup] ISBNdb: {isbn} → {title!r}", file=sys.stderr, flush=True)
+        log.debug("lookup: ISBNdb %s → %r", isbn, title)
         return {
             "title": title,
             "subtitle": title_long if title_long != title else None,
@@ -813,7 +815,7 @@ async def _lookup_isbndb(client: httpx.AsyncClient, isbn: str, api_key: str) -> 
             "series_position": _extract_series_position(title, title_long if title_long != title else None),
         }
     except Exception as e:
-        print(f"[lookup] ISBNdb error: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+        log.warning("lookup: ISBNdb error: %s: %s", type(e).__name__, e)
         return None
 
 
@@ -845,8 +847,8 @@ async def lookup_isbn(isbn: str, db=None) -> dict | None:
     variants = info["variants"]
     warning  = info["warning"]
     if warning:
-        print(f"[lookup] warning: {warning}", file=sys.stderr, flush=True)
-    print(f"[lookup] start: {isbn} variants={variants}", file=sys.stderr, flush=True)
+        log.warning("lookup: %s", warning)
+    log.debug("lookup: start %s variants=%s", isbn, variants)
 
     # Charger les préférences sources
     if db is not None:
@@ -920,10 +922,10 @@ async def lookup_isbn(isbn: str, db=None) -> dict | None:
                     break
 
     found = {k: v for k, v in results.items() if v}
-    print(f"[lookup] sources found: {list(found.keys())}", file=sys.stderr, flush=True)
+    log.debug("lookup: sources found: %s", list(found.keys()))
 
     if not found:
-        print(f"[lookup] not found in any source: {isbn}", file=sys.stderr, flush=True)
+        log.info("lookup: not found in any source: %s", isbn)
         return None
 
     # Priorité dans l'ordre de sources_cfg (premier = priorité haute pour les métadonnées)
@@ -936,14 +938,14 @@ async def lookup_isbn(isbn: str, db=None) -> dict | None:
     for src in ordered:
         if src and src.get("series_name") and not result.get("series_name"):
             result["series_name"] = src["series_name"]
-            print(f"[lookup] series from {src.get('source')}: {src['series_name']!r}", file=sys.stderr, flush=True)
+            log.debug("lookup: series from %s: %r", src.get('source'), src['series_name'])
         if src and src.get("series_position") and not result.get("series_position"):
             result["series_position"] = src["series_position"]
     if not result.get("series_name"):
         guessed = _extract_series_from_title(result.get("title", ""), result.get("subtitle"))
         if guessed:
             result["series_name"] = guessed
-            print(f"[lookup] series guessed from title: {guessed!r}", file=sys.stderr, flush=True)
+            log.debug("lookup: series guessed from title: %r", guessed)
 
     result["description"] = _clean_description(result.get("description"))
     if warning:
@@ -957,7 +959,7 @@ async def lookup_isbn(isbn: str, db=None) -> dict | None:
         for sid, src in results.items() if src
     }
 
-    print(f"[lookup] found: {isbn} → {result.get('title', '?')!r} series={result.get('series_name')!r} (source: {result.get('source')})", file=sys.stderr, flush=True)
+    log.info("lookup: found %s → %r series=%r (source: %s)", isbn, result.get('title', '?'), result.get('series_name'), result.get('source'))
     return result
 
 

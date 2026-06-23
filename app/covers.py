@@ -1,7 +1,9 @@
 import io
-import sys
+import logging
 import httpx
 from PIL import Image
+
+log = logging.getLogger(__name__)
 
 COVERS_DIR = "/app/data/covers"
 MAX_WIDTH = 600
@@ -28,5 +30,5 @@ async def fetch_and_save(isbn: str, url: str) -> str | None:
         return f"/covers/{isbn}.jpg"
 
     except Exception as e:
-        print(f"[covers] failed for {isbn}: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+        log.warning("covers: failed for %s: %s: %s", isbn, type(e).__name__, e)
         return None

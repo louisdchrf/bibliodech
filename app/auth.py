@@ -104,4 +104,4 @@ def bootstrap_admin(db: Session) -> None:
     )
     db.add(admin)
     db.commit()
-    print(f"[bibliodech] Admin user '{admin_username}' created.", flush=True)
+    log.info("Admin user '%s' created.", admin_username)
