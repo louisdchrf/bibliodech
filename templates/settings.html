@@ -1033,7 +1033,7 @@
     tzInput && tzInput.addEventListener('blur', async () => {
       const tz = tzInput.value.trim();
       if (!tz) return;
-      const r = await fetch('/api/settings/timezone', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(tz) });
+      const r = await fetch('/api/settings/timezone', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ value: tz }) });
       if (r.ok) window.APP_TIMEZONE = tz;
       showSaveMsg(r.ok ? '✓ Enregistré' : 'Erreur', r.ok);
     });
