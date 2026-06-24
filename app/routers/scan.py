@@ -143,27 +143,6 @@ async def _enrich_book(book_id: int, isbn: str, _progress_key: str | None = None
         audit_log(db, book.id, "enriched", detail={"source": info.get("source"), "title": info.get("title")})
         db.commit()
 
-        # Chercher la série dans SUDOC si le livre n'en a pas encore
-        if book.series_id is None:
-            import httpx as _httpx
-            async with _httpx.AsyncClient(timeout=6.0) as _c:
-                _sudoc_info = await _lookup_sudoc(_c, isbn)
-            if _sudoc_info and _sudoc_info.get("series_name"):
-                from app.models import Series
-                from app.routers.series import _norm
-                s_name = _sudoc_info["series_name"]
-                s_vol = _sudoc_info.get("series_position")
-                existing = db.query(Series).all()
-                series = next((s for s in existing if _norm(s.name) == _norm(s_name)), None)
-                if not series:
-                    series = Series(name=s_name, source="sudoc")
-                    db.add(series)
-                    db.flush()
-                book.series_id = series.id
-                if s_vol is not None and book.series_position is None:
-                    book.series_position = float(s_vol)
-                db.commit()
-
     finally:
         if _progress_key:
             from app import scheduler as sched
