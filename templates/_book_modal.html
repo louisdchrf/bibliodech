@@ -250,6 +250,10 @@
               <input type="number" id="bm-series-pos" step="0.5" min="0" placeholder="ex: 1" value="${book.series_position ?? ''}">
             </div>
           </div>
+          ${book.isbn ? `<div id="bm-series-lookup-area" style="margin-bottom:.75rem">
+            <button type="button" class="btn btn-ghost btn-sm" id="bm-series-lookup-btn">🔍 Rechercher la série</button>
+            <span id="bm-series-lookup-result" style="margin-left:.5rem"></span>
+          </div>` : ''}
           <div class="field-separator">Localisation</div>
           <div class="form-grid form-grid-2">
             <div class="field"><label>Adresse</label>
@@ -354,6 +358,49 @@
       });
     }
     wireSourceBtns();
+
+    // Recherche de série
+    const lookupBtn = document.getElementById('bm-series-lookup-btn');
+    if (lookupBtn) {
+      lookupBtn.addEventListener('click', async () => {
+        const resultEl = document.getElementById('bm-series-lookup-result');
+        lookupBtn.disabled = true; lookupBtn.textContent = '⏳ Recherche…';
+        resultEl.innerHTML = '';
+        try {
+          const r = await fetch(`/api/books/${book.id}/lookup-series`);
+          const data = await r.json();
+          if (!r.ok || !data.found) {
+            resultEl.innerHTML = '<span style="color:var(--color-text-muted);font-size:.85rem">Aucune série trouvée</span>';
+          } else {
+            const srcLabel = data.source ? ` <span style="font-size:.75rem;color:var(--color-text-muted)">(${escHtml(data.source)})</span>` : '';
+            const volLabel = data.series_position != null ? ` · tome ${data.series_position}` : '';
+            resultEl.innerHTML = `
+              <span style="font-size:.88rem"><strong>${escHtml(data.series_name)}</strong>${escHtml(volLabel)}${srcLabel}</span>
+              <button type="button" class="btn btn-primary btn-sm" id="bm-series-apply-btn" style="margin-left:.5rem">Appliquer</button>`;
+            document.getElementById('bm-series-apply-btn').addEventListener('click', async () => {
+              const applyBtn = document.getElementById('bm-series-apply-btn');
+              applyBtn.disabled = true; applyBtn.textContent = '⏳';
+              const res = await fetch(`/api/books/${book.id}/apply-series`, {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({series_name: data.series_name, series_position: data.series_position}),
+              });
+              if (res.ok) {
+                const updated = await res.json();
+                Object.assign(book, updated);
+                renderModal(book);
+              } else {
+                applyBtn.disabled = false; applyBtn.textContent = 'Appliquer';
+              }
+            });
+          }
+        } catch {
+          resultEl.innerHTML = '<span style="color:var(--color-danger);font-size:.85rem">Erreur</span>';
+        } finally {
+          lookupBtn.disabled = false; lookupBtn.textContent = '🔍 Rechercher la série';
+        }
+      });
+    }
 
     // Cascade localisation
     const mSite = document.getElementById('bm-loc-site');

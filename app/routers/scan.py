@@ -380,6 +380,71 @@ async def apply_book_source(
     return book_to_dict(book)
 
 
+@router.get("/api/books/{book_id}/lookup-series")
+async def lookup_book_series(
+    book_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Interroge toutes les sources pour trouver la série d'un livre (sans l'appliquer)."""
+    from fastapi import HTTPException
+    get_current_user(request, db)
+    book = db.query(Book).filter(Book.id == book_id).first()
+    if not book:
+        raise HTTPException(status_code=404, detail="Livre introuvable")
+    if not book.isbn:
+        raise HTTPException(status_code=400, detail="Ce livre n'a pas d'ISBN")
+    from app.lookup import lookup_isbn
+    info = await lookup_isbn(book.isbn, db=db)
+    if info and info.get("series_name"):
+        return {
+            "found": True,
+            "series_name": info["series_name"],
+            "series_position": info.get("series_position"),
+            "source": info.get("source"),
+        }
+    return {"found": False}
+
+
+@router.post("/api/books/{book_id}/apply-series")
+async def apply_book_series(
+    book_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Assigne la série et le tome depuis le body {series_name, series_position}."""
+    from fastapi import HTTPException
+    user = get_current_user(request, db)
+    require_contributor(user)
+    body = await request.json()
+    series_name = (body.get("series_name") or "").strip()
+    series_position = body.get("series_position")
+    if not series_name:
+        raise HTTPException(status_code=400, detail="series_name requis")
+    book = db.query(Book).filter(Book.id == book_id).first()
+    if not book:
+        raise HTTPException(status_code=404, detail="Livre introuvable")
+
+    from app.models import Series
+    from app.routers.series import _norm
+    series = db.query(Series).all()
+    match = next((s for s in series if _norm(s.name) == _norm(series_name)), None)
+    if not match:
+        match = Series(name=series_name, source="lookup")
+        db.add(match)
+        db.flush()
+
+    book.series_id = match.id
+    if series_position is not None:
+        book.series_position = float(series_position)
+
+    audit_log(db, book.id, "series_applied", detail={"series": series_name, "position": series_position})
+    db.commit()
+
+    from app.book_utils import book_to_dict
+    return book_to_dict(book)
+
+
 @router.post("/api/books/re-enrich-all")
 async def re_enrich_all(
     background_tasks: BackgroundTasks,
