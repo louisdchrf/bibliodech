@@ -599,19 +599,31 @@ async def _lookup_sudoc(client: httpx.AsyncClient, isbn: str) -> dict | None:
             log.debug("lookup: SUDOC PPN %s introuvable (toutes URLs)", ppn)
             return None
         root = ET.fromstring(rec_resp.content)
-        record = root.find(".//record")
+        # La racine peut être <record> directement ou contenir un enfant <record>
+        record = root if root.tag in ("record", "{http://www.loc.gov/MARC21/slim}record") else root.find(".//record")
         if record is None:
             return None
 
         # Titre (200 $a) + sous-titre (200 $e) + numéro de tome (200 $h)
-        title = _unimarc_subfield(record, "200", "a") or ""
+        # En UNIMARC BD : 200 $a = nom de série, $h = tome, $i = titre du volume
+        f200_a = _unimarc_subfield(record, "200", "a") or ""
+        f200_h = _unimarc_subfield(record, "200", "h")  # numéro de tome
+        f200_i = _unimarc_subfield(record, "200", "i")  # titre du volume (si 200 $a est la série)
         subtitle = _unimarc_subfield(record, "200", "e")
-        vol_in_title = _unimarc_subfield(record, "200", "h")  # "3" ou "tome 3"
+        if f200_i:
+            # 200 $a est le nom de la série, $i est le titre propre du volume
+            title = f200_i
+            f200_series_name = f200_a
+            vol_in_title = f200_h
+        else:
+            title = f200_a
+            f200_series_name = None
+            vol_in_title = f200_h
         if not title:
             return None
 
-        # Série (225 $a) + numéro dans la série (225 $v) — le champ clé du SUDOC
-        series_name = _unimarc_subfield(record, "225", "a")
+        # Série (225 $a) prioritaire, sinon 200 $a quand $i est présent
+        series_name = _unimarc_subfield(record, "225", "a") or f200_series_name
         series_vol = _unimarc_subfield(record, "225", "v") or vol_in_title
         series_position = None
         if series_vol:
