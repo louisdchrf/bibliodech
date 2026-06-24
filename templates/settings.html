@@ -310,6 +310,10 @@
         <label>Email <span class="text-muted">(optionnel)</span></label>
         <input type="email" id="edit-email" name="email" autocomplete="off">
       </div>
+      <div class="field">
+        <label>Accès aux localisations</label>
+        <div id="edit-permissions-list" style="display:flex;flex-direction:column;gap:.4rem;margin-top:.35rem;max-height:200px;overflow-y:auto"></div>
+      </div>
       <div class="form-actions">
         <button type="submit" class="btn btn-primary">Enregistrer</button>
       </div>
@@ -492,6 +496,53 @@
   const editModalClose = document.getElementById('edit-modal-close');
   const editForm = document.getElementById('edit-user-form');
   const editMsg = document.getElementById('edit-user-msg');
+  const permsList = document.getElementById('edit-permissions-list');
+
+  let _rooms = [];
+
+  async function loadRooms() {
+    const res = await fetch('/api/rooms');
+    if (res.ok) _rooms = await res.json();
+  }
+
+  async function loadAndRenderPermissions(userId) {
+    const res = await fetch(`/api/users/${userId}/permissions`);
+    const perms = res.ok ? await res.json() : [];
+    const permMap = {};
+    perms.forEach(p => { permMap[p.room_id] = p.access; });
+    permsList.innerHTML = '';
+    if (!_rooms.length) {
+      permsList.innerHTML = '<span style="font-size:.82rem;color:var(--color-text-muted)">Aucune salle configurée</span>';
+      return;
+    }
+    for (const room of _rooms) {
+      const access = permMap[room.id] || '';
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:.75rem';
+      row.innerHTML = `
+        <span style="font-size:.85rem">${escHtml(room.name)}</span>
+        <select class="select-input perm-select" data-room="${room.id}" style="width:auto;font-size:.82rem">
+          <option value="">Aucun</option>
+          <option value="read" ${access === 'read' ? 'selected' : ''}>Lecture</option>
+          <option value="write" ${access === 'write' ? 'selected' : ''}>Écriture</option>
+        </select>`;
+      permsList.appendChild(row);
+    }
+  }
+
+  async function savePermissions(userId) {
+    const entries = [];
+    permsList.querySelectorAll('.perm-select').forEach(sel => {
+      if (sel.value) entries.push({ room_id: parseInt(sel.dataset.room), access: sel.value });
+    });
+    await fetch(`/api/users/${userId}/permissions`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(entries),
+    });
+  }
+
+  loadRooms();
 
   function fmtDate(iso) { return iso ? new Date(iso).toLocaleDateString('fr-FR') : ''; }
 
@@ -518,14 +569,16 @@
     });
 
     tbody.querySelectorAll('.edit-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         document.getElementById('edit-user-id').value = btn.dataset.id;
         document.getElementById('edit-username').value = btn.dataset.username;
         document.getElementById('edit-password').value = '';
         document.getElementById('edit-role').value = btn.dataset.role;
         document.getElementById('edit-email').value = btn.dataset.email || '';
         editMsg.textContent = '';
+        permsList.innerHTML = '<span style="font-size:.82rem;color:var(--color-text-muted)">Chargement…</span>';
         editModal.style.display = 'flex';
+        await loadAndRenderPermissions(btn.dataset.id);
       });
     });
 
@@ -667,8 +720,10 @@
     if (pw) payload.password = pw;
     payload.email = document.getElementById('edit-email').value.trim() || null;
     const res = await fetch(`/api/users/${id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-    if (res.ok) { editModal.style.display = 'none'; loadUsers(); }
-    else { const err = await res.json(); editMsg.textContent = err.detail || 'Erreur'; editMsg.className = 'edit-msg edit-msg-err'; }
+    if (!res.ok) { const err = await res.json(); editMsg.textContent = err.detail || 'Erreur'; editMsg.className = 'edit-msg edit-msg-err'; return; }
+    await savePermissions(id);
+    editModal.style.display = 'none';
+    loadUsers();
   });
 
   editModalClose.addEventListener('click', () => { editModal.style.display = 'none'; });
