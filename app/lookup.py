@@ -1038,8 +1038,13 @@ async def lookup_isbn(isbn: str, db=None) -> dict | None:
     for other in ordered[1:]:
         result = _merge(result, other)
 
-    # Priorité série : ordre configuré dans les paramètres
-    for src in ordered:
+    # Priorité série : BnF > autres sources (BnF catalogue la série propre, pas la collection éditeur)
+    _SERIES_PRIORITY = ["bnf", "decitre", "openlibrary", "openlibrary_search", "googlebooks", "sudoc", "isbndb"]
+    series_ordered = sorted(
+        [s for s in ordered if s],
+        key=lambda s: _SERIES_PRIORITY.index(s.get("source", "")) if s.get("source", "") in _SERIES_PRIORITY else 99,
+    )
+    for src in series_ordered:
         if src and src.get("series_name") and not result.get("series_name"):
             result["series_name"] = src["series_name"]
             log.debug("lookup: series from %s: %r", src.get('source'), src['series_name'])
