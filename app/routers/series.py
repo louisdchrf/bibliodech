@@ -1160,15 +1160,29 @@ async def _bnf_check_one_series(series: Series, db) -> dict:
         # Étape 1 : trouver le nom exact BnF via ISBN d'un livre possédé
         bnf_series_name: str | None = None
         for book in [b for b in series.books if b.isbn][:5]:
-            isbn10 = _isbn10_from_13(book.isbn) or (book.isbn if len(book.isbn) == 10 else None)
-            if not isbn10:
+            isbn = book.isbn
+            isbn10 = _isbn10_from_13(isbn) or (isbn if len(isbn) == 10 else None)
+            # Essayer ISBN13 d'abord (adj = exact match), puis ISBN10 en fallback
+            bnf_queries = []
+            if len(isbn) == 13:
+                bnf_queries.append(f'bib.isbn adj "{isbn}"')
+            if isbn10:
+                bnf_queries.append(f'bib.isbn adj "{isbn10}"')
+            resp = None
+            for q in bnf_queries:
+                r = await client.get(
+                    "https://catalogue.bnf.fr/api/SRU",
+                    params={"version": "1.2", "operation": "searchRetrieve",
+                            "query": q,
+                            "maximumRecords": "3", "recordSchema": "unimarcxchange"},
+                )
+                if r.status_code == 200:
+                    _root = ET.fromstring(r.text)
+                    if _root.findall(".//mxc:record", ns_map):
+                        resp = r
+                        break
+            if resp is None:
                 continue
-            resp = await client.get(
-                "https://catalogue.bnf.fr/api/SRU",
-                params={"version": "1.2", "operation": "searchRetrieve",
-                        "query": f'bib.isbn any "{isbn10}"',
-                        "maximumRecords": "3", "recordSchema": "unimarcxchange"},
-            )
             if resp.status_code != 200:
                 continue
             root = ET.fromstring(resp.text)
