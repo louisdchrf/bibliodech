@@ -473,17 +473,52 @@ async def _lookup_bnf(client: httpx.AsyncClient, isbn: str) -> dict | None:
         # BNF cover via Open Library covers API (fallback)
         cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg"
 
-        # BNF : série dans dc:relation (ex: "Collection Folio, 1234") ou titre lui-même
+        # BNF : série — d'abord UNIMARC 225/461 (précis), sinon dc:relation (heuristique)
         series_name = None
         series_position = _extract_series_position(title, subtitle)
-        for rel in _bnf_texts(rec, "relation"):
-            # Filtrer les relations qui ressemblent à une collection/série
-            rel_clean = rel.strip()
-            if rel_clean and not rel_clean.startswith("http") and len(rel_clean) < 120:
-                # Garder uniquement si c'est pas un ISBN/URL/notice liée
-                if not re.match(r'^[0-9\-X ]+$', rel_clean):
-                    series_name = rel_clean
-                    break
+        try:
+            unimarc_url = (
+                "https://catalogue.bnf.fr/api/SRU"
+                f'?version=1.2&operation=searchRetrieve'
+                f'&query=bib.isbn%20adj%20%22{isbn}%22'
+                f'&recordSchema=unimarcxchange&maximumRecords=1'
+            )
+            uresp = await client.get(unimarc_url)
+            if uresp.status_code == 200:
+                uns = {"mxc": "info:lc/xmlns/marcxchange-v2"}
+                uroot = ET.fromstring(uresp.content)
+                for urec in uroot.findall(".//mxc:record", uns):
+                    for df in urec.findall("mxc:datafield", uns):
+                        tag = df.get("tag")
+                        subs = {sf.get("code"): sf.text for sf in df.findall("mxc:subfield", uns)}
+                        if tag == "225" and subs.get("a"):
+                            series_name = subs["a"]
+                            if subs.get("v"):
+                                m = re.search(r"(\d+)", subs["v"])
+                                if m:
+                                    try:
+                                        series_position = float(m.group(1))
+                                    except ValueError:
+                                        pass
+                            break
+                        if tag == "461" and subs.get("t") and not series_name:
+                            series_name = subs["t"]
+                            if subs.get("v"):
+                                m = re.search(r"(\d+)", subs["v"])
+                                if m:
+                                    try:
+                                        series_position = float(m.group(1))
+                                    except ValueError:
+                                        pass
+        except Exception:
+            pass
+        if not series_name:
+            for rel in _bnf_texts(rec, "relation"):
+                rel_clean = rel.strip()
+                if rel_clean and not rel_clean.startswith("http") and len(rel_clean) < 120:
+                    if not re.match(r'^[0-9\-X ]+$', rel_clean):
+                        series_name = rel_clean
+                        break
 
         return {
             "title": title,
