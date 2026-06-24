@@ -358,9 +358,9 @@ async def _sudoc_detect(db: Session, task_id: str = "sudoc-series") -> dict:
     Interroge SUDOC + lookup_isbn pour chaque livre orphelin avec ISBN.
     Auto-assigne si la série existe déjà, sinon crée une proposition.
     """
-    from app.routers.scan import _lookup_series_sudoc
-    from app.lookup import lookup_isbn
+    from app.lookup import lookup_isbn, _lookup_sudoc
     from app import scheduler as sched
+    import httpx as _httpx
 
     books = (
         db.query(Book)
@@ -381,9 +381,11 @@ async def _sudoc_detect(db: Session, task_id: str = "sudoc-series") -> dict:
         series_name = None
         series_vol = None
 
-        result = await _lookup_series_sudoc(b.isbn)
-        if result:
-            series_name, series_vol = result
+        async with _httpx.AsyncClient(timeout=6.0) as _c:
+            _sudoc = await _lookup_sudoc(_c, b.isbn)
+        if _sudoc and _sudoc.get("series_name"):
+            series_name = _sudoc["series_name"]
+            series_vol = _sudoc.get("series_position")
         else:
             info = await lookup_isbn(b.isbn)
             if info and info.get("series_name"):
@@ -780,17 +782,17 @@ async def sudoc_lookup(request: Request, db: Session = Depends(get_db)):
     require_admin(user)
     body = await request.json()
     book_ids: list[int] = body.get("book_ids", [])
-    from app.routers.scan import _lookup_series_sudoc
-    from app.lookup import lookup_isbn
+    from app.lookup import lookup_isbn, _lookup_sudoc
+    import httpx as _httpx
     books = db.query(Book).filter(Book.id.in_(book_ids)).all()
     for b in books:
         if not b.isbn:
             continue
         # Source 1 : SUDOC (meilleure pour les BDs françaises)
-        result = await _lookup_series_sudoc(b.isbn)
-        if result:
-            name, vol = result
-            return {"name": name, "volume": vol, "isbn": b.isbn, "source": "SUDOC"}
+        async with _httpx.AsyncClient(timeout=6.0) as _c:
+            _sudoc = await _lookup_sudoc(_c, b.isbn)
+        if _sudoc and _sudoc.get("series_name"):
+            return {"name": _sudoc["series_name"], "volume": _sudoc.get("series_position"), "isbn": b.isbn, "source": "SUDOC"}
         # Source 2 : lookup_isbn (Open Library, Google Books…) → champ series_name
         info = await lookup_isbn(b.isbn)
         if info and info.get("series_name"):
