@@ -14,6 +14,7 @@
     <button class="settings-tab" data-tab="io">Import / Export</button>
     <button class="settings-tab" data-tab="display">Affichage</button>
     <button class="settings-tab" data-tab="email">Email</button>
+    <button class="settings-tab" data-tab="backups">Sauvegardes</button>
   </div>
 
   <!-- Onglet Sources -->
@@ -168,6 +169,26 @@
       </div>
     </div>
 
+  </div>
+
+  <!-- Onglet Sauvegardes -->
+  <div id="tab-backups" class="settings-tab-panel" style="display:none">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;margin-bottom:1.25rem">
+      <div>
+        <p class="settings-desc" style="margin:0">Les sauvegardes sont conservées sur le serveur. La planification automatique se configure dans l'onglet <strong>Tâches</strong>.</p>
+      </div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <label class="btn btn-ghost btn-sm" style="cursor:pointer">
+          <input type="file" id="backup-upload-input" accept=".db" style="display:none">
+          Importer et rétablir…
+        </label>
+        <button class="btn btn-primary btn-sm" id="btn-create-backup">+ Créer une sauvegarde</button>
+      </div>
+    </div>
+    <span class="task-status" id="backup-status"></span>
+    <div id="backups-list">
+      <p style="color:var(--color-text-muted);font-size:.875rem">Chargement…</p>
+    </div>
   </div>
 
   <!-- Onglet Comptes -->
@@ -340,6 +361,7 @@
       document.getElementById('tab-' + btn.dataset.tab).style.display = 'block';
       if (btn.dataset.tab === 'users') loadUsers();
       if (btn.dataset.tab === 'email') loadEmailSettings();
+      if (btn.dataset.tab === 'backups') loadBackups();
     });
   });
 
@@ -766,6 +788,105 @@
         ${errHtml}`;
     }
     result.style.display = 'block';
+  });
+
+  // ── Backups ───────────────────────────────────────────────────────────────
+  const backupStatus = document.getElementById('backup-status');
+
+  function fmtSize(bytes) {
+    if (bytes < 1024) return bytes + ' o';
+    if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' Ko';
+    return (bytes / 1024 / 1024).toFixed(1) + ' Mo';
+  }
+
+  function fmtBackupDate(iso) {
+    return new Date(iso).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+  }
+
+  function setBackupStatus(msg, ok) {
+    backupStatus.textContent = msg;
+    backupStatus.className = 'task-status ' + (ok === true ? 'task-status-ok' : ok === false ? 'task-status-err' : 'task-status-running');
+    if (ok !== null) setTimeout(() => { backupStatus.textContent = ''; backupStatus.className = 'task-status'; }, 3000);
+  }
+
+  async function loadBackups() {
+    const res = await fetch('/api/backups');
+    if (!res.ok) return;
+    const backups = await res.json();
+    const list = document.getElementById('backups-list');
+    if (!backups.length) {
+      list.innerHTML = '<p style="color:var(--color-text-muted);font-size:.875rem">Aucune sauvegarde disponible.</p>';
+      return;
+    }
+    list.innerHTML = `
+      <table class="users-table">
+        <thead><tr><th>Fichier</th><th>Date</th><th>Taille</th><th>Actions</th></tr></thead>
+        <tbody>
+          ${backups.map(b => `
+            <tr>
+              <td style="font-family:monospace;font-size:.82rem">${escHtml(b.filename)}</td>
+              <td>${fmtBackupDate(b.created_at)}</td>
+              <td>${fmtSize(b.size)}</td>
+              <td class="user-actions">
+                <a href="/api/backups/${encodeURIComponent(b.filename)}/download" class="btn btn-sm btn-ghost" download>Télécharger</a>
+                <button class="btn btn-sm btn-ghost restore-btn" data-file="${escHtml(b.filename)}">Rétablir</button>
+                <button class="btn btn-sm btn-danger delete-backup-btn" data-file="${escHtml(b.filename)}">Supprimer</button>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+
+    list.querySelectorAll('.restore-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm(`Rétablir la sauvegarde « ${btn.dataset.file} » ?\n\nL'état actuel sera automatiquement sauvegardé avant le rétablissement.`)) return;
+        setBackupStatus('Rétablissement en cours…', null);
+        const res = await fetch(`/api/backups/${encodeURIComponent(btn.dataset.file)}/restore`, { method: 'POST' });
+        if (res.ok) {
+          setBackupStatus('✓ Rétablie — rechargement…', true);
+          setTimeout(() => location.reload(), 1500);
+        } else {
+          setBackupStatus('Erreur lors du rétablissement', false);
+        }
+      });
+    });
+
+    list.querySelectorAll('.delete-backup-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm(`Supprimer la sauvegarde « ${btn.dataset.file} » ?`)) return;
+        const res = await fetch(`/api/backups/${encodeURIComponent(btn.dataset.file)}`, { method: 'DELETE' });
+        if (res.ok) loadBackups();
+        else setBackupStatus('Erreur lors de la suppression', false);
+      });
+    });
+  }
+
+  document.getElementById('btn-create-backup')?.addEventListener('click', async () => {
+    setBackupStatus('Sauvegarde en cours…', null);
+    const res = await fetch('/api/backups', { method: 'POST' });
+    if (res.ok) {
+      const b = await res.json();
+      setBackupStatus(`✓ ${b.filename} (${fmtSize(b.size)})`, true);
+      loadBackups();
+    } else {
+      setBackupStatus('Erreur lors de la sauvegarde', false);
+    }
+  });
+
+  document.getElementById('backup-upload-input')?.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = '';
+    if (!confirm(`Importer et rétablir « ${file.name} » ?\n\nL'état actuel sera automatiquement sauvegardé avant le rétablissement.`)) return;
+    setBackupStatus('Import en cours…', null);
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch('/api/backups/upload', { method: 'POST', body: fd });
+    if (res.ok) {
+      setBackupStatus('✓ Importée et rétablie — rechargement…', true);
+      setTimeout(() => location.reload(), 1500);
+    } else {
+      setBackupStatus('Erreur lors de l\'import', false);
+    }
   });
 
   // ── Email ────────────────────────────────────────────────────────────────

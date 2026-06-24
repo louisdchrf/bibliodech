@@ -1,0 +1,125 @@
+import os
+import shutil
+from datetime import datetime
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session
+
+from app.auth import get_current_user, require_admin
+from app.database import get_db, DATABASE_URL
+
+router = APIRouter()
+
+DB_PATH = DATABASE_URL.replace("sqlite:///", "")
+BACKUP_DIR = "/app/data/backups"
+MAX_BACKUPS = 20
+
+
+def _ensure_dir():
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+
+
+def _list_backups() -> list[dict]:
+    _ensure_dir()
+    files = []
+    for name in sorted(os.listdir(BACKUP_DIR), reverse=True):
+        if not name.endswith(".db"):
+            continue
+        path = os.path.join(BACKUP_DIR, name)
+        stat = os.stat(path)
+        files.append({
+            "filename": name,
+            "size": stat.st_size,
+            "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+        })
+    return files
+
+
+def _create_backup() -> dict:
+    _ensure_dir()
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dest = os.path.join(BACKUP_DIR, f"backup_{ts}.db")
+    shutil.copy2(DB_PATH, dest)
+    # Rotation : garder seulement les MAX_BACKUPS dernières
+    all_backups = sorted(
+        [f for f in os.listdir(BACKUP_DIR) if f.endswith(".db")]
+    )
+    for old in all_backups[:-MAX_BACKUPS]:
+        os.remove(os.path.join(BACKUP_DIR, old))
+    stat = os.stat(dest)
+    return {
+        "filename": os.path.basename(dest),
+        "size": stat.st_size,
+        "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+    }
+
+
+@router.get("/api/backups")
+def list_backups(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user(request, db)
+    require_admin(user)
+    return _list_backups()
+
+
+@router.post("/api/backups", status_code=201)
+def create_backup(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user(request, db)
+    require_admin(user)
+    return _create_backup()
+
+
+@router.get("/api/backups/{filename}/download")
+def download_backup(filename: str, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user(request, db)
+    require_admin(user)
+    if ".." in filename or "/" in filename:
+        raise HTTPException(status_code=400, detail="Nom de fichier invalide")
+    path = os.path.join(BACKUP_DIR, filename)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Fichier introuvable")
+    return FileResponse(path, media_type="application/octet-stream", filename=filename)
+
+
+@router.post("/api/backups/{filename}/restore")
+def restore_backup(filename: str, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user(request, db)
+    require_admin(user)
+    if ".." in filename or "/" in filename:
+        raise HTTPException(status_code=400, detail="Nom de fichier invalide")
+    path = os.path.join(BACKUP_DIR, filename)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Fichier introuvable")
+    # Sauvegarder l'état actuel avant rétablissement
+    _create_backup()
+    shutil.copy2(path, DB_PATH)
+    return {"ok": True, "restored": filename}
+
+
+@router.delete("/api/backups/{filename}", status_code=204)
+def delete_backup(filename: str, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user(request, db)
+    require_admin(user)
+    if ".." in filename or "/" in filename:
+        raise HTTPException(status_code=400, detail="Nom de fichier invalide")
+    path = os.path.join(BACKUP_DIR, filename)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Fichier introuvable")
+    os.remove(path)
+
+
+@router.post("/api/backups/upload", status_code=201)
+async def upload_backup(request: Request, db: Session = Depends(get_db)):
+    """Upload un fichier .db et le restaure immédiatement."""
+    user = get_current_user(request, db)
+    require_admin(user)
+    form = await request.form()
+    file: UploadFile = form.get("file")
+    if not file or not file.filename.endswith(".db"):
+        raise HTTPException(status_code=422, detail="Fichier .db requis")
+    _ensure_dir()
+    # Sauvegarder l'état actuel avant rétablissement
+    _create_backup()
+    data = await file.read()
+    with open(DB_PATH, "wb") as f:
+        f.write(data)
+    return {"ok": True, "restored": file.filename}

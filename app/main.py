@@ -14,7 +14,7 @@ from app.auth import (
     get_current_user, verify_password, create_session, clear_session, bootstrap_admin
 )
 from app.models import User, Book, Series
-from app.routers import scan, books, users, settings as settings_router, locations as locations_router, loans as loans_router, series as series_router
+from app.routers import scan, books, users, settings as settings_router, locations as locations_router, loans as loans_router, series as series_router, backup as backup_router
 from app.lookup import debug_isbn
 
 logging.basicConfig(
@@ -48,6 +48,7 @@ app.include_router(settings_router.router)
 app.include_router(locations_router.router)
 app.include_router(loans_router.router)
 app.include_router(series_router.router)
+app.include_router(backup_router.router)
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────

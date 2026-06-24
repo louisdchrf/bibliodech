@@ -45,6 +45,7 @@ SCHEDULABLE_TASKS = {
     "clean-series":    "Normaliser les noms de séries",
     "bnf-series":      "Compléter les séries via la BnF",
     "enrich-genres":   "Récupérer les genres des livres",
+    "backup":          "Sauvegarder la base de données",
 }
 
 _DEFAULT_CONFIG = {
@@ -153,6 +154,12 @@ async def _execute_task(task_id: str, db) -> str:
         from app.routers.books import _enrich_genres_logic
         result = await _enrich_genres_logic(db, task_id=task_id)
         return f"{result['updated']}/{result['total']} livre(s) enrichi(s) avec un genre"
+
+    if task_id == "backup":
+        from app.routers.backup import _create_backup
+        b = _create_backup()
+        size_kb = round(b["size"] / 1024)
+        return f"Sauvegarde créée : {b['filename']} ({size_kb} Ko)"
 
     return "tâche inconnue"
 
