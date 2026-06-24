@@ -353,9 +353,41 @@ def _ocr_series_from_cover(cover_url: str, known_series: list[str], book_authors
     return best_candidate
 
 
+async def _lookup_bnf_series(client: httpx.AsyncClient, isbn: str) -> tuple[str | None, int | None]:
+    """Interroge BnF SRU par ISBN et retourne (series_name, volume) depuis le champ 225."""
+    ns = {"mxc": "info:lc/xmlns/marcxchange-v2"}
+    for q in ([f'bib.isbn adj "{isbn}"'] + ([f'bib.isbn adj "{_isbn10_from_13(isbn)}"'] if len(isbn) == 13 and _isbn10_from_13(isbn) else [])):
+        try:
+            r = await client.get(
+                "https://catalogue.bnf.fr/api/SRU",
+                params={"version": "1.2", "operation": "searchRetrieve",
+                        "query": q, "maximumRecords": "1", "recordSchema": "unimarcxchange"},
+            )
+            if r.status_code != 200:
+                continue
+            root = ET.fromstring(r.text)
+            for rec in root.findall(".//mxc:record", ns):
+                for df in rec.findall("mxc:datafield", ns):
+                    tag = df.get("tag")
+                    subs = {sf.get("code"): sf.text for sf in df.findall("mxc:subfield", ns)}
+                    if tag == "225" and subs.get("a"):
+                        vol = None
+                        if subs.get("v"):
+                            m = re.search(r"(\d+)", subs["v"])
+                            if m:
+                                try:
+                                    vol = int(m.group(1))
+                                except ValueError:
+                                    pass
+                        return subs["a"], vol
+        except Exception:
+            pass
+    return None, None
+
+
 async def _sudoc_detect(db: Session, task_id: str = "sudoc-series") -> dict:
     """
-    Interroge SUDOC + lookup_isbn pour chaque livre orphelin avec ISBN.
+    Interroge SUDOC puis BnF pour chaque livre orphelin avec ISBN.
     Auto-assigne si la série existe déjà, sinon crée une proposition.
     """
     from app.lookup import lookup_isbn, _lookup_sudoc
@@ -381,12 +413,14 @@ async def _sudoc_detect(db: Session, task_id: str = "sudoc-series") -> dict:
         series_name = None
         series_vol = None
 
-        async with _httpx.AsyncClient(timeout=6.0) as _c:
+        async with _httpx.AsyncClient(timeout=8.0) as _c:
             _sudoc = await _lookup_sudoc(_c, b.isbn)
-        if _sudoc and _sudoc.get("series_name"):
-            series_name = _sudoc["series_name"]
-            series_vol = _sudoc.get("series_position")
-        else:
+            if _sudoc and _sudoc.get("series_name"):
+                series_name = _sudoc["series_name"]
+                series_vol = _sudoc.get("series_position")
+            else:
+                series_name, series_vol = await _lookup_bnf_series(_c, b.isbn)
+        if not series_name:
             info = await lookup_isbn(b.isbn)
             if info and info.get("series_name"):
                 series_name = info["series_name"]
