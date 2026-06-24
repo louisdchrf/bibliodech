@@ -173,9 +173,12 @@
       const cfg = allSources.find(s => s.id === sid);
       const hasData = !!sd[sid];
       const enabled = cfg ? cfg.enabled : true;
-      return `<th class="src-col-head ${!enabled ? 'src-col-disabled' : ''}">
+      const isActive = book.enrichment_source === sid;
+      return `<th class="src-col-head ${!enabled ? 'src-col-disabled' : ''} ${isActive ? 'src-col-active' : ''}">
         <div class="src-col-head-inner"><span>${sourceLabel(sid)}</span>
           <button class="btn btn-xs btn-ghost src-reload-btn" data-source="${sid}" title="Recharger depuis ${sourceLabel(sid)}">↺</button>
+          ${hasData && !isActive ? `<button class="btn btn-xs btn-primary src-apply-btn" data-source="${sid}" title="Appliquer cette source">✓ Utiliser</button>` : ''}
+          ${isActive ? '<span class="src-active-badge">active</span>' : ''}
         </div>${!hasData ? '<span class="src-col-badge">pas de données</span>' : ''}</th>`;
     }).join('');
     return `<div class="src-table-wrap"><table class="src-table">
@@ -314,7 +317,7 @@
       });
     });
 
-    // Reload par source
+    // Reload + Apply par source
     function wireSourceBtns() {
       content.querySelectorAll('.src-reload-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
@@ -322,12 +325,31 @@
           btn.disabled=true; btn.textContent='⏳';
           const r = await fetch(`/api/books/${book.id}/re-enrich-source/${sid}`, {method:'POST'});
           const data = await r.json();
-          if (!r.ok) { btn.disabled=false; btn.textContent='✗'; btn.title=data.detail||'Erreur'; return; }
+          if (!r.ok) { btn.disabled=false; btn.textContent='↺'; btn.title=data.detail||'Erreur'; return; }
           book.source_data = data.source_data;
           document.getElementById('bm-tab-sources').innerHTML = renderSourcesTab(book);
           const badge = content.querySelector('.modal-tab[data-tab="sources"] .modal-tab-count');
           if (badge) badge.textContent = Object.keys(data.source_data||{}).length;
           wireSourceBtns();
+        });
+      });
+      content.querySelectorAll('.src-apply-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const sid = btn.dataset.source;
+          btn.disabled=true; btn.textContent='⏳';
+          const r = await fetch(`/api/books/${book.id}/apply-source/${sid}`, {method:'POST'});
+          const data = await r.json();
+          if (!r.ok) { btn.disabled=false; btn.textContent='✓ Utiliser'; btn.title=data.detail||'Erreur'; return; }
+          // Mettre à jour le livre local et re-rendre
+          Object.assign(book, data);
+          renderModal(book);
+          // Repasser sur l'onglet Sources
+          content.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+          content.querySelectorAll('.modal-tab-panel').forEach(p => p.style.display='none');
+          const srcTab = content.querySelector('.modal-tab[data-tab="sources"]');
+          const srcPanel = document.getElementById('bm-tab-sources');
+          if (srcTab) srcTab.classList.add('active');
+          if (srcPanel) srcPanel.style.display='';
         });
       });
     }

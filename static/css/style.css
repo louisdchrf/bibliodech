@@ -1540,6 +1540,16 @@ body.modal-open { overflow: hidden; }
   opacity: .5; transition: opacity var(--transition);
 }
 .src-reload-btn:hover { opacity: 1; }
+.src-apply-btn {
+  font-size: .75rem; padding: .15rem .4rem; line-height: 1;
+  white-space: nowrap;
+}
+.src-col-active { background: var(--color-success-bg); }
+.src-active-badge {
+  font-size: .7rem; font-weight: 600; color: var(--color-success);
+  background: var(--color-success-bg); border-radius: 4px;
+  padding: .1rem .35rem; white-space: nowrap;
+}
 
 /* ── Historique (audit logs) ────────────────────────────────────────────── */
 .logs-loading { color: var(--color-text-muted); padding: 1.5rem 0; }

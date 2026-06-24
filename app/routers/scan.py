@@ -337,6 +337,49 @@ async def re_enrich_book_source(
     }
 
 
+@router.post("/api/books/{book_id}/apply-source/{source_id}")
+async def apply_book_source(
+    book_id: int,
+    source_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Applique les données d'une source stockée dans source_data sur le livre."""
+    from fastapi import HTTPException
+    user = get_current_user(request, db)
+    require_contributor(user)
+    book = db.query(Book).filter(Book.id == book_id).first()
+    if not book:
+        raise HTTPException(status_code=404, detail="Livre introuvable")
+    sd = json.loads(book.source_data) if book.source_data else {}
+    data = sd.get(source_id)
+    if not data:
+        raise HTTPException(status_code=404, detail=f"Aucune donnée pour la source '{source_id}'")
+
+    if data.get("title"):
+        book.title = data["title"]
+    if data.get("subtitle") is not None:
+        book.subtitle = data["subtitle"]
+    if data.get("authors"):
+        book.authors = json.dumps(data["authors"])
+    if data.get("publisher"):
+        book.publisher = data["publisher"]
+    if data.get("publish_date"):
+        book.publish_date = data["publish_date"]
+    if data.get("language"):
+        book.language = data["language"]
+    if data.get("page_count"):
+        book.page_count = data["page_count"]
+    book.enrichment_source = source_id
+    book.source = source_id
+
+    audit_log(db, book.id, "source_applied", detail={"source": source_id})
+    db.commit()
+
+    from app.book_utils import book_to_dict
+    return book_to_dict(book)
+
+
 @router.post("/api/books/re-enrich-all")
 async def re_enrich_all(
     background_tasks: BackgroundTasks,
