@@ -19,6 +19,7 @@ router = APIRouter()
 def list_books(
     request: Request,
     search: Optional[str] = Query(None),
+    site_id: Optional[str] = Query(None),    # filtre sur une adresse entière
     room_id: Optional[str] = Query(None),    # int ou "none" pour livres sans localisation
     source: Optional[str] = Query(None),     # filtre par source d'enrichissement
     series_id: Optional[str] = Query(None),  # int, "none" (sans série), ou "any" (avec série)
@@ -36,6 +37,10 @@ def list_books(
         q = q.filter(
             (Book.title.ilike(like)) | (Book.authors.ilike(like)) | (Book.isbn.ilike(like))
         )
+    if site_id is not None and site_id.isdigit():
+        from app.models import Room
+        room_ids_in_site = [r.id for r in db.query(Room).filter(Room.site_id == int(site_id)).all()]
+        q = q.filter(Book.room_id.in_(room_ids_in_site))
     if room_id == "none":
         q = q.filter(Book.room_id.is_(None))
     elif room_id is not None:

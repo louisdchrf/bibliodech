@@ -426,10 +426,13 @@ async def _lookup_bnf(client: httpx.AsyncClient, isbn: str) -> dict | None:
     )
     try:
         try:
-            resp = await client.get(url)
-        except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.ConnectError):
-            # Retry une fois sur erreur réseau transitoire
-            resp = await client.get(url)
+            resp = await client.get(url, timeout=12)
+        except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.ConnectError) as e:
+            log.warning("lookup: BNF timeout/connect %s, retry: %s", isbn, e)
+            resp = await client.get(url, timeout=12)
+        if resp.status_code != 200:
+            log.warning("lookup: BNF HTTP %s for ISBN %s", resp.status_code, isbn)
+            return None
         resp.raise_for_status()
         root = ET.fromstring(resp.content)
         records = root.findall(f".//{{{_NS['srw']}}}record")
@@ -537,7 +540,7 @@ async def _lookup_bnf(client: httpx.AsyncClient, isbn: str) -> dict | None:
             "genre": genre,
         }
     except Exception as e:
-        log.warning("lookup: BNF error: %s: %s", type(e).__name__, e)
+        log.warning("lookup: BNF error for ISBN %s: %s: %s", isbn, type(e).__name__, e)
         return None
 
 
@@ -967,8 +970,8 @@ async def lookup_isbn(isbn: str, db=None) -> dict | None:
 
     if sources_cfg is None:
         sources_cfg = [
-            {"id": "sudoc",       "enabled": True,  "timeout": 5},
-            {"id": "bnf",         "enabled": True,  "timeout": 5},
+            {"id": "sudoc",       "enabled": True,  "timeout": 8},
+            {"id": "bnf",         "enabled": True,  "timeout": 12},
             {"id": "decitre",     "enabled": True,  "timeout": 10},
             {"id": "googlebooks", "enabled": True,  "timeout": 5},
         ]

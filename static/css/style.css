@@ -1118,11 +1118,7 @@ body.modal-open { overflow: hidden; }
 .loc-shelf-name { flex: 1; font-size: .85rem; }
 .loc-book-count { font-size: .75rem; color: var(--color-text-muted); white-space: nowrap; }
 
-.loc-actions { display: flex; gap: .25rem; margin-left: auto; opacity: 0; transition: opacity var(--transition); }
-@media (hover: none) { .loc-actions { opacity: 1; } }
-.loc-site-header:hover .loc-actions,
-.loc-room-header:hover .loc-actions,
-.loc-shelf-item:hover .loc-actions { opacity: 1; }
+.loc-actions { display: flex; gap: .25rem; margin-left: auto; opacity: 1; }
 
 .btn-danger-ghost { color: var(--color-error) !important; }
 .btn-danger-ghost:hover { background: var(--color-error-bg) !important; }

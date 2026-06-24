@@ -135,14 +135,13 @@
   async function loadLocations() {
     const res = await fetch('/api/locations/tree');
     locTree = await res.json();
-    // Filtre : liste plate des étagères avec chemin complet
-    const flat = locTree.flatMap(s => s.rooms.map(r => ({
-      id: r.id,
-      label: s.id ? `${s.name} › ${r.name}` : r.name,
-    })));
     filterLocation.innerHTML = '<option value="">Toutes les localisations</option>'
       + '<option value="none">Sans localisation</option>'
-      + flat.map(l => `<option value="${l.id}">${escHtml(l.label)}</option>`).join('');
+      + locTree.flatMap(s => {
+          const siteOpt = s.id ? `<option value="site:${s.id}" style="font-weight:600">${escHtml(s.name)}</option>` : '';
+          const roomOpts = s.rooms.map(r => `<option value="${r.id}">&nbsp;&nbsp;${escHtml(s.id ? r.name : s.name + ' › ' + r.name)}</option>`).join('');
+          return [siteOpt, roomOpts];
+        }).join('');
   }
 
   // ── Books ─────────────────────────────────────────────────────────────────
@@ -151,7 +150,8 @@
     const q = searchInput.value.trim();
     if (q) params.set('search', q);
     const lid = filterLocation.value;
-    if (lid) params.set('room_id', lid);
+    if (lid && lid.startsWith('site:')) params.set('site_id', lid.slice(5));
+    else if (lid) params.set('room_id', lid);
     const src = filterSource.value;
     if (src) params.set('source', src);
     const ser = filterSeries.value;
