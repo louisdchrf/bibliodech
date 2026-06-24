@@ -1,6 +1,7 @@
 import os
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
+import zoneinfo
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -28,25 +29,40 @@ def _get_max_backups(db) -> int:
         return DEFAULT_MAX_BACKUPS
 
 
-def _list_backups() -> list[dict]:
+def _list_backups(db=None) -> list[dict]:
     _ensure_dir()
+    tz_name = cfg.get(db, "timezone") if db else None
+    try:
+        tz = zoneinfo.ZoneInfo(tz_name or "Europe/Paris")
+    except Exception:
+        tz = zoneinfo.ZoneInfo("Europe/Paris")
     files = []
     for name in sorted(os.listdir(BACKUP_DIR), reverse=True):
         if not name.endswith(".db"):
             continue
         path = os.path.join(BACKUP_DIR, name)
         stat = os.stat(path)
+        local_dt = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).astimezone(tz)
         files.append({
             "filename": name,
             "size": stat.st_size,
-            "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+            "created_at": local_dt.isoformat(),
         })
     return files
 
 
+def _local_now(db=None) -> datetime:
+    tz_name = cfg.get(db, "timezone") if db else None
+    try:
+        tz = zoneinfo.ZoneInfo(tz_name or "Europe/Paris")
+    except Exception:
+        tz = zoneinfo.ZoneInfo("Europe/Paris")
+    return datetime.now(tz)
+
+
 def _create_backup(db=None) -> dict:
     _ensure_dir()
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = _local_now(db).strftime("%Y%m%d_%H%M%S")
     dest = os.path.join(BACKUP_DIR, f"backup_{ts}.db")
     shutil.copy2(DB_PATH, dest)
     # Rotation
@@ -67,7 +83,7 @@ def list_backups(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     require_admin(user)
     return {
-        "backups": _list_backups(),
+        "backups": _list_backups(db),
         "max_count": _get_max_backups(db),
     }
 
