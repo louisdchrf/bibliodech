@@ -36,56 +36,57 @@
 
   <!-- Bloc filtres flat -->
   <div class="filter-block" id="filter-block">
-    <div class="filter-group" id="fg-location">
-      <span class="filter-group-label">Localisation</span>
-      <div class="msel-wrap" id="msel-location">
-        <button type="button" class="filter-chip" id="msel-location-btn">Toutes</button>
-        <div class="msel-dropdown" id="msel-location-drop" style="display:none">
-          <label class="msel-opt"><input type="checkbox" value="none"> Sans localisation</label>
+    <div class="filter-module" id="fg-location">
+      <span class="filter-module-label">Localisation</span>
+      <div class="filter-module-chips">
+        <button class="filter-chip loc-chip active" data-val="">Toute</button>
+        <button class="filter-chip loc-chip" data-val="none">Sans</button>
+        <div class="msel-wrap" id="msel-location">
+          <button type="button" class="filter-chip filter-chip-more" id="msel-location-btn">▾</button>
+          <div class="msel-dropdown" id="msel-location-drop" style="display:none"></div>
         </div>
       </div>
     </div>
     <div class="filter-sep"></div>
-    <div class="filter-group" id="fg-series">
-      <span class="filter-group-label">Série</span>
-      <div class="msel-wrap" id="msel-series">
-        <button type="button" class="filter-chip" id="msel-series-btn">Toutes</button>
-        <div class="msel-dropdown" id="msel-series-drop" style="display:none">
-          <label class="msel-opt"><input type="checkbox" value="none"> Sans série</label>
-          <label class="msel-opt"><input type="checkbox" value="any"> Avec série</label>
-        </div>
+    <div class="filter-module" id="fg-series">
+      <span class="filter-module-label">Série</span>
+      <div class="filter-module-chips">
+        <button class="filter-chip series-chip active" data-val="">Toutes</button>
+        <button class="filter-chip series-chip" data-val="none">Sans</button>
+        <button class="filter-chip series-chip" data-val="any">Avec</button>
       </div>
     </div>
     <div class="filter-sep"></div>
-    <div class="filter-group" id="fg-cover">
-      <span class="filter-group-label">Couverture</span>
-      <div class="filter-chips-row">
-        <button class="filter-chip cover-chip" data-val="">Toutes</button>
+    <div class="filter-module" id="fg-cover">
+      <span class="filter-module-label">Couverture</span>
+      <div class="filter-module-chips">
+        <button class="filter-chip cover-chip active" data-val="">Toutes</button>
         <button class="filter-chip cover-chip" data-val="yes">Avec</button>
         <button class="filter-chip cover-chip" data-val="no">Sans</button>
       </div>
-      <select id="filter-cover" style="display:none">
-        <option value="">Toutes les couvertures</option>
-        <option value="no">Sans couverture</option>
-        <option value="yes">Avec couverture</option>
-      </select>
+      <select id="filter-cover" style="display:none"></select>
     </div>
     <div class="filter-sep"></div>
-    <div class="filter-group" id="fg-genre">
-      <span class="filter-group-label">Genre</span>
-      <div class="msel-wrap" id="msel-genre">
-        <button type="button" class="filter-chip" id="msel-genre-btn">Tous</button>
-        <div class="msel-dropdown" id="msel-genre-drop" style="display:none">
-          <label class="msel-opt"><input type="checkbox" value="none"> Sans genre</label>
+    <div class="filter-module" id="fg-genre">
+      <span class="filter-module-label">Genre</span>
+      <div class="filter-module-chips">
+        <button class="filter-chip genre-chip active" data-val="">Tous</button>
+        <button class="filter-chip genre-chip" data-val="none">Sans</button>
+        <div class="msel-wrap" id="msel-genre">
+          <button type="button" class="filter-chip filter-chip-more" id="msel-genre-btn">▾</button>
+          <div class="msel-dropdown" id="msel-genre-drop" style="display:none"></div>
         </div>
       </div>
     </div>
     <div class="filter-sep"></div>
-    <div class="filter-group" id="fg-source">
-      <span class="filter-group-label">Source</span>
-      <div class="msel-wrap" id="msel-source">
-        <button type="button" class="filter-chip" id="msel-source-btn">Toutes</button>
-        <div class="msel-dropdown" id="msel-source-drop" style="display:none"></div>
+    <div class="filter-module" id="fg-source">
+      <span class="filter-module-label">Source</span>
+      <div class="filter-module-chips">
+        <button class="filter-chip source-chip active" data-val="">Toutes</button>
+        <div class="msel-wrap" id="msel-source">
+          <button type="button" class="filter-chip filter-chip-more" id="msel-source-btn">▾</button>
+          <div class="msel-dropdown" id="msel-source-drop" style="display:none"></div>
+        </div>
       </div>
     </div>
     <button class="filter-reset" id="btn-filter-reset" style="display:none" title="Effacer les filtres">✕ Réinitialiser</button>
@@ -146,92 +147,94 @@
   const searchInput = document.getElementById('search');
   // filterCover est initialisé après les msel (filterCoverHidden)
 
-  // ── Composants multi-select ───────────────────────────────────────────────
-  // Chaque msel = { btn, drop, getValues(), setOptions(opts), label }
-  function makeMsel(btnId, dropId, emptyLabel) {
+  // ── Système de filtres unifié ─────────────────────────────────────────────
+  // Chaque groupe a : chips statiques (mutuellement exclusifs) + optionnellement
+  // un dropdown "▾" pour des valeurs dynamiques (checkboxes).
+  // getFilterState(group) → { chip: string|null, more: string[] }
+
+  function wireChipGroup(chipClass, onChangeCb) {
+    document.querySelectorAll(`.${chipClass}`).forEach(chip => {
+      chip.addEventListener('click', () => {
+        // Désactiver msel du même groupe si on clique un chip statique
+        const group = chip.closest('.filter-module');
+        group?.querySelectorAll('.msel-dropdown input[type=checkbox]').forEach(c => c.checked = false);
+        group?.querySelectorAll('.filter-chip-more').forEach(b => b.classList.remove('msel-active'));
+        document.querySelectorAll(`.${chipClass}`).forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        onChangeCb();
+      });
+    });
+    return () => {
+      const active = document.querySelector(`.${chipClass}.active`);
+      return active ? active.dataset.val : '';
+    };
+  }
+
+  function makeMselMore(btnId, dropId, onChangeCb) {
     const btn = document.getElementById(btnId);
+    if (!btn) return { getValues: () => [], setOptions: () => {}, clear: () => {} };
     const drop = document.getElementById(dropId);
-    // Ouvrir/fermer
     btn.addEventListener('click', e => {
       e.stopPropagation();
       const open = drop.style.display !== 'none';
-      document.querySelectorAll('.msel-dropdown').forEach(d => d.style.display = 'none');
+      document.querySelectorAll('.msel-dropdown, .toolbar-more-drop').forEach(d => d.style.display = 'none');
       drop.style.display = open ? 'none' : 'block';
     });
     function getValues() {
       return [...drop.querySelectorAll('input[type=checkbox]:checked')].map(c => c.value);
     }
-    function updateLabel() {
-      const vals = getValues();
-      const labels = [...drop.querySelectorAll('input[type=checkbox]:checked')].map(c => c.closest('label').textContent.trim());
-      btn.textContent = vals.length ? labels.join(', ') : emptyLabel;
-      btn.classList.toggle('msel-active', vals.length > 0);
-    }
-    function setOptions(opts, keepExisting = false) {
-      // opts = [{value, label}]
-      const existingSpecial = keepExisting ? [] : [];
-      const specials = [...drop.querySelectorAll('.msel-special')];
-      // Garder les options spéciales (none, any) et remplacer le reste
-      const nonSpecial = [...drop.querySelectorAll('label:not(.msel-special)')];
-      nonSpecial.forEach(l => l.remove());
+    function setOptions(opts) {
+      drop.querySelectorAll('label').forEach(l => l.remove());
       opts.forEach(o => {
         const lbl = document.createElement('label');
         lbl.className = 'msel-opt';
         lbl.innerHTML = `<input type="checkbox" value="${escHtml(String(o.value))}"> ${escHtml(o.label)}`;
-        lbl.querySelector('input').addEventListener('change', () => { updateLabel(); loadBooks(); });
+        lbl.querySelector('input').addEventListener('change', () => {
+          const hasChecked = getValues().length > 0;
+          btn.classList.toggle('msel-active', hasChecked);
+          // Désactiver les chips statiques du même groupe si sélection dans le dropdown
+          if (hasChecked) {
+            const group = btn.closest('.filter-module');
+            group?.querySelectorAll('.filter-chip:not(.filter-chip-more)').forEach(c => c.classList.remove('active'));
+          }
+          onChangeCb();
+        });
         drop.appendChild(lbl);
       });
-      updateLabel();
     }
-    // Wirer les checkboxes initiales (options spéciales déjà en HTML)
-    drop.querySelectorAll('input[type=checkbox]').forEach(c => {
-      c.closest('label').classList.add('msel-special');
-      c.addEventListener('change', () => { updateLabel(); loadBooks(); });
-    });
-    return { btn, drop, getValues, setOptions, updateLabel };
+    function clear() {
+      drop.querySelectorAll('input[type=checkbox]').forEach(c => c.checked = false);
+      btn.classList.remove('msel-active');
+    }
+    return { getValues, setOptions, clear };
   }
 
-  const mselLocation = makeMsel('msel-location-btn', 'msel-location-drop', 'Toutes les localisations');
-  const mselSeries   = makeMsel('msel-series-btn',   'msel-series-drop',   'Toutes');
-  const mselGenre    = makeMsel('msel-genre-btn',     'msel-genre-drop',    'Tous');
-  const mselSource   = makeMsel('msel-source-btn',    'msel-source-drop',   'Toutes');
+  const getLocChip   = wireChipGroup('loc-chip',    () => { mselMoreLocation.clear(); updateFilterReset(); loadBooks(); });
+  const getSerChip   = wireChipGroup('series-chip',  () => { updateFilterReset(); loadBooks(); });
+  const getCovChip   = wireChipGroup('cover-chip',   () => { updateFilterReset(); loadBooks(); });
+  const getGenChip   = wireChipGroup('genre-chip',   () => { mselMoreGenre.clear(); updateFilterReset(); loadBooks(); });
+  const getSrcChip   = wireChipGroup('source-chip',  () => { mselMoreSource.clear(); updateFilterReset(); loadBooks(); });
 
-  // ── Chips couverture ──────────────────────────────────────────────────────
-  const filterCoverHidden = document.getElementById('filter-cover');
-  document.querySelectorAll('.cover-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      document.querySelectorAll('.cover-chip').forEach(c => c.classList.remove('filter-chip-active'));
-      chip.classList.add('filter-chip-active');
-      filterCoverHidden.value = chip.dataset.val;
-      updateFilterReset();
-      loadBooks();
-    });
-  });
-  // Activer le chip "Toutes" par défaut
-  document.querySelector('.cover-chip[data-val=""]')?.classList.add('filter-chip-active');
+  const mselMoreLocation = makeMselMore('msel-location-btn', 'msel-location-drop', () => { updateFilterReset(); loadBooks(); });
+  const mselMoreGenre    = makeMselMore('msel-genre-btn',    'msel-genre-drop',    () => { updateFilterReset(); loadBooks(); });
+  const mselMoreSource   = makeMselMore('msel-source-btn',   'msel-source-drop',   () => { updateFilterReset(); loadBooks(); });
 
   // ── Bouton reset filtres ──────────────────────────────────────────────────
   const btnFilterReset = document.getElementById('btn-filter-reset');
   function updateFilterReset() {
-    const hasFilters = mselLocation.getValues().length || mselSeries.getValues().length
-      || mselGenre.getValues().length || mselSource.getValues().length
-      || filterCoverHidden.value;
+    const chipActive = cls => { const a = document.querySelector(`.${cls}.active`); return a && a.dataset.val !== ''; };
+    const hasFilters = chipActive('loc-chip') || mselMoreLocation.getValues().length
+      || chipActive('series-chip') || chipActive('cover-chip')
+      || chipActive('genre-chip') || mselMoreGenre.getValues().length
+      || chipActive('source-chip') || mselMoreSource.getValues().length;
     btnFilterReset.style.display = hasFilters ? 'inline-flex' : 'none';
   }
-  // Injecter updateFilterReset dans les msel
-  ['mselLocation','mselSeries','mselGenre','mselSource'].forEach(name => {
-    const orig = {mselLocation, mselSeries, mselGenre, mselSource}[name];
-    const drop = orig.drop;
-    drop.addEventListener('change', updateFilterReset);
-  });
   btnFilterReset.addEventListener('click', () => {
-    [mselLocation, mselSeries, mselGenre, mselSource].forEach(m => {
-      m.drop.querySelectorAll('input[type=checkbox]').forEach(c => c.checked = false);
-      m.updateLabel();
+    ['loc-chip','series-chip','cover-chip','genre-chip','source-chip'].forEach(cls => {
+      document.querySelectorAll(`.${cls}`).forEach(c => c.classList.remove('active'));
+      document.querySelector(`.${cls}[data-val=""]`)?.classList.add('active');
     });
-    filterCoverHidden.value = '';
-    document.querySelectorAll('.cover-chip').forEach(c => c.classList.remove('filter-chip-active'));
-    document.querySelector('.cover-chip[data-val=""]')?.classList.add('filter-chip-active');
+    [mselMoreLocation, mselMoreGenre, mselMoreSource].forEach(m => m.clear());
     btnFilterReset.style.display = 'none';
     loadBooks();
   });
@@ -334,7 +337,7 @@
       s.rooms.forEach(r => rows.push({ value: String(r.id), label: s.id ? `  ${r.name}` : r.name }));
       return rows;
     });
-    mselLocation.setOptions(opts);
+    mselMoreLocation.setOptions(opts);
   }
 
   // ── Books ─────────────────────────────────────────────────────────────────
@@ -342,19 +345,39 @@
     const params = new URLSearchParams();
     const q = searchInput.value.trim();
     if (q) params.set('search', q);
-    const lids = mselLocation.getValues();
-    if (lids.length === 1 && lids[0] === 'none') params.set('room_id', 'none');
-    else if (lids.length === 1 && lids[0].startsWith('site:')) params.set('site_id', lids[0].slice(5));
-    else if (lids.length === 1) params.set('room_id', lids[0]);
-    else if (lids.length > 1) params.set('room_id', lids.filter(v => !v.startsWith('site:')).join(','));
-    const srcs = mselSource.getValues();
-    if (srcs.length === 1) params.set('source', srcs[0]);
-    const sers = mselSeries.getValues();
-    if (sers.length === 1) params.set('series_id', sers[0]);
-    const gens = mselGenre.getValues();
-    if (gens.length > 0) params.set('genre', gens[0]); // genre : filtre simple pour l'instant
-    const cov = filterCoverHidden.value;
-    if (cov) params.set('has_cover', cov);
+
+    // Localisation : dropdown spécifique en priorité, sinon chip "Sans"
+    const locMore = mselMoreLocation.getValues();
+    const locChip = getLocChip();
+    if (locMore.length) {
+      const rooms = locMore.filter(v => !v.startsWith('site:'));
+      const sites = locMore.filter(v => v.startsWith('site:')).map(v => v.slice(5));
+      if (rooms.length === 1) params.set('room_id', rooms[0]);
+      else if (sites.length === 1 && !rooms.length) params.set('site_id', sites[0]);
+    } else if (locChip === 'none') {
+      params.set('room_id', 'none');
+    }
+
+    // Série
+    const serChip = getSerChip();
+    if (serChip === 'none') params.set('series_id', 'none');
+    else if (serChip === 'any') params.set('series_id', 'any');
+
+    // Couverture
+    const covChip = getCovChip();
+    if (covChip) params.set('has_cover', covChip);
+
+    // Genre
+    const genMore = mselMoreGenre.getValues();
+    const genChip = getGenChip();
+    if (genMore.length) params.set('genre', genMore[0]);
+    else if (genChip === 'none') params.set('genre', 'none');
+
+    // Source
+    const srcMore = mselMoreSource.getValues();
+    const srcChip = getSrcChip();
+    if (srcMore.length === 1) params.set('source', srcMore[0]);
+    else if (srcChip && srcChip !== '') params.set('source', srcChip);
     params.set('sort_by', sortBy.value);
     params.set('limit', '1000');  // pagination : suffisant pour une biblio personnelle
     const res = await fetch('/api/books?' + params.toString());
@@ -664,25 +687,18 @@
     const res = await fetch('/api/books/sources');
     if (!res.ok) return;
     const sources = await res.json();
-    mselSource.setOptions(sources.map(s => ({ value: s.id, label: `${s.label} (${s.count})` })));
-  }
-
-  async function loadSeriesFilter() {
-    const res = await fetch('/api/series');
-    if (!res.ok) return;
-    const series = await res.json();
-    mselSeries.setOptions(series.map(s => ({ value: String(s.id), label: `${s.name} (${s.book_count})` })));
+    mselMoreSource.setOptions(sources.map(s => ({ value: s.id, label: `${s.label} (${s.count})` })));
   }
 
   async function loadGenreFilter() {
     const res = await fetch('/api/books/genres');
     if (!res.ok) return;
     const genres = await res.json();
-    mselGenre.setOptions(genres.map(g => ({ value: g.id, label: `${g.id} (${g.count})` })));
+    mselMoreGenre.setOptions(genres.map(g => ({ value: g.id, label: `${g.id} (${g.count})` })));
   }
 
-  Promise.all([loadLocations(), loadSourceFilter(), loadSeriesFilter(), loadGenreFilter()]).then(async () => {
-    // Cocher par défaut les salles en écriture
+  Promise.all([loadLocations(), loadSourceFilter(), loadGenreFilter()]).then(async () => {
+    // Pré-sélectionner les salles en écriture dans le dropdown localisation
     {
       const meRes = await fetch('/api/me');
       if (meRes.ok) {
@@ -692,7 +708,11 @@
           document.querySelectorAll('#msel-location-drop input[type=checkbox]').forEach(c => {
             if (ids.includes(c.value)) c.checked = true;
           });
-          mselLocation.updateLabel();
+          // Désactiver le chip "Toute" si des salles sont pré-sélectionnées
+          if (ids.length) {
+            document.querySelectorAll('.loc-chip').forEach(c => c.classList.remove('active'));
+            document.getElementById('msel-location-btn')?.classList.add('msel-active');
+          }
         }
       }
     }
