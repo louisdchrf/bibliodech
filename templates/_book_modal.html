@@ -362,6 +362,7 @@
           // Mettre à jour le livre local et re-rendre
           Object.assign(book, data);
           renderModal(book);
+          window.onBookModalSaved?.();
           // Repasser sur l'onglet Sources
           content.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
           content.querySelectorAll('.modal-tab-panel').forEach(p => p.style.display='none');

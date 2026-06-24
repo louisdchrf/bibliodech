@@ -3,50 +3,92 @@
 
 {% block content %}
 <div class="library-page">
-  <div class="library-toolbar">
-    <input type="text" id="search" placeholder="Rechercher titre, auteur, ISBN…" class="search-input">
-    <div class="filter-row">
+  <!-- Barre de recherche + actions -->
+  <div class="toolbar-top">
+    <div class="toolbar-search-wrap">
+      <svg class="toolbar-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" id="search" placeholder="Rechercher titre, auteur, ISBN…" class="toolbar-search-input">
+    </div>
+    <div class="toolbar-actions">
+      <select id="sort-by" class="toolbar-sort">
+        <option value="title">Titre</option>
+        <option value="author">Auteur</option>
+        <option value="added_at">Date d'ajout</option>
+      </select>
+      <button id="btn-view-toggle" class="toolbar-icon-btn" title="Changer l'affichage" aria-label="Vue liste / grille">
+        <svg id="icon-grid" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <svg id="icon-list" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3" cy="6" r="1" fill="currentColor" stroke="none"/><circle cx="3" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="3" cy="18" r="1" fill="currentColor" stroke="none"/></svg>
+      </button>
+      <button id="btn-select" class="toolbar-icon-btn" title="Mode sélection">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="4" height="4" rx="1"/><rect x="3" y="10" width="4" height="4" rx="1"/><rect x="3" y="17" width="4" height="4" rx="1"/><line x1="11" y1="5" x2="21" y2="5"/><line x1="11" y1="12" x2="21" y2="12"/><line x1="11" y1="19" x2="21" y2="19"/></svg>
+      </button>
+      <div class="toolbar-more-wrap">
+        <button class="toolbar-icon-btn" id="btn-more-actions" title="Plus d'actions">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+        </button>
+        <div class="toolbar-more-drop" id="more-actions-drop" style="display:none">
+          <button class="toolbar-more-item" id="btn-reenrich">🔄 <span id="reenrich-label">Compléter</span></button>
+          <button class="toolbar-more-item" id="btn-reenrich-all">♻️ Tout recharger</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bloc filtres flat -->
+  <div class="filter-block" id="filter-block">
+    <div class="filter-group" id="fg-location">
+      <span class="filter-group-label">Localisation</span>
       <div class="msel-wrap" id="msel-location">
-        <button type="button" class="msel-btn select-input" id="msel-location-btn">Toutes les localisations</button>
+        <button type="button" class="filter-chip" id="msel-location-btn">Toutes</button>
         <div class="msel-dropdown" id="msel-location-drop" style="display:none">
           <label class="msel-opt"><input type="checkbox" value="none"> Sans localisation</label>
         </div>
       </div>
+    </div>
+    <div class="filter-sep"></div>
+    <div class="filter-group" id="fg-series">
+      <span class="filter-group-label">Série</span>
       <div class="msel-wrap" id="msel-series">
-        <button type="button" class="msel-btn select-input" id="msel-series-btn">Toutes les séries</button>
+        <button type="button" class="filter-chip" id="msel-series-btn">Toutes</button>
         <div class="msel-dropdown" id="msel-series-drop" style="display:none">
           <label class="msel-opt"><input type="checkbox" value="none"> Sans série</label>
           <label class="msel-opt"><input type="checkbox" value="any"> Avec série</label>
         </div>
       </div>
-      <select id="filter-cover" class="select-input">
+    </div>
+    <div class="filter-sep"></div>
+    <div class="filter-group" id="fg-cover">
+      <span class="filter-group-label">Couverture</span>
+      <div class="filter-chips-row">
+        <button class="filter-chip cover-chip" data-val="">Toutes</button>
+        <button class="filter-chip cover-chip" data-val="yes">Avec</button>
+        <button class="filter-chip cover-chip" data-val="no">Sans</button>
+      </div>
+      <select id="filter-cover" style="display:none">
         <option value="">Toutes les couvertures</option>
-        <option value="no">— Sans couverture</option>
-        <option value="yes">— Avec couverture</option>
+        <option value="no">Sans couverture</option>
+        <option value="yes">Avec couverture</option>
       </select>
+    </div>
+    <div class="filter-sep"></div>
+    <div class="filter-group" id="fg-genre">
+      <span class="filter-group-label">Genre</span>
       <div class="msel-wrap" id="msel-genre">
-        <button type="button" class="msel-btn select-input" id="msel-genre-btn">Tous les genres</button>
+        <button type="button" class="filter-chip" id="msel-genre-btn">Tous</button>
         <div class="msel-dropdown" id="msel-genre-drop" style="display:none">
           <label class="msel-opt"><input type="checkbox" value="none"> Sans genre</label>
         </div>
       </div>
+    </div>
+    <div class="filter-sep"></div>
+    <div class="filter-group" id="fg-source">
+      <span class="filter-group-label">Source</span>
       <div class="msel-wrap" id="msel-source">
-        <button type="button" class="msel-btn select-input" id="msel-source-btn">Toutes les sources</button>
+        <button type="button" class="filter-chip" id="msel-source-btn">Toutes</button>
         <div class="msel-dropdown" id="msel-source-drop" style="display:none"></div>
       </div>
-      <select id="sort-by" class="select-input">
-        <option value="title">Trier par titre</option>
-        <option value="author">Trier par auteur</option>
-        <option value="added_at">Trier par date d'ajout</option>
-      </select>
-      <button id="btn-reenrich" class="btn btn-ghost" title="Relancer la recherche pour les livres non trouvés">🔄 <span id="reenrich-label">Compléter</span></button>
-      <button id="btn-reenrich-all" class="btn btn-ghost" title="Recharger les infos de tous les livres depuis les sources">♻️ Tout recharger</button>
-      <button id="btn-view-toggle" class="btn btn-ghost btn-icon" title="Changer l'affichage" aria-label="Vue liste / grille">
-        <svg id="icon-grid" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        <svg id="icon-list" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3" cy="6" r="1" fill="currentColor" stroke="none"/><circle cx="3" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="3" cy="18" r="1" fill="currentColor" stroke="none"/></svg>
-      </button>
-      <button id="btn-select" class="btn btn-ghost">Sélectionner</button>
     </div>
+    <button class="filter-reset" id="btn-filter-reset" style="display:none" title="Effacer les filtres">✕ Réinitialiser</button>
   </div>
 
   <div id="book-count" class="book-count"></div>
@@ -102,7 +144,7 @@
   const emptyState = document.getElementById('empty-state');
   const bookCount = document.getElementById('book-count');
   const searchInput = document.getElementById('search');
-  const filterCover = document.getElementById('filter-cover');
+  // filterCover est initialisé après les msel (filterCoverHidden)
 
   // ── Composants multi-select ───────────────────────────────────────────────
   // Chaque msel = { btn, drop, getValues(), setOptions(opts), label }
@@ -150,13 +192,58 @@
   }
 
   const mselLocation = makeMsel('msel-location-btn', 'msel-location-drop', 'Toutes les localisations');
-  const mselSeries   = makeMsel('msel-series-btn',   'msel-series-drop',   'Toutes les séries');
-  const mselGenre    = makeMsel('msel-genre-btn',     'msel-genre-drop',    'Tous les genres');
-  const mselSource   = makeMsel('msel-source-btn',    'msel-source-drop',   'Toutes les sources');
+  const mselSeries   = makeMsel('msel-series-btn',   'msel-series-drop',   'Toutes');
+  const mselGenre    = makeMsel('msel-genre-btn',     'msel-genre-drop',    'Tous');
+  const mselSource   = makeMsel('msel-source-btn',    'msel-source-drop',   'Toutes');
 
-  // Fermer les dropdowns en cliquant ailleurs
+  // ── Chips couverture ──────────────────────────────────────────────────────
+  const filterCoverHidden = document.getElementById('filter-cover');
+  document.querySelectorAll('.cover-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.cover-chip').forEach(c => c.classList.remove('filter-chip-active'));
+      chip.classList.add('filter-chip-active');
+      filterCoverHidden.value = chip.dataset.val;
+      updateFilterReset();
+      loadBooks();
+    });
+  });
+  // Activer le chip "Toutes" par défaut
+  document.querySelector('.cover-chip[data-val=""]')?.classList.add('filter-chip-active');
+
+  // ── Bouton reset filtres ──────────────────────────────────────────────────
+  const btnFilterReset = document.getElementById('btn-filter-reset');
+  function updateFilterReset() {
+    const hasFilters = mselLocation.getValues().length || mselSeries.getValues().length
+      || mselGenre.getValues().length || mselSource.getValues().length
+      || filterCoverHidden.value;
+    btnFilterReset.style.display = hasFilters ? 'inline-flex' : 'none';
+  }
+  // Injecter updateFilterReset dans les msel
+  ['mselLocation','mselSeries','mselGenre','mselSource'].forEach(name => {
+    const orig = {mselLocation, mselSeries, mselGenre, mselSource}[name];
+    const drop = orig.drop;
+    drop.addEventListener('change', updateFilterReset);
+  });
+  btnFilterReset.addEventListener('click', () => {
+    [mselLocation, mselSeries, mselGenre, mselSource].forEach(m => {
+      m.drop.querySelectorAll('input[type=checkbox]').forEach(c => c.checked = false);
+      m.updateLabel();
+    });
+    filterCoverHidden.value = '';
+    document.querySelectorAll('.cover-chip').forEach(c => c.classList.remove('filter-chip-active'));
+    document.querySelector('.cover-chip[data-val=""]')?.classList.add('filter-chip-active');
+    btnFilterReset.style.display = 'none';
+    loadBooks();
+  });
+
+  // ── Menu "Plus d'actions" ─────────────────────────────────────────────────
+  const moreDrop = document.getElementById('more-actions-drop');
+  document.getElementById('btn-more-actions').addEventListener('click', e => {
+    e.stopPropagation();
+    moreDrop.style.display = moreDrop.style.display === 'none' ? 'block' : 'none';
+  });
   document.addEventListener('click', () => {
-    document.querySelectorAll('.msel-dropdown').forEach(d => d.style.display = 'none');
+    document.querySelectorAll('.msel-dropdown, .toolbar-more-drop').forEach(d => d.style.display = 'none');
   });
 
   // ── Modale sélection sources ──────────────────────────────────────────────
@@ -266,7 +353,7 @@
     if (sers.length === 1) params.set('series_id', sers[0]);
     const gens = mselGenre.getValues();
     if (gens.length > 0) params.set('genre', gens[0]); // genre : filtre simple pour l'instant
-    const cov = filterCover.value;
+    const cov = filterCoverHidden.value;
     if (cov) params.set('has_cover', cov);
     params.set('sort_by', sortBy.value);
     params.set('limit', '1000');  // pagination : suffisant pour une biblio personnelle
@@ -506,7 +593,7 @@
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(loadBooks, 300);
   });
-  filterCover.addEventListener('change', loadBooks);
+  // filterCover géré via les cover-chip
   sortBy.addEventListener('change', loadBooks);
 
   // ── Re-enrichissement ────────────────────────────────────────────────────
