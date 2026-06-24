@@ -948,7 +948,7 @@ _SOURCE_FNS = {
 }
 
 
-async def lookup_isbn(isbn: str, db=None) -> dict | None:
+async def lookup_isbn(isbn: str, db=None, sources: list | None = None) -> dict | None:
     isbn = _normalize_isbn(isbn)
     info  = classify_isbn(isbn)
     variants = info["variants"]
@@ -976,7 +976,10 @@ async def lookup_isbn(isbn: str, db=None) -> dict | None:
             {"id": "googlebooks", "enabled": True,  "timeout": 5},
         ]
 
-    active_cfgs = {s["id"]: s for s in sources_cfg if s.get("enabled", True)}
+    active_cfgs = {
+        s["id"]: s for s in sources_cfg
+        if s.get("enabled", True) and (sources is None or s["id"] in sources)
+    }
 
     import asyncio
 

@@ -6,27 +6,34 @@
   <div class="library-toolbar">
     <input type="text" id="search" placeholder="Rechercher titre, auteur, ISBN…" class="search-input">
     <div class="filter-row">
-      <select id="filter-location" class="select-input">
-        <option value="">Toutes les localisations</option>
-        <option value="none">— Sans localisation</option>
-      </select>
-      <select id="filter-series" class="select-input">
-        <option value="">Toutes les séries</option>
-        <option value="none">— Sans série</option>
-        <option value="any">— Avec série</option>
-      </select>
+      <div class="msel-wrap" id="msel-location">
+        <button type="button" class="msel-btn select-input" id="msel-location-btn">Toutes les localisations</button>
+        <div class="msel-dropdown" id="msel-location-drop" style="display:none">
+          <label class="msel-opt"><input type="checkbox" value="none"> Sans localisation</label>
+        </div>
+      </div>
+      <div class="msel-wrap" id="msel-series">
+        <button type="button" class="msel-btn select-input" id="msel-series-btn">Toutes les séries</button>
+        <div class="msel-dropdown" id="msel-series-drop" style="display:none">
+          <label class="msel-opt"><input type="checkbox" value="none"> Sans série</label>
+          <label class="msel-opt"><input type="checkbox" value="any"> Avec série</label>
+        </div>
+      </div>
       <select id="filter-cover" class="select-input">
         <option value="">Toutes les couvertures</option>
         <option value="no">— Sans couverture</option>
         <option value="yes">— Avec couverture</option>
       </select>
-      <select id="filter-genre" class="select-input">
-        <option value="">Tous les genres</option>
-        <option value="none">— Sans genre</option>
-      </select>
-      <select id="filter-source" class="select-input">
-        <option value="">Toutes les sources</option>
-      </select>
+      <div class="msel-wrap" id="msel-genre">
+        <button type="button" class="msel-btn select-input" id="msel-genre-btn">Tous les genres</button>
+        <div class="msel-dropdown" id="msel-genre-drop" style="display:none">
+          <label class="msel-opt"><input type="checkbox" value="none"> Sans genre</label>
+        </div>
+      </div>
+      <div class="msel-wrap" id="msel-source">
+        <button type="button" class="msel-btn select-input" id="msel-source-btn">Toutes les sources</button>
+        <div class="msel-dropdown" id="msel-source-drop" style="display:none"></div>
+      </div>
       <select id="sort-by" class="select-input">
         <option value="title">Trier par titre</option>
         <option value="author">Trier par auteur</option>
@@ -63,6 +70,20 @@
   </div>
 </div>
 
+<!-- Modal sélection de sources pour Recharger -->
+<div id="sources-modal-overlay" class="modal-overlay" style="display:none" role="dialog" aria-modal="true">
+  <div class="modal-card" style="max-width:420px">
+    <button class="modal-close" id="sources-modal-close" aria-label="Fermer">&times;</button>
+    <h2 id="sources-modal-title">Recharger depuis…</h2>
+    <p class="modal-subtitle" id="sources-modal-subtitle"></p>
+    <div id="sources-modal-list" style="display:flex;flex-direction:column;gap:.5rem;margin:1rem 0"></div>
+    <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">
+      <button class="btn btn-ghost" id="sources-modal-all">Tout sélectionner</button>
+      <button class="btn btn-primary" id="sources-modal-confirm">Recharger</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal bulk (auteurs, localisation) -->
 <div id="bulk-modal-overlay" class="modal-overlay" style="display:none" role="dialog" aria-modal="true">
   <div class="modal-card">
@@ -81,11 +102,96 @@
   const emptyState = document.getElementById('empty-state');
   const bookCount = document.getElementById('book-count');
   const searchInput = document.getElementById('search');
-  const filterLocation = document.getElementById('filter-location');
-  const filterSeries = document.getElementById('filter-series');
   const filterCover = document.getElementById('filter-cover');
-  const filterGenre = document.getElementById('filter-genre');
-  const filterSource = document.getElementById('filter-source');
+
+  // ── Composants multi-select ───────────────────────────────────────────────
+  // Chaque msel = { btn, drop, getValues(), setOptions(opts), label }
+  function makeMsel(btnId, dropId, emptyLabel) {
+    const btn = document.getElementById(btnId);
+    const drop = document.getElementById(dropId);
+    // Ouvrir/fermer
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const open = drop.style.display !== 'none';
+      document.querySelectorAll('.msel-dropdown').forEach(d => d.style.display = 'none');
+      drop.style.display = open ? 'none' : 'block';
+    });
+    function getValues() {
+      return [...drop.querySelectorAll('input[type=checkbox]:checked')].map(c => c.value);
+    }
+    function updateLabel() {
+      const vals = getValues();
+      const labels = [...drop.querySelectorAll('input[type=checkbox]:checked')].map(c => c.closest('label').textContent.trim());
+      btn.textContent = vals.length ? labels.join(', ') : emptyLabel;
+      btn.classList.toggle('msel-active', vals.length > 0);
+    }
+    function setOptions(opts, keepExisting = false) {
+      // opts = [{value, label}]
+      const existingSpecial = keepExisting ? [] : [];
+      const specials = [...drop.querySelectorAll('.msel-special')];
+      // Garder les options spéciales (none, any) et remplacer le reste
+      const nonSpecial = [...drop.querySelectorAll('label:not(.msel-special)')];
+      nonSpecial.forEach(l => l.remove());
+      opts.forEach(o => {
+        const lbl = document.createElement('label');
+        lbl.className = 'msel-opt';
+        lbl.innerHTML = `<input type="checkbox" value="${escHtml(String(o.value))}"> ${escHtml(o.label)}`;
+        lbl.querySelector('input').addEventListener('change', () => { updateLabel(); loadBooks(); });
+        drop.appendChild(lbl);
+      });
+      updateLabel();
+    }
+    // Wirer les checkboxes initiales (options spéciales déjà en HTML)
+    drop.querySelectorAll('input[type=checkbox]').forEach(c => {
+      c.closest('label').classList.add('msel-special');
+      c.addEventListener('change', () => { updateLabel(); loadBooks(); });
+    });
+    return { btn, drop, getValues, setOptions, updateLabel };
+  }
+
+  const mselLocation = makeMsel('msel-location-btn', 'msel-location-drop', 'Toutes les localisations');
+  const mselSeries   = makeMsel('msel-series-btn',   'msel-series-drop',   'Toutes les séries');
+  const mselGenre    = makeMsel('msel-genre-btn',     'msel-genre-drop',    'Tous les genres');
+  const mselSource   = makeMsel('msel-source-btn',    'msel-source-drop',   'Toutes les sources');
+
+  // Fermer les dropdowns en cliquant ailleurs
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.msel-dropdown').forEach(d => d.style.display = 'none');
+  });
+
+  // ── Modale sélection sources ──────────────────────────────────────────────
+  let _sourcesCallback = null;
+  const srcModalOverlay = document.getElementById('sources-modal-overlay');
+  const srcModalList    = document.getElementById('sources-modal-list');
+  const srcModalTitle   = document.getElementById('sources-modal-title');
+  const srcModalSub     = document.getElementById('sources-modal-subtitle');
+  document.getElementById('sources-modal-close').addEventListener('click', () => srcModalOverlay.style.display = 'none');
+  document.getElementById('sources-modal-all').addEventListener('click', () => {
+    srcModalList.querySelectorAll('input[type=checkbox]').forEach(c => c.checked = true);
+  });
+  document.getElementById('sources-modal-confirm').addEventListener('click', () => {
+    const selected = [...srcModalList.querySelectorAll('input[type=checkbox]:checked')].map(c => c.value);
+    srcModalOverlay.style.display = 'none';
+    if (_sourcesCallback) _sourcesCallback(selected);
+  });
+
+  async function openSourcesModal(title, subtitle, callback) {
+    srcModalTitle.textContent = title;
+    srcModalSub.textContent = subtitle;
+    _sourcesCallback = callback;
+    // Charger les sources configurées
+    const res = await fetch('/api/settings/sources');
+    const sources = res.ok ? await res.json() : [];
+    const enabled = sources.filter(s => s.enabled !== false);
+    srcModalList.innerHTML = enabled.map(s =>
+      `<label style="display:flex;align-items:center;gap:.5rem;cursor:pointer">
+        <input type="checkbox" value="${escHtml(s.id)}" checked style="width:1rem;height:1rem">
+        <span>${escHtml(s.label || s.id)}</span>
+      </label>`
+    ).join('') || '<p style="color:var(--color-text-muted)">Aucune source configurée</p>';
+    srcModalOverlay.style.display = 'flex';
+  }
+
   const sortBy = document.getElementById('sort-by');
   const modalOverlay = document.getElementById('bulk-modal-overlay');
   const modalContent = document.getElementById('bulk-modal-content');
@@ -135,13 +241,13 @@
   async function loadLocations() {
     const res = await fetch('/api/locations/tree');
     locTree = await res.json();
-    filterLocation.innerHTML = '<option value="">Toutes les localisations</option>'
-      + '<option value="none">Sans localisation</option>'
-      + locTree.flatMap(s => {
-          const siteOpt = s.id ? `<option value="site:${s.id}" style="font-weight:600">${escHtml(s.name)}</option>` : '';
-          const roomOpts = s.rooms.map(r => `<option value="${r.id}">&nbsp;&nbsp;${escHtml(s.id ? r.name : s.name + ' › ' + r.name)}</option>`).join('');
-          return [siteOpt, roomOpts];
-        }).join('');
+    const opts = locTree.flatMap(s => {
+      const rows = [];
+      if (s.id) rows.push({ value: `site:${s.id}`, label: `📍 ${s.name}` });
+      s.rooms.forEach(r => rows.push({ value: String(r.id), label: s.id ? `  ${r.name}` : r.name }));
+      return rows;
+    });
+    mselLocation.setOptions(opts);
   }
 
   // ── Books ─────────────────────────────────────────────────────────────────
@@ -149,15 +255,17 @@
     const params = new URLSearchParams();
     const q = searchInput.value.trim();
     if (q) params.set('search', q);
-    const lid = filterLocation.value;
-    if (lid && lid.startsWith('site:')) params.set('site_id', lid.slice(5));
-    else if (lid) params.set('room_id', lid);
-    const src = filterSource.value;
-    if (src) params.set('source', src);
-    const ser = filterSeries.value;
-    if (ser) params.set('series_id', ser);
-    const gen = filterGenre.value;
-    if (gen) params.set('genre', gen);
+    const lids = mselLocation.getValues();
+    if (lids.length === 1 && lids[0] === 'none') params.set('room_id', 'none');
+    else if (lids.length === 1 && lids[0].startsWith('site:')) params.set('site_id', lids[0].slice(5));
+    else if (lids.length === 1) params.set('room_id', lids[0]);
+    else if (lids.length > 1) params.set('room_id', lids.filter(v => !v.startsWith('site:')).join(','));
+    const srcs = mselSource.getValues();
+    if (srcs.length === 1) params.set('source', srcs[0]);
+    const sers = mselSeries.getValues();
+    if (sers.length === 1) params.set('series_id', sers[0]);
+    const gens = mselGenre.getValues();
+    if (gens.length > 0) params.set('genre', gens[0]); // genre : filtre simple pour l'instant
     const cov = filterCover.value;
     if (cov) params.set('has_cover', cov);
     params.set('sort_by', sortBy.value);
@@ -270,43 +378,23 @@
     openBulkModal('location');
   });
 
-  document.getElementById('bulk-reenrich').addEventListener('click', async () => {
+  document.getElementById('bulk-reenrich').addEventListener('click', () => {
     if (!selectedIds.size) return;
     const ids = [...selectedIds];
     const n = ids.length;
-    if (!confirm(`Recharger les infos de ${n} livre${n > 1 ? 's' : ''} depuis toutes les sources ?`)) return;
-    const btn = document.getElementById('bulk-reenrich');
-    btn.disabled = true;
-    btn.textContent = `⏳ 0 / ${n}`;
-
-    // Passer en pending puis relancer chaque livre
-    await Promise.all(ids.map(id =>
-      fetch(`/api/books/${id}/re-enrich`, { method: 'POST' }).catch(() => null)
-    ));
-
-    let pending = new Set(ids);
-    let done = 0;
-    const poll = setInterval(async () => {
-      const checks = [...pending].map(id =>
-        fetch(`/api/scan/status/${id}`).then(r => r.json()).catch(() => null)
+    openSourcesModal('Recharger les livres sélectionnés', `Sources à utiliser pour ${n} livre${n > 1 ? 's' : ''} :`, async (selectedSrcs) => {
+      const btn = document.getElementById('bulk-reenrich');
+      btn.disabled = true;
+      btn.textContent = `⏳ 0 / ${n}`;
+      const srcParam = selectedSrcs.length ? `?sources=${encodeURIComponent(selectedSrcs.join(','))}` : '';
+      await Promise.all(ids.map(id =>
+        fetch(`/api/books/${id}/re-enrich${srcParam}`, { method: 'POST' }).catch(() => null)
+      ));
+      pollReenrich(new Set(ids), n,
+        (done, total) => { btn.textContent = `⏳ ${done} / ${total}`; },
+        () => { loadBooks(); btn.disabled = false; btn.textContent = '🔄 Recharger'; }
       );
-      const results = await Promise.all(checks);
-      const pids = [...pending];
-      results.forEach((d, i) => {
-        if (!d) return;
-        if (d.enrichment_status === 'ok' || d.enrichment_status === 'not_found') {
-          pending.delete(pids[i]);
-          done++;
-        }
-      });
-      btn.textContent = `⏳ ${done} / ${n}`;
-      if (pending.size === 0) {
-        clearInterval(poll);
-        loadBooks();
-        btn.disabled = false;
-        btn.textContent = '🔄 Recharger';
-      }
-    }, 2000);
+    });
   });
 
   const deleteBtn = document.getElementById('bulk-delete');
@@ -418,11 +506,7 @@
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(loadBooks, 300);
   });
-  filterLocation.addEventListener('change', loadBooks);
-  filterSeries.addEventListener('change', loadBooks);
   filterCover.addEventListener('change', loadBooks);
-  filterGenre.addEventListener('change', loadBooks);
-  filterSource.addEventListener('change', loadBooks);
   sortBy.addEventListener('change', loadBooks);
 
   // ── Re-enrichissement ────────────────────────────────────────────────────
@@ -438,130 +522,90 @@
     btnReenrich.style.display = count > 0 ? 'inline-flex' : 'none';
   }
 
-  btnReenrich.addEventListener('click', async () => {
-    if (!confirm('Relancer la recherche pour tous les livres non trouvés ?')) return;
-    btnReenrich.disabled = true;
-    reenrichLabel.textContent = 'En cours…';
-    const res = await fetch('/api/books/re-enrich-all', { method: 'POST' });
-    if (!res.ok) { reenrichLabel.textContent = 'Compléter'; btnReenrich.disabled = false; return; }
-    const data = await res.json();
-    if (!data.queued) { reenrichLabel.textContent = 'Compléter'; btnReenrich.disabled = false; return; }
-
-    let pending = new Set(data.book_ids);
+  function pollReenrich(pending, total, onProgress, onDone) {
     let done = 0;
-    reenrichLabel.textContent = `0 / ${data.queued}`;
-
-    const pollAll = setInterval(async () => {
-      const checks = [...pending].map(id =>
-        fetch(`/api/scan/status/${id}`).then(r => r.json()).catch(() => null)
-      );
-      const results = await Promise.all(checks);
-      const ids = [...pending];
-      results.forEach((d, i) => {
-        if (!d) return;
-        if (d.enrichment_status === 'ok' || d.enrichment_status === 'not_found') {
-          pending.delete(ids[i]);
-          done++;
-        }
-      });
-      reenrichLabel.textContent = `${done} / ${data.queued}`;
-      if (pending.size === 0) {
-        clearInterval(pollAll);
-        loadBooks();
-        updateReenrichCount();
-        btnReenrich.disabled = false;
-      }
-    }, 2000);
-  });
-
-  const btnReenrichAll = document.getElementById('btn-reenrich-all');
-  btnReenrichAll.addEventListener('click', async () => {
-    const total = (await fetch('/api/books?limit=1').then(r => r.json()).catch(() => ({total:0}))).total || '?';
-    if (!confirm(`Recharger les infos de TOUS les livres (${total}) depuis les sources ?\n\nCela peut prendre plusieurs minutes.`)) return;
-    btnReenrichAll.disabled = true;
-    btnReenrichAll.textContent = '⏳ 0 / …';
-    const res = await fetch('/api/books/re-enrich-all?force=true', { method: 'POST' });
-    if (!res.ok) { btnReenrichAll.disabled = false; btnReenrichAll.textContent = '♻️ Tout recharger'; return; }
-    const data = await res.json();
-    if (!data.queued) { btnReenrichAll.disabled = false; btnReenrichAll.textContent = '♻️ Tout recharger'; return; }
-
-    let pending = new Set(data.book_ids);
-    let done = 0;
-    btnReenrichAll.textContent = `⏳ 0 / ${data.queued}`;
-
-    const pollAll = setInterval(async () => {
+    const iv = setInterval(async () => {
       const ids = [...pending];
       const results = await Promise.all(ids.map(id =>
         fetch(`/api/scan/status/${id}`).then(r => r.json()).catch(() => null)
       ));
       results.forEach((d, i) => {
         if (!d) return;
-        if (d.enrichment_status === 'ok' || d.enrichment_status === 'not_found') {
-          pending.delete(ids[i]);
-          done++;
-        }
+        if (d.enrichment_status === 'ok' || d.enrichment_status === 'not_found') { pending.delete(ids[i]); done++; }
       });
-      btnReenrichAll.textContent = `⏳ ${done} / ${data.queued}`;
-      if (pending.size === 0) {
-        clearInterval(pollAll);
-        loadBooks();
-        updateReenrichCount();
-        btnReenrichAll.disabled = false;
-        btnReenrichAll.textContent = '♻️ Tout recharger';
-      }
-    }, 3000);
+      onProgress(done, total);
+      if (pending.size === 0) { clearInterval(iv); onDone(); }
+    }, 2000);
+  }
+
+  btnReenrich.addEventListener('click', () => {
+    openSourcesModal('Compléter les livres manquants', 'Sources à interroger pour les livres non trouvés :', async (selectedSrcs) => {
+      btnReenrich.disabled = true;
+      reenrichLabel.textContent = 'En cours…';
+      const srcParam = selectedSrcs.length ? `sources=${encodeURIComponent(selectedSrcs.join(','))}` : '';
+      const res = await fetch(`/api/books/re-enrich-all?${srcParam}`, { method: 'POST' });
+      if (!res.ok) { reenrichLabel.textContent = 'Compléter'; btnReenrich.disabled = false; return; }
+      const data = await res.json().catch(() => ({}));
+      if (!data.queued) { reenrichLabel.textContent = 'Compléter'; btnReenrich.disabled = false; return; }
+      pollReenrich(new Set(data.book_ids), data.queued,
+        (done, total) => { reenrichLabel.textContent = `${done} / ${total}`; },
+        () => { loadBooks(); updateReenrichCount(); btnReenrich.disabled = false; }
+      );
+    });
+  });
+
+  const btnReenrichAll = document.getElementById('btn-reenrich-all');
+  btnReenrichAll.addEventListener('click', async () => {
+    const total = (await fetch('/api/books?limit=1').then(r => r.json()).catch(() => ({total:0}))).total || '?';
+    openSourcesModal('Tout recharger', `Recharger les infos de TOUS les livres (${total}) depuis les sources sélectionnées :`, async (selectedSrcs) => {
+      btnReenrichAll.disabled = true;
+      btnReenrichAll.textContent = '⏳ 0 / …';
+      const srcParam = selectedSrcs.length ? `&sources=${encodeURIComponent(selectedSrcs.join(','))}` : '';
+      const res = await fetch(`/api/books/re-enrich-all?force=true${srcParam}`, { method: 'POST' });
+      if (!res.ok) { btnReenrichAll.disabled = false; btnReenrichAll.textContent = '♻️ Tout recharger'; return; }
+      const data = await res.json();
+      if (!data.queued) { btnReenrichAll.disabled = false; btnReenrichAll.textContent = '♻️ Tout recharger'; return; }
+      btnReenrichAll.textContent = `⏳ 0 / ${data.queued}`;
+      pollReenrich(new Set(data.book_ids), data.queued,
+        (done, t) => { btnReenrichAll.textContent = `⏳ ${done} / ${t}`; },
+        () => { loadBooks(); updateReenrichCount(); btnReenrichAll.disabled = false; btnReenrichAll.textContent = '♻️ Tout recharger'; }
+      );
+    });
   });
 
   async function loadSourceFilter() {
     const res = await fetch('/api/books/sources');
     if (!res.ok) return;
     const sources = await res.json();
-    if (sources.length <= 1) return;
-    filterSource.innerHTML = '<option value="">Toutes les sources</option>'
-      + sources.map(s => `<option value="${s.id}">${escHtml(s.label)} (${s.count})</option>`).join('');
+    mselSource.setOptions(sources.map(s => ({ value: s.id, label: `${s.label} (${s.count})` })));
   }
 
   async function loadSeriesFilter() {
     const res = await fetch('/api/series');
     if (!res.ok) return;
     const series = await res.json();
-    filterSeries.innerHTML = '<option value="">Toutes les séries</option>'
-      + '<option value="none">— Sans série</option>'
-      + '<option value="any">— Avec série</option>'
-      + series.map(s => `<option value="${s.id}">${escHtml(s.name)} (${s.book_count})</option>`).join('');
+    mselSeries.setOptions(series.map(s => ({ value: String(s.id), label: `${s.name} (${s.book_count})` })));
   }
 
   async function loadGenreFilter() {
     const res = await fetch('/api/books/genres');
     if (!res.ok) return;
     const genres = await res.json();
-    if (!genres.length) return;
-    filterGenre.innerHTML = '<option value="">Tous les genres</option>'
-      + '<option value="none">— Sans genre</option>'
-      + genres.map(g => `<option value="${escHtml(g.id)}">${escHtml(g.id)} (${g.count})</option>`).join('');
+    mselGenre.setOptions(genres.map(g => ({ value: g.id, label: `${g.id} (${g.count})` })));
   }
 
   Promise.all([loadLocations(), loadSourceFilter(), loadSeriesFilter(), loadGenreFilter()]).then(async () => {
-    // Appliquer les salles en écriture comme filtre par défaut
-    if (!filterLocation.value) {
+    // Cocher par défaut les salles en écriture
+    {
       const meRes = await fetch('/api/me');
       if (meRes.ok) {
         const me = await meRes.json();
         if (me.write_room_ids && me.write_room_ids.length) {
-          // Option spéciale "mes-salles" ou valeur csv si plusieurs
-          if (me.write_room_ids.length === 1) {
-            filterLocation.value = String(me.write_room_ids[0]);
-          } else {
-            // Ajouter une option "Mes salles" dynamique si absente
-            const val = me.write_room_ids.join(',');
-            if (!filterLocation.querySelector(`option[value="${val}"]`)) {
-              const opt = document.createElement('option');
-              opt.value = val;
-              opt.textContent = 'Mes salles';
-              filterLocation.insertBefore(opt, filterLocation.options[1]);
-            }
-            filterLocation.value = val;
-          }
+          const ids = me.write_room_ids.map(String);
+          document.querySelectorAll('#msel-location-drop input[type=checkbox]').forEach(c => {
+            if (ids.includes(c.value)) c.checked = true;
+          });
+          mselLocation.updateLabel();
         }
       }
     }

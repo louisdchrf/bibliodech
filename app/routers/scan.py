@@ -103,11 +103,11 @@ async def _resolve_cover(isbn: str, info: dict, db=None) -> str | None:
     return None
 
 
-async def _enrich_book(book_id: int, isbn: str, _progress_key: str | None = None) -> None:
+async def _enrich_book(book_id: int, isbn: str, _progress_key: str | None = None, sources: list | None = None) -> None:
     """Lookup + mise à jour du livre en arrière-plan."""
     db = SessionLocal()
     try:
-        info = await lookup_isbn(isbn, db=db)
+        info = await lookup_isbn(isbn, db=db, sources=sources)
         book = db.query(Book).filter(Book.id == book_id).first()
         if not book:
             return
@@ -258,6 +258,7 @@ async def re_enrich_book(
     background_tasks: BackgroundTasks,
     request: Request,
     db: Session = Depends(get_db),
+    sources: str = "",
 ):
     """Relance la recherche d'infos pour un livre (not_found ou données incomplètes)."""
     user = get_current_user(request, db)
@@ -271,7 +272,8 @@ async def re_enrich_book(
         raise HTTPException(status_code=400, detail="Ce livre n'a pas d'ISBN")
     book.enrichment_status = "pending"
     db.commit()
-    background_tasks.add_task(_enrich_book, book.id, book.isbn)
+    src_filter = [s.strip() for s in sources.split(",") if s.strip()] if sources else None
+    background_tasks.add_task(_enrich_book, book.id, book.isbn, None, src_filter)
     return {"status": "pending", "book_id": book.id}
 
 
@@ -464,6 +466,7 @@ async def re_enrich_all(
     request: Request,
     db: Session = Depends(get_db),
     force: bool = False,
+    sources: str = "",
 ):
     """Relance la recherche.
     force=False : seulement les livres non trouvés ou sans titre réel.
@@ -505,8 +508,9 @@ async def re_enrich_all(
             "started_at": datetime.now(timezone.utc).isoformat(),
             "progress": {"current": 0, "total": len(unique)},
         }
+        src_filter = [s.strip() for s in sources.split(",") if s.strip()] if sources else None
         for b in unique:
-            background_tasks.add_task(_enrich_book, b.id, b.isbn, key)
+            background_tasks.add_task(_enrich_book, b.id, b.isbn, key, src_filter)
     return {"queued": len(unique), "book_ids": [b.id for b in unique]}
 
 
