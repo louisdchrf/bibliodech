@@ -776,19 +776,12 @@ async def sudoc_lookup(request: Request, db: Session = Depends(get_db)):
     require_admin(user)
     body = await request.json()
     book_ids: list[int] = body.get("book_ids", [])
-    from app.lookup import lookup_isbn, _lookup_sudoc
-    import httpx as _httpx
+    from app.lookup import lookup_isbn
     books = db.query(Book).filter(Book.id.in_(book_ids)).all()
     for b in books:
         if not b.isbn:
             continue
-        # Source 1 : SUDOC (meilleure pour les BDs françaises)
-        async with _httpx.AsyncClient(timeout=6.0) as _c:
-            _sudoc = await _lookup_sudoc(_c, b.isbn)
-        if _sudoc and _sudoc.get("series_name"):
-            return {"name": _sudoc["series_name"], "volume": _sudoc.get("series_position"), "isbn": b.isbn, "source": "SUDOC"}
-        # Source 2 : lookup_isbn (Open Library, Google Books…) → champ series_name
-        info = await lookup_isbn(b.isbn)
+        info = await lookup_isbn(b.isbn, db=db)
         if info and info.get("series_name"):
             return {"name": info["series_name"], "volume": info.get("series_position"), "isbn": b.isbn, "source": info.get("source", "lookup")}
     return {"name": None}

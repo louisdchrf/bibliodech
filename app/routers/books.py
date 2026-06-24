@@ -260,9 +260,16 @@ def clean_authors(request: Request, db: Session = Depends(get_db)):
 
 async def _enrich_genres_logic(db, task_id: str = "enrich-genres") -> dict:
     """Interroge SUDOC puis BnF pour récupérer le genre des livres qui n'en ont pas encore."""
-    from app.lookup import _lookup_sudoc, _lookup_genre_unimarc
+    from app.lookup import _lookup_genre_unimarc, _lookup_sudoc
+    import app.settings as cfg
     from app import scheduler as sched
     import httpx
+
+    # Sources actives selon la configuration
+    sources_cfg = cfg.get(db, "lookup_sources") or []
+    active_source_ids = {s["id"] for s in sources_cfg if s.get("enabled", True)}
+    use_sudoc = "sudoc" in active_source_ids
+    use_bnf   = "bnf" in active_source_ids
 
     books = db.query(Book).filter(Book.isbn.isnot(None)).all()
     total = len(books)
@@ -275,12 +282,11 @@ async def _enrich_genres_logic(db, task_id: str = "enrich-genres") -> dict:
         for i, book in enumerate(books):
             genre = None
             try:
-                # SUDOC d'abord (608 $a en UNIMARC natif)
-                info = await _lookup_sudoc(client, book.isbn)
-                if info:
-                    genre = info.get("genre")
-                # Si pas trouvé via SUDOC, interroger BnF en UNIMARC
-                if not genre:
+                if use_sudoc:
+                    info = await _lookup_sudoc(client, book.isbn)
+                    if info:
+                        genre = info.get("genre")
+                if not genre and use_bnf:
                     genre = await _lookup_genre_unimarc(client, book.isbn)
             except Exception:
                 pass
