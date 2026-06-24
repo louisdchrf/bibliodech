@@ -7,16 +7,25 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user, require_admin
 from app.database import get_db, DATABASE_URL
+import app.settings as cfg
 
 router = APIRouter()
 
 DB_PATH = DATABASE_URL.replace("sqlite:///", "")
 BACKUP_DIR = "/app/data/backups"
-MAX_BACKUPS = 20
+DEFAULT_MAX_BACKUPS = 10
 
 
 def _ensure_dir():
     os.makedirs(BACKUP_DIR, exist_ok=True)
+
+
+def _get_max_backups(db) -> int:
+    val = cfg.get(db, "backup_max_count")
+    try:
+        return max(1, int(val)) if val else DEFAULT_MAX_BACKUPS
+    except (ValueError, TypeError):
+        return DEFAULT_MAX_BACKUPS
 
 
 def _list_backups() -> list[dict]:
@@ -35,16 +44,15 @@ def _list_backups() -> list[dict]:
     return files
 
 
-def _create_backup() -> dict:
+def _create_backup(db=None) -> dict:
     _ensure_dir()
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     dest = os.path.join(BACKUP_DIR, f"backup_{ts}.db")
     shutil.copy2(DB_PATH, dest)
-    # Rotation : garder seulement les MAX_BACKUPS dernières
-    all_backups = sorted(
-        [f for f in os.listdir(BACKUP_DIR) if f.endswith(".db")]
-    )
-    for old in all_backups[:-MAX_BACKUPS]:
+    # Rotation
+    max_backups = _get_max_backups(db) if db else DEFAULT_MAX_BACKUPS
+    all_backups = sorted([f for f in os.listdir(BACKUP_DIR) if f.endswith(".db")])
+    for old in all_backups[:-max_backups]:
         os.remove(os.path.join(BACKUP_DIR, old))
     stat = os.stat(dest)
     return {
@@ -58,14 +66,30 @@ def _create_backup() -> dict:
 def list_backups(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     require_admin(user)
-    return _list_backups()
+    return {
+        "backups": _list_backups(),
+        "max_count": _get_max_backups(db),
+    }
 
 
 @router.post("/api/backups", status_code=201)
 def create_backup(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     require_admin(user)
-    return _create_backup()
+    return _create_backup(db)
+
+
+@router.post("/api/backups/settings")
+def save_backup_settings(body: dict, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user(request, db)
+    require_admin(user)
+    max_count = body.get("max_count")
+    try:
+        max_count = max(1, int(max_count))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail="Valeur invalide")
+    cfg.set_(db, "backup_max_count", str(max_count))
+    return {"max_count": max_count}
 
 
 @router.get("/api/backups/{filename}/download")
@@ -89,8 +113,7 @@ def restore_backup(filename: str, request: Request, db: Session = Depends(get_db
     path = os.path.join(BACKUP_DIR, filename)
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="Fichier introuvable")
-    # Sauvegarder l'état actuel avant rétablissement
-    _create_backup()
+    _create_backup(db)
     shutil.copy2(path, DB_PATH)
     return {"ok": True, "restored": filename}
 
@@ -109,7 +132,6 @@ def delete_backup(filename: str, request: Request, db: Session = Depends(get_db)
 
 @router.post("/api/backups/upload", status_code=201)
 async def upload_backup(request: Request, db: Session = Depends(get_db)):
-    """Upload un fichier .db et le restaure immédiatement."""
     user = get_current_user(request, db)
     require_admin(user)
     form = await request.form()
@@ -117,8 +139,7 @@ async def upload_backup(request: Request, db: Session = Depends(get_db)):
     if not file or not file.filename.endswith(".db"):
         raise HTTPException(status_code=422, detail="Fichier .db requis")
     _ensure_dir()
-    # Sauvegarder l'état actuel avant rétablissement
-    _create_backup()
+    _create_backup(db)
     data = await file.read()
     with open(DB_PATH, "wb") as f:
         f.write(data)

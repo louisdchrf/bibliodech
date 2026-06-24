@@ -173,10 +173,23 @@
 
   <!-- Onglet Sauvegardes -->
   <div id="tab-backups" class="settings-tab-panel" style="display:none">
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;margin-bottom:1.25rem">
-      <div>
-        <p class="settings-desc" style="margin:0">Les sauvegardes sont conservées sur le serveur. La planification automatique se configure dans l'onglet <strong>Tâches</strong>.</p>
+
+    <!-- Rétention -->
+    <div class="settings-section" style="margin-bottom:1.5rem;padding-bottom:1.25rem;border-bottom:1px solid var(--color-border)">
+      <h3 class="settings-subtitle" style="margin-bottom:.75rem">Rétention</h3>
+      <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+        <label style="font-size:.875rem">Conserver les</label>
+        <input type="number" id="backup-max-count" class="input-sm" style="width:5rem;text-align:center" min="1" max="100" value="10">
+        <label style="font-size:.875rem">dernières sauvegardes</label>
+        <button class="btn btn-ghost btn-sm" id="btn-save-backup-settings">Enregistrer</button>
+        <span id="backup-settings-status" class="task-status"></span>
       </div>
+      <p class="text-muted" style="font-size:.8rem;margin-top:.5rem">Les sauvegardes les plus anciennes sont supprimées automatiquement à chaque nouvelle création. La planification se configure dans l'onglet <strong>Tâches</strong>.</p>
+    </div>
+
+    <!-- Actions -->
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;margin-bottom:1rem">
+      <span class="task-status" id="backup-status"></span>
       <div style="display:flex;gap:.5rem;flex-wrap:wrap">
         <label class="btn btn-ghost btn-sm" style="cursor:pointer">
           <input type="file" id="backup-upload-input" accept=".db" style="display:none">
@@ -185,7 +198,8 @@
         <button class="btn btn-primary btn-sm" id="btn-create-backup">+ Créer une sauvegarde</button>
       </div>
     </div>
-    <span class="task-status" id="backup-status"></span>
+
+    <!-- Liste -->
     <div id="backups-list">
       <p style="color:var(--color-text-muted);font-size:.875rem">Chargement…</p>
     </div>
@@ -812,7 +826,9 @@
   async function loadBackups() {
     const res = await fetch('/api/backups');
     if (!res.ok) return;
-    const backups = await res.json();
+    const data = await res.json();
+    const backups = data.backups;
+    document.getElementById('backup-max-count').value = data.max_count;
     const list = document.getElementById('backups-list');
     if (!backups.length) {
       list.innerHTML = '<p style="color:var(--color-text-muted);font-size:.875rem">Aucune sauvegarde disponible.</p>';
@@ -859,6 +875,24 @@
       });
     });
   }
+
+  document.getElementById('btn-save-backup-settings')?.addEventListener('click', async () => {
+    const statusEl = document.getElementById('backup-settings-status');
+    const max = parseInt(document.getElementById('backup-max-count').value);
+    if (!max || max < 1) return;
+    const res = await fetch('/api/backups/settings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ max_count: max }),
+    });
+    if (res.ok) {
+      statusEl.textContent = '✓ Enregistré';
+      statusEl.className = 'task-status task-status-ok';
+    } else {
+      statusEl.textContent = 'Erreur';
+      statusEl.className = 'task-status task-status-err';
+    }
+    setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'task-status'; }, 2000);
+  });
 
   document.getElementById('btn-create-backup')?.addEventListener('click', async () => {
     setBackupStatus('Sauvegarde en cours…', null);
