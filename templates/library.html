@@ -19,9 +19,7 @@
         <svg id="icon-grid" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
         <svg id="icon-list" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3" cy="6" r="1" fill="currentColor" stroke="none"/><circle cx="3" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="3" cy="18" r="1" fill="currentColor" stroke="none"/></svg>
       </button>
-      <button id="btn-select" class="toolbar-icon-btn" title="Mode sélection">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="4" height="4" rx="1"/><rect x="3" y="10" width="4" height="4" rx="1"/><rect x="3" y="17" width="4" height="4" rx="1"/><line x1="11" y1="5" x2="21" y2="5"/><line x1="11" y1="12" x2="21" y2="12"/><line x1="11" y1="19" x2="21" y2="19"/></svg>
-      </button>
+      <button id="btn-select" class="toolbar-text-btn" title="Mode sélection">Sélectionner</button>
       <div class="toolbar-more-wrap">
         <button class="toolbar-icon-btn" id="btn-more-actions" title="Plus d'actions">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
@@ -428,7 +426,7 @@
     selectionMode = true;
     selectedIds.clear();
     btnSelect.textContent = 'Annuler';
-    btnSelect.classList.add('btn-primary');
+    btnSelect.classList.add('active');
     bulkBar.style.display = 'flex';
     grid.classList.add('selection-mode');
     updateBulkCount();
@@ -438,7 +436,7 @@
     selectionMode = false;
     selectedIds.clear();
     btnSelect.textContent = 'Sélectionner';
-    btnSelect.classList.remove('btn-primary');
+    btnSelect.classList.remove('active');
     bulkBar.style.display = 'none';
     grid.classList.remove('selection-mode');
     grid.querySelectorAll('.book-card.selected').forEach(c => c.classList.remove('selected'));
