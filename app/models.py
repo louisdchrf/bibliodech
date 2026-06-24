@@ -1,9 +1,13 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import (
-    Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
+    Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from app.database import Base
+
+
+def _utcnow():
+    return datetime.now(timezone.utc)
 
 
 class Series(Base):
@@ -12,7 +16,7 @@ class Series(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False, unique=True, index=True)
     source = Column(String, nullable=False, default="manual")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
 
     books = relationship("Book", back_populates="series")
 
@@ -21,7 +25,7 @@ class Book(Base):
     __tablename__ = "books"
 
     id = Column(Integer, primary_key=True, index=True)
-    isbn = Column(String, nullable=True, index=True)
+    isbn = Column(String, nullable=True, index=True, unique=True)
     title = Column(String, nullable=False)
     subtitle = Column(String, nullable=True)
     authors = Column(Text, nullable=True)
@@ -40,7 +44,7 @@ class Book(Base):
     shelf = Column(String, nullable=True)
     location_id = Column(Integer, ForeignKey("shelves.id"), nullable=True)   # legacy shelf
     room_id = Column(Integer, ForeignKey("rooms.id"), nullable=True, index=True)
-    added_at = Column(DateTime, default=datetime.utcnow)
+    added_at = Column(DateTime, default=_utcnow)
     genre = Column(String, nullable=True)
     enrichment_status = Column(String, nullable=False, default="ok", index=True)
     enrichment_source = Column(String, nullable=True)  # source principale (ex: "sudoc", "bnf")
@@ -111,7 +115,7 @@ class Loan(Base):
     book_id = Column(Integer, ForeignKey("books.id"), nullable=False)
     borrower_id = Column(Integer, ForeignKey("borrowers.id"), nullable=True)   # emprunteur externe
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)           # ou compte du site
-    loan_date = Column(DateTime, nullable=False, default=datetime.utcnow)
+    loan_date = Column(DateTime, nullable=False, default=_utcnow)
     due_date = Column(DateTime, nullable=True)
     return_date = Column(DateTime, nullable=True)
     notes = Column(Text, nullable=True)
@@ -129,7 +133,7 @@ class AuditLog(Base):
     user_id    = Column(Integer, ForeignKey("users.id"), nullable=True)
     action     = Column(String, nullable=False)   # created | updated | enriched | relocated | deleted
     detail     = Column(Text, nullable=True)       # JSON des champs modifiés
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
 
     book = relationship("Book")
     user = relationship("User", foreign_keys=[user_id])
@@ -144,7 +148,7 @@ class SeriesProposal(Base):
     signal            = Column(String, nullable=False)          # prefix | author
     existing_series_id = Column(Integer, ForeignKey("series.id", ondelete="SET NULL"), nullable=True)
     status            = Column(String, nullable=False, default="pending", index=True)  # pending|accepted|rejected
-    detected_at       = Column(DateTime, default=datetime.utcnow)
+    detected_at       = Column(DateTime, default=_utcnow)
 
     existing_series   = relationship("Series")
 
@@ -156,7 +160,7 @@ class SeriesMissingVolume(Base):
     series_id  = Column(Integer, ForeignKey("series.id", ondelete="CASCADE"), nullable=False, index=True)
     position   = Column(Float, nullable=True)
     title      = Column(String, nullable=True)   # titre connu via DDG
-    detected_at = Column(DateTime, default=datetime.utcnow)
+    detected_at = Column(DateTime, default=_utcnow)
 
     series = relationship("Series")
 
@@ -179,7 +183,7 @@ class User(Base):
     must_change_password = Column(Boolean, default=False, nullable=False)
     email = Column(String, nullable=True)
     avatar = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
     default_room_id = Column(Integer, ForeignKey("rooms.id"), nullable=True)
 
     default_room = relationship("Room", foreign_keys=[default_room_id])
@@ -205,4 +209,4 @@ class AppLog(Base):
     category   = Column(String, nullable=False, default="system")   # task | scan | settings | system
     message    = Column(String, nullable=False)
     detail     = Column(Text, nullable=True)   # JSON optionnel
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=_utcnow, index=True)

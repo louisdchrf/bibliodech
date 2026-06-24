@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
@@ -143,7 +143,7 @@ def create_book(body: BookCreate, request: Request, db: Session = Depends(get_db
         source=body.source,
         work_key=body.work_key,
         shelf=body.shelf,
-        added_at=datetime.utcnow(),
+        added_at=datetime.now(timezone.utc),
     )
     db.add(book)
     db.commit()
@@ -388,6 +388,10 @@ def bulk_books(
                 b.authors = json.dumps(d.authors)
             if d.room_id is not None:
                 b.room_id = d.room_id
+            if d.series_id is not None:
+                b.series_id = d.series_id
+            if d.series_position is not None:
+                b.series_position = d.series_position
         db.commit()
         return {"updated": len(books)}
 
@@ -578,7 +582,6 @@ async def run_task_manual(task_id: str, request: Request, db: Session = Depends(
     require_contributor(user)
     from app import scheduler as sched
     from app.applog import log_task, log_error
-    from datetime import datetime, timezone
     sched._running[task_id] = {
         "label": sched.SCHEDULABLE_TASKS.get(task_id, task_id),
         "started_at": datetime.now(timezone.utc).isoformat(),

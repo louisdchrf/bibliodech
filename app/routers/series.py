@@ -647,7 +647,7 @@ async def _detect(db: Session, task_id: str = "detect-series") -> dict:
 
     # ── Signal 1 : préfixe + éditeur ────────────────────────────────────────
     for (fw, pub), group in prefix_groups.items():
-        if len(group) < 1:
+        if len(group) < 2:
             continue
         known_sids = prefix_pub_series.get((fw, pub), set())
 
