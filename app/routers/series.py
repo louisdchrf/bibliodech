@@ -1173,12 +1173,16 @@ async def _bnf_check_one_series(series: Series, db) -> dict:
                 continue
             root = ET.fromstring(resp.text)
             for rec in root.findall(".//mxc:record", ns_map):
+                name_225 = None
+                name_461 = None
                 for df in rec.findall("mxc:datafield", ns_map):
-                    if df.get("tag") == "225":
-                        subs = {sf.get("code"): sf.text for sf in df.findall("mxc:subfield", ns_map)}
-                        if subs.get("v") and subs.get("a"):
-                            bnf_series_name = subs["a"]
-                            break
+                    tag = df.get("tag")
+                    subs = {sf.get("code"): sf.text for sf in df.findall("mxc:subfield", ns_map)}
+                    if tag == "225" and subs.get("a") and subs.get("v"):
+                        name_225 = subs["a"]
+                    elif tag == "461" and subs.get("t") and subs.get("v"):
+                        name_461 = subs["t"]
+                bnf_series_name = name_225 or name_461
                 if bnf_series_name:
                     break
             if bnf_series_name:
@@ -1207,6 +1211,12 @@ async def _bnf_check_one_series(series: Series, db) -> dict:
                     if len(v) in (10, 13):
                         isbn_val = v
                 if tag == "225" and _norm(subs.get("a", "")) == norm_search:
+                    series_match = True
+                    try:
+                        vol_num = int(re.sub(r"[^\d]", "", subs.get("v", "") or ""))
+                    except ValueError:
+                        pass
+                if tag == "461" and _norm(subs.get("t", "")) == norm_search:
                     series_match = True
                     try:
                         vol_num = int(re.sub(r"[^\d]", "", subs.get("v", "") or ""))
