@@ -12,6 +12,7 @@
           <th>Utilisateur</th>
           <th>Rôle</th>
           <th>Statut</th>
+          <th>Localisation</th>
           <th>Créé le</th>
           <th>Actions</th>
         </tr>
@@ -70,6 +71,10 @@
           <option value="admin">Admin</option>
         </select>
       </div>
+      <div class="field" id="permissions-field">
+        <label>Accès aux localisations</label>
+        <div id="edit-permissions-list" style="display:flex;flex-direction:column;gap:.4rem;margin-top:.35rem"></div>
+      </div>
       <div class="form-actions">
         <button type="submit" class="btn btn-primary">Enregistrer</button>
       </div>
@@ -99,18 +104,82 @@
   const editModalClose = document.getElementById('edit-modal-close');
   const editForm = document.getElementById('edit-user-form');
   const editMsg = document.getElementById('edit-user-msg');
+  const permsList = document.getElementById('edit-permissions-list');
+  let _rooms = [];
+  let _editingUserId = null;
+
+  async function loadRooms() {
+    const res = await fetch('/api/rooms');
+    if (!res.ok) return;
+    _rooms = await res.json();
+  }
+
+  async function loadAndRenderPermissions(userId) {
+    const res = await fetch(`/api/users/${userId}/permissions`);
+    const perms = res.ok ? await res.json() : [];
+    const permMap = {};
+    perms.forEach(p => { permMap[p.room_id] = p.access; });
+
+    permsList.innerHTML = '';
+    if (!_rooms.length) {
+      permsList.innerHTML = '<span style="font-size:.82rem;color:var(--color-text-muted)">Aucune salle configurée</span>';
+      return;
+    }
+    for (const room of _rooms) {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:.75rem';
+      const access = permMap[room.id] || '';
+      row.innerHTML = `
+        <span style="font-size:.85rem">${escHtml(room.name)}</span>
+        <select class="select-input perm-select" data-room="${room.id}" style="width:auto;font-size:.82rem">
+          <option value="">Aucun</option>
+          <option value="read" ${access === 'read' ? 'selected' : ''}>Lecture</option>
+          <option value="write" ${access === 'write' ? 'selected' : ''}>Écriture</option>
+        </select>`;
+      permsList.appendChild(row);
+    }
+  }
+
+  async function savePermissions(userId) {
+    const entries = [];
+    permsList.querySelectorAll('.perm-select').forEach(sel => {
+      if (sel.value) entries.push({ room_id: parseInt(sel.dataset.room), access: sel.value });
+    });
+    await fetch(`/api/users/${userId}/permissions`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(entries),
+    });
+  }
 
   async function loadUsers() {
     const res = await fetch('/api/users');
     if (!res.ok) return;
     const users = await res.json();
     tbody.innerHTML = '';
+    // Charger toutes les permissions en parallèle
+    const permsMap = {};
+    await Promise.all(users.map(async u => {
+      const r = await fetch(`/api/users/${u.id}/permissions`);
+      if (r.ok) permsMap[u.id] = await r.json();
+      else permsMap[u.id] = [];
+    }));
+
     users.forEach(u => {
+      const perms = permsMap[u.id] || [];
+      const writeRooms = perms.filter(p => p.access === 'write').map(p => _rooms.find(r => r.id === p.room_id)?.name).filter(Boolean);
+      const readRooms  = perms.filter(p => p.access === 'read').map(p => _rooms.find(r => r.id === p.room_id)?.name).filter(Boolean);
+      const locLabel = [
+        ...writeRooms.map(n => `<span class="badge badge-write-room">${escHtml(n)}</span>`),
+        ...readRooms.map(n => `<span class="badge badge-read-room">${escHtml(n)}</span>`),
+      ].join(' ') || '<span style="color:var(--color-text-muted);font-size:.8rem">—</span>';
+
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td><strong>${escHtml(u.username)}</strong></td>
         <td><span class="badge badge-role-${u.role}">${u.role === 'admin' ? 'Admin' : 'Contributeur'}</span></td>
         <td><span class="badge ${u.is_active ? 'badge-active' : 'badge-inactive'}">${u.is_active ? 'Actif' : 'Inactif'}</span></td>
+        <td>${locLabel}</td>
         <td>${fmtDate(u.created_at)}</td>
         <td class="user-actions">
           <button class="btn btn-sm btn-ghost edit-btn" data-id="${u.id}" data-username="${escHtml(u.username)}" data-role="${u.role}">Modifier</button>
@@ -122,13 +191,16 @@
     });
 
     tbody.querySelectorAll('.edit-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.getElementById('edit-user-id').value = btn.dataset.id;
+      btn.addEventListener('click', async () => {
+        _editingUserId = btn.dataset.id;
+        document.getElementById('edit-user-id').value = _editingUserId;
         document.getElementById('edit-username').value = btn.dataset.username;
         document.getElementById('edit-password').value = '';
         document.getElementById('edit-role').value = btn.dataset.role;
         editMsg.textContent = '';
+        permsList.innerHTML = '<span style="font-size:.82rem;color:var(--color-text-muted)">Chargement…</span>';
         editModal.style.display = 'flex';
+        await loadAndRenderPermissions(_editingUserId);
       });
     });
 
@@ -198,20 +270,21 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    if (res.ok) {
-      editModal.style.display = 'none';
-      loadUsers();
-    } else {
+    if (!res.ok) {
       const err = await res.json();
       editMsg.textContent = err.detail || 'Erreur';
       editMsg.className = 'edit-msg edit-msg-err';
+      return;
     }
+    await savePermissions(id);
+    editModal.style.display = 'none';
+    loadUsers();
   });
 
   editModalClose.addEventListener('click', () => { editModal.style.display = 'none'; });
   editModal.addEventListener('click', (e) => { if (e.target === editModal) editModal.style.display = 'none'; });
 
-  loadUsers();
+  loadRooms().then(loadUsers);
 })();
 </script>
 {% endblock %}

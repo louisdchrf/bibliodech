@@ -20,6 +20,10 @@
         <option value="no">— Sans couverture</option>
         <option value="yes">— Avec couverture</option>
       </select>
+      <select id="filter-genre" class="select-input">
+        <option value="">Tous les genres</option>
+        <option value="none">— Sans genre</option>
+      </select>
       <select id="filter-source" class="select-input">
         <option value="">Toutes les sources</option>
       </select>
@@ -80,6 +84,7 @@
   const filterLocation = document.getElementById('filter-location');
   const filterSeries = document.getElementById('filter-series');
   const filterCover = document.getElementById('filter-cover');
+  const filterGenre = document.getElementById('filter-genre');
   const filterSource = document.getElementById('filter-source');
   const sortBy = document.getElementById('sort-by');
   const modalOverlay = document.getElementById('bulk-modal-overlay');
@@ -151,6 +156,8 @@
     if (src) params.set('source', src);
     const ser = filterSeries.value;
     if (ser) params.set('series_id', ser);
+    const gen = filterGenre.value;
+    if (gen) params.set('genre', gen);
     const cov = filterCover.value;
     if (cov) params.set('has_cover', cov);
     params.set('sort_by', sortBy.value);
@@ -414,6 +421,7 @@
   filterLocation.addEventListener('change', loadBooks);
   filterSeries.addEventListener('change', loadBooks);
   filterCover.addEventListener('change', loadBooks);
+  filterGenre.addEventListener('change', loadBooks);
   filterSource.addEventListener('change', loadBooks);
   sortBy.addEventListener('change', loadBooks);
 
@@ -523,7 +531,40 @@
       + series.map(s => `<option value="${s.id}">${escHtml(s.name)} (${s.book_count})</option>`).join('');
   }
 
-  Promise.all([loadLocations(), loadSourceFilter(), loadSeriesFilter()]).then(async () => {
+  async function loadGenreFilter() {
+    const res = await fetch('/api/books/genres');
+    if (!res.ok) return;
+    const genres = await res.json();
+    if (!genres.length) return;
+    filterGenre.innerHTML = '<option value="">Tous les genres</option>'
+      + '<option value="none">— Sans genre</option>'
+      + genres.map(g => `<option value="${escHtml(g.id)}">${escHtml(g.id)} (${g.count})</option>`).join('');
+  }
+
+  Promise.all([loadLocations(), loadSourceFilter(), loadSeriesFilter(), loadGenreFilter()]).then(async () => {
+    // Appliquer les salles en écriture comme filtre par défaut
+    if (!filterLocation.value) {
+      const meRes = await fetch('/api/me');
+      if (meRes.ok) {
+        const me = await meRes.json();
+        if (me.write_room_ids && me.write_room_ids.length) {
+          // Option spéciale "mes-salles" ou valeur csv si plusieurs
+          if (me.write_room_ids.length === 1) {
+            filterLocation.value = String(me.write_room_ids[0]);
+          } else {
+            // Ajouter une option "Mes salles" dynamique si absente
+            const val = me.write_room_ids.join(',');
+            if (!filterLocation.querySelector(`option[value="${val}"]`)) {
+              const opt = document.createElement('option');
+              opt.value = val;
+              opt.textContent = 'Mes salles';
+              filterLocation.insertBefore(opt, filterLocation.options[1]);
+            }
+            filterLocation.value = val;
+          }
+        }
+      }
+    }
     await loadBooks();
     updateReenrichCount();
     // Ouvrir directement un livre si ?book=ID dans l'URL

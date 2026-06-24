@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user, hash_password, require_admin
 from app.database import get_db
-from app.models import User
+from app.models import Room, User, UserRoomPermission
 from app.schemas import UserCreate, UserOut, UserUpdate
 import app.settings as cfg
 
@@ -103,6 +103,11 @@ def update_user(
         target.is_active = body.is_active
     if body.must_change_password is not None:
         target.must_change_password = body.must_change_password
+    if "default_room_id" in body.model_fields_set:
+        if body.default_room_id is not None:
+            if not db.query(Room).filter(Room.id == body.default_room_id).first():
+                raise HTTPException(status_code=404, detail="Salle introuvable")
+        target.default_room_id = body.default_room_id
 
     db.commit()
     db.refresh(target)
@@ -167,9 +172,23 @@ def change_own_password(body: dict, request: Request, db: Session = Depends(get_
     return {"ok": True}
 
 
+@router.get("/api/me")
+def get_own_profile(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user(request, db)
+    perms = db.query(UserRoomPermission).filter(UserRoomPermission.user_id == user.id).all()
+    return {
+        "id": user.id,
+        "username": user.username,
+        "role": user.role,
+        "email": user.email,
+        "permissions": [{"room_id": p.room_id, "access": p.access} for p in perms],
+        "write_room_ids": [p.room_id for p in perms if p.access == "write"],
+    }
+
+
 @router.put("/api/me")
 def update_own_profile(body: dict, request: Request, db: Session = Depends(get_db)):
-    """L'utilisateur connecté met à jour son propre profil (username, email)."""
+    """L'utilisateur connecté met à jour son propre profil (username, email, default_room_id)."""
     user = get_current_user(request, db)
     if "username" in body:
         username = body["username"].strip()
@@ -181,8 +200,14 @@ def update_own_profile(body: dict, request: Request, db: Session = Depends(get_d
         user.username = username
     if "email" in body:
         user.email = body["email"].strip() or None
+    if "default_room_id" in body:
+        room_id = body["default_room_id"]
+        if room_id is not None:
+            if not db.query(Room).filter(Room.id == room_id).first():
+                raise HTTPException(status_code=404, detail="Salle introuvable")
+        user.default_room_id = room_id
     db.commit()
-    return {"ok": True, "username": user.username}
+    return {"ok": True, "username": user.username, "default_room_id": user.default_room_id}
 
 
 @router.post("/api/me/avatar")
@@ -210,6 +235,38 @@ async def upload_avatar(request: Request, db: Session = Depends(get_db)):
     user.avatar = f"/avatars/{user.id}.jpg"
     db.commit()
     return {"ok": True, "avatar": user.avatar}
+
+
+@router.get("/api/users/{user_id}/permissions")
+def get_user_permissions(user_id: int, request: Request, db: Session = Depends(get_db)):
+    current = get_current_user(request, db)
+    require_admin(current)
+    perms = db.query(UserRoomPermission).filter(UserRoomPermission.user_id == user_id).all()
+    return [{"room_id": p.room_id, "access": p.access} for p in perms]
+
+
+@router.put("/api/users/{user_id}/permissions")
+def set_user_permissions(user_id: int, body: list[dict], request: Request, db: Session = Depends(get_db)):
+    """Remplace toutes les permissions d'un utilisateur. body = [{room_id, access}]"""
+    current = get_current_user(request, db)
+    require_admin(current)
+
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+
+    db.query(UserRoomPermission).filter(UserRoomPermission.user_id == user_id).delete()
+    for entry in body:
+        room_id = entry.get("room_id")
+        access = entry.get("access")
+        if not room_id or access not in ("read", "write"):
+            continue
+        if not db.query(Room).filter(Room.id == room_id).first():
+            continue
+        db.add(UserRoomPermission(user_id=user_id, room_id=room_id, access=access))
+    db.commit()
+    perms = db.query(UserRoomPermission).filter(UserRoomPermission.user_id == user_id).all()
+    return [{"room_id": p.room_id, "access": p.access} for p in perms]
 
 
 @router.delete("/api/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)

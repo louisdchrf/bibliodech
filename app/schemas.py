@@ -65,6 +65,7 @@ class BookUpdate(BaseModel):
     location_id: Optional[int] = None
     room_id: Optional[int] = None
     enrichment_status: Optional[str] = None
+    genre: Optional[str] = None
 
 
 class BookOut(BookBase):
@@ -102,6 +103,7 @@ class UserUpdate(BaseModel):
     is_active: Optional[bool] = None
     must_change_password: Optional[bool] = None
     email: Optional[str] = None
+    default_room_id: Optional[int] = None
 
 
 class UserOut(BaseModel):
@@ -112,6 +114,7 @@ class UserOut(BaseModel):
     must_change_password: bool = False
     email: Optional[str] = None
     created_at: datetime
+    default_room_id: Optional[int] = None
 
     model_config = {"from_attributes": True}
 

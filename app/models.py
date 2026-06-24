@@ -41,6 +41,7 @@ class Book(Base):
     location_id = Column(Integer, ForeignKey("shelves.id"), nullable=True)   # legacy shelf
     room_id = Column(Integer, ForeignKey("rooms.id"), nullable=True, index=True)
     added_at = Column(DateTime, default=datetime.utcnow)
+    genre = Column(String, nullable=True)
     enrichment_status = Column(String, nullable=False, default="ok", index=True)
     enrichment_source = Column(String, nullable=True)  # source principale (ex: "sudoc", "bnf")
     source_data = Column(Text, nullable=True)  # JSON: résultats bruts par source
@@ -179,6 +180,21 @@ class User(Base):
     email = Column(String, nullable=True)
     avatar = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    default_room_id = Column(Integer, ForeignKey("rooms.id"), nullable=True)
+
+    default_room = relationship("Room", foreign_keys=[default_room_id])
+
+
+class UserRoomPermission(Base):
+    __tablename__ = "user_room_permissions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    room_id = Column(Integer, ForeignKey("rooms.id", ondelete="CASCADE"), nullable=False)
+    access = Column(String, nullable=False, default="read")  # "read" | "write"
+
+    user = relationship("User", foreign_keys=[user_id])
+    room = relationship("Room", foreign_keys=[room_id])
 
 
 class AppLog(Base):

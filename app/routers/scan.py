@@ -175,6 +175,8 @@ async def _enrich_book(book_id: int, isbn: str, _progress_key: str | None = None
         book.language = info.get("language")
         book.source = info.get("source", "openlibrary")
         book.work_key = info.get("work_key")
+        if info.get("genre") and not book.genre:
+            book.genre = info["genre"]
 
         # Couverture — chaîne de fallback
         book.cover_url = await _resolve_cover(isbn, info)

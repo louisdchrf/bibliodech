@@ -93,4 +93,5 @@ def book_to_dict(book: Book) -> dict:
         "series_id": book.series_id,
         "series_name": book.series.name if book.series else None,
         "series_position": book.series_position,
+        "genre": book.genre,
     }

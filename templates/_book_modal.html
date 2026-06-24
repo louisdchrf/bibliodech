@@ -147,6 +147,7 @@
     { key:'publish_date', label:'Date' }, { key:'language', label:'Langue' },
     { key:'page_count', label:'Pages' },
     { key:'series_name', label:'Série (source)' }, { key:'series_volume', label:'Tome (source)' },
+    { key:'genre', label:'Genre' },
   ];
 
   function renderSourcesTab(book) {
@@ -214,6 +215,7 @@
           ${book.page_count ? `<p class="modal-pages">${book.page_count} pages</p>` : ''}
           <div class="modal-badges">
             ${book.isbn ? `<span class="badge badge-isbn">ISBN: ${escHtml(book.isbn)}</span>` : ''}
+            ${book.genre ? `<span class="badge badge-genre">${escHtml(book.genre)}</span>` : ''}
             <span class="badge badge-source badge-source-${escHtml(book.source)}">${sourceLabel(book.source)}</span>
           </div>
         </div>
@@ -231,6 +233,7 @@
             <div class="field"><label>Titre</label><input type="text" name="title" value="${escHtml(book.title)}" required></div>
             <div class="field"><label>Auteurs (séparés par virgule)</label><input type="text" name="authors" value="${escHtml(authors)}"></div>
             <div class="field"><label>Éditeur</label><input type="text" name="publisher" value="${escHtml(book.publisher || '')}"></div>
+            <div class="field"><label>Genre</label><input type="text" name="genre" value="${escHtml(book.genre || '')}" placeholder="ex: Bandes dessinées, Roman…"></div>
           </div>
           <div class="field-separator">Série</div>
           <div class="form-grid form-grid-2">
@@ -353,7 +356,7 @@
       const seriesId = seriesVal ? parseInt(seriesVal) : null;
       const seriesPosVal = document.getElementById('bm-series-pos')?.value;
       const seriesPos = seriesPosVal !== '' && seriesPosVal !== null ? parseFloat(seriesPosVal) : null;
-      const payload = { title: fd.get('title'), authors: authorsList, publisher: fd.get('publisher')||null, room_id: roomId, series_id: seriesId, series_position: seriesPos };
+      const payload = { title: fd.get('title'), authors: authorsList, publisher: fd.get('publisher')||null, genre: fd.get('genre')||null, room_id: roomId, series_id: seriesId, series_position: seriesPos };
       const res = await fetch(`/api/books/${bookId}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
       const msg = document.getElementById('bm-edit-msg');
       if (res.ok) {

@@ -391,6 +391,20 @@
   let lastScanned   = null;
   let lastScannedAt = 0;
   const DEBOUNCE_MS = 3000;
+  let scanPaused    = false;
+
+  function isValidBarcode(code) {
+    if (code.length === 13) {
+      const sum = code.split('').slice(0, 12).reduce((s, d, i) => s + parseInt(d) * (i % 2 === 0 ? 1 : 3), 0);
+      return (10 - sum % 10) % 10 === parseInt(code[12]);
+    }
+    if (code.length === 10) {
+      const sum = code.split('').slice(0, 9).reduce((s, d, i) => s + parseInt(d) * (10 - i), 0);
+      const check = (11 - sum % 11) % 11;
+      return check === (code[9] === 'X' ? 10 : parseInt(code[9]));
+    }
+    return false;
+  }
 
   // ── Charger Quagga2 à la demande ─────────────────────────────────────────
   function loadQuagga() {
@@ -448,12 +462,40 @@
     Quagga.onDetected(onBarcodeDetected);
   }
 
+  function dismissToast(toast, delayMs) {
+    setTimeout(() => {
+      toast.style.transition = 'opacity .4s';
+      toast.style.opacity = '0';
+      setTimeout(() => toast.remove(), 420);
+    }, delayMs);
+  }
+
   function onBarcodeDetected(result) {
+    if (scanPaused) return;
     const raw = (result.codeResult.code || '').replace(/\D/g, '');
     if (!raw || (raw.length !== 13 && raw.length !== 10)) return;
+    if (!isValidBarcode(raw)) return;
     const now = Date.now();
     if (raw === lastScanned && now - lastScannedAt < DEBOUNCE_MS) return;
     lastScanned = raw; lastScannedAt = now;
+
+    // Pause de 2s pour laisser le temps de voir le résultat
+    scanPaused = true;
+    setTimeout(() => { scanPaused = false; }, 1000);
+
+    // Vibration (Android) + bip sonore (iOS/Safari)
+    if (navigator.vibrate) navigator.vibrate(240);
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = 1800;
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.08);
+    } catch (_) {}
 
     // Feedback visuel immédiat dans le mini-feed
     const feed = document.getElementById('cam-live-feed');
@@ -473,14 +515,17 @@
       if (data.status === 'exists') {
         toast.className = 'cam-toast cam-toast-warn';
         toast.innerHTML = `⚠ <strong>${escHtml(data.book.title)}</strong> <span>déjà dans la bibliothèque</span>`;
+        dismissToast(toast, 2000);
       } else {
         toast.className = 'cam-toast cam-toast-ok';
         toast.innerHTML = `✓ <strong>${escHtml(data.book.title || raw)}</strong>`;
         if (data.status === 'pending') pollToast(toast, data.book.id, raw);
+        else dismissToast(toast, 2000);
       }
     }).catch(() => {
       toast.className = 'cam-toast cam-toast-err';
       toast.innerHTML = `✗ Erreur réseau — ${raw}`;
+      dismissToast(toast, 2000);
     });
   }
 
@@ -497,9 +542,11 @@
       if (data.enrichment_status === 'ok') {
         toast.className = 'cam-toast cam-toast-ok';
         toast.innerHTML = `✓ <strong>${escHtml(data.book.title)}</strong>`;
+        dismissToast(toast, 2000);
       } else if (data.enrichment_status === 'not_found') {
         toast.className = 'cam-toast cam-toast-warn';
         toast.innerHTML = `? <strong>${isbn}</strong> <span>introuvable</span>`;
+        dismissToast(toast, 2000);
       } else {
         pollToast(toast, bookId, isbn, attempt + 1);
       }

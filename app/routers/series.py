@@ -1111,85 +1111,179 @@ async def check_bnf_volumes(series_id: int, request: Request, db: Session = Depe
     if not series:
         raise HTTPException(404)
 
-    volumes_found: set[int] = set()
-    titles_found: dict[int, str] = {}
-    isbn_by_volume: dict[int, str] = {}
-
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            # BnF SRU — recherche par nom de série via bib.anywhere + filtre sur champ 225
-            # (bib.serie n'est pas un index SRU valide sur le catalogue BnF)
-            resp = await client.get(
-                "https://catalogue.bnf.fr/api/SRU",
-                params={
-                    "version": "1.2",
-                    "operation": "searchRetrieve",
-                    "query": f'bib.anywhere adj "{series.name}" and bib.doctype any "a"',
-                    "maximumRecords": "100",
-                    "recordSchema": "unimarcxchange",
-                },
-            )
-            if resp.status_code == 200:
-                root = ET.fromstring(resp.text)
-                ns_map = {
-                    "srw": "http://www.loc.gov/zing/srw/",
-                    "mxc": "info:lc/xmlns/marcxchange-v2",
-                }
-                norm_series = _norm(series.name)
-                for record in root.findall(".//mxc:record", ns_map):
-                    vol_num = None
-                    title_val = None
-                    isbn_val = None
-                    series_match = False
-                    for df in record.findall("mxc:datafield", ns_map):
-                        tag = df.get("tag", "")
-                        subs = {sf.get("code"): sf.text for sf in df.findall("mxc:subfield", ns_map)}
-                        # Champ 010 = ISBN
-                        if tag == "010" and subs.get("a"):
-                            v = re.sub(r"[^\dX]", "", subs["a"].upper())
-                            if len(v) in (10, 13):
-                                isbn_val = v
-                        # Champ 225 = mention de collection : $a = nom, $v = volume
-                        if tag == "225":
-                            col_name = subs.get("a", "")
-                            if _norm(col_name) == norm_series:
-                                series_match = True
-                                try:
-                                    vol_num = int(re.sub(r"[^\d]", "", subs.get("v", "") or ""))
-                                except ValueError:
-                                    pass
-                        # Champ 200 = titre propre
-                        if tag == "200" and subs.get("a"):
-                            title_val = subs["a"]
-                    if series_match and vol_num and vol_num > 0:
-                        volumes_found.add(vol_num)
-                        if title_val:
-                            titles_found[vol_num] = title_val
-                        if isbn_val:
-                            isbn_by_volume[vol_num] = isbn_val
-    except Exception:
-        pass
-
-    if not volumes_found:
+    result = await _bnf_check_one_series(series, db)
+    if not result.get("volumes_found"):
         return {"series_id": series_id, "name": series.name, "volumes_found": [], "max_known": None, "source": None}
-
-    # Vérifier quels ISBNs sont déjà présents dans la bibliothèque
-    in_library: dict[int, int] = {}  # vol → book_id si trouvé
-    for vol, isbn in isbn_by_volume.items():
-        book = db.query(Book).filter(Book.isbn == isbn).first()
-        if book:
-            in_library[vol] = book.id
 
     return {
         "series_id": series_id,
         "name": series.name,
+        "volumes_found": result["volumes_found"],
+        "max_known": max(result["volumes_found"]),
+        "titles": result.get("titles", {}),
+        "isbn_by_volume": result["isbn_by_volume"],
+        "in_library": result["in_library"],
+        "source": "BnF",
+    }
+
+
+def _isbn10_from_13(isbn13: str) -> str | None:
+    if not isbn13 or not isbn13.startswith("978") or len(isbn13) != 13:
+        return None
+    body = isbn13[3:12]
+    s = sum((10 - i) * int(d) for i, d in enumerate(body))
+    r = (11 - s % 11) % 11
+    return body + ("X" if r == 10 else str(r))
+
+
+def _isbn13_from_10(isbn10: str) -> str | None:
+    if not isbn10 or len(isbn10) != 10:
+        return None
+    body = "978" + isbn10[:9]
+    s = sum(int(d) * (1 if i % 2 == 0 else 3) for i, d in enumerate(body))
+    return body + str((10 - s % 10) % 10)
+
+
+async def _bnf_check_one_series(series: Series, db) -> dict:
+    """
+    Interroge la BnF en 2 étapes pour une série :
+    1. ISBN d'un livre possédé → nom exact BnF (champ 225 $a)
+    2. Recherche tous les volumes avec ce nom, extrait ISBNs, rattache les livres trouvés
+    Retourne un dict avec volumes_found, isbn_by_volume, in_library, assigned.
+    """
+    ns_map = {"srw": "http://www.loc.gov/zing/srw/", "mxc": "info:lc/xmlns/marcxchange-v2"}
+    volumes_found: set[int] = set()
+    titles_found: dict[int, str] = {}
+    isbn_by_volume: dict[int, str] = {}
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        # Étape 1 : trouver le nom exact BnF via ISBN d'un livre possédé
+        bnf_series_name: str | None = None
+        for book in [b for b in series.books if b.isbn][:5]:
+            isbn10 = _isbn10_from_13(book.isbn) or (book.isbn if len(book.isbn) == 10 else None)
+            if not isbn10:
+                continue
+            resp = await client.get(
+                "https://catalogue.bnf.fr/api/SRU",
+                params={"version": "1.2", "operation": "searchRetrieve",
+                        "query": f'bib.isbn any "{isbn10}"',
+                        "maximumRecords": "3", "recordSchema": "unimarcxchange"},
+            )
+            if resp.status_code != 200:
+                continue
+            root = ET.fromstring(resp.text)
+            for rec in root.findall(".//mxc:record", ns_map):
+                for df in rec.findall("mxc:datafield", ns_map):
+                    if df.get("tag") == "225":
+                        subs = {sf.get("code"): sf.text for sf in df.findall("mxc:subfield", ns_map)}
+                        if subs.get("v") and subs.get("a"):
+                            bnf_series_name = subs["a"]
+                            break
+                if bnf_series_name:
+                    break
+            if bnf_series_name:
+                break
+
+        search_name = bnf_series_name or series.name
+        norm_search = _norm(search_name)
+
+        # Étape 2 : trouver tous les volumes
+        resp2 = await client.get(
+            "https://catalogue.bnf.fr/api/SRU",
+            params={"version": "1.2", "operation": "searchRetrieve",
+                    "query": f'bib.anywhere adj "{search_name}"',
+                    "maximumRecords": "100", "recordSchema": "unimarcxchange"},
+        )
+        if resp2.status_code != 200:
+            return {}
+        root2 = ET.fromstring(resp2.text)
+        for record in root2.findall(".//mxc:record", ns_map):
+            vol_num = None; title_val = None; isbn_val = None; series_match = False
+            for df in record.findall("mxc:datafield", ns_map):
+                tag = df.get("tag", "")
+                subs = {sf.get("code"): sf.text for sf in df.findall("mxc:subfield", ns_map)}
+                if tag == "010" and subs.get("a"):
+                    v = re.sub(r"[^\dX]", "", subs["a"].upper())
+                    if len(v) in (10, 13):
+                        isbn_val = v
+                if tag == "225" and _norm(subs.get("a", "")) == norm_search:
+                    series_match = True
+                    try:
+                        vol_num = int(re.sub(r"[^\d]", "", subs.get("v", "") or ""))
+                    except ValueError:
+                        pass
+                if tag == "200" and subs.get("a"):
+                    title_val = subs["a"]
+            if series_match and vol_num and vol_num > 0:
+                volumes_found.add(vol_num)
+                if title_val:
+                    titles_found[vol_num] = title_val
+                if isbn_val:
+                    if len(isbn_val) == 10:
+                        isbn_val = _isbn13_from_10(isbn_val) or isbn_val
+                    isbn_by_volume[vol_num] = isbn_val
+
+    # Rattacher les livres trouvés qui ne sont pas encore dans la série
+    in_library: dict[int, int] = {}
+    assigned = 0
+    for vol, isbn in isbn_by_volume.items():
+        book = db.query(Book).filter(Book.isbn == isbn).first()
+        if book:
+            in_library[vol] = book.id
+            if book.series_id != series.id:
+                book.series_id = series.id
+                book.series_position = float(vol)
+                assigned += 1
+    if assigned:
+        db.commit()
+
+    return {
         "volumes_found": sorted(volumes_found),
-        "max_known": max(volumes_found),
         "titles": titles_found,
         "isbn_by_volume": isbn_by_volume,
         "in_library": in_library,
-        "source": "BnF",
+        "assigned": assigned,
     }
+
+
+async def _bnf_series_logic(db, task_id: str = "bnf-series") -> dict:
+    """
+    Tâche batch : pour chaque série avec des trous, interroge la BnF
+    et rattache automatiquement les livres trouvés.
+    """
+    from app import scheduler as sched
+
+    # Séries ayant au moins 2 livres avec position et au moins un trou
+    all_series = db.query(Series).all()
+    series_with_gaps: list[Series] = []
+    for s in all_series:
+        positions = sorted(set(
+            int(b.series_position) for b in s.books
+            if b.series_position is not None and b.series_position == int(b.series_position)
+        ))
+        if len(positions) >= 2:
+            min_p, max_p = min(positions), max(positions)
+            if any(i not in set(positions) for i in range(min_p, max_p + 1)):
+                series_with_gaps.append(s)
+
+    total = len(series_with_gaps)
+    total_assigned = 0
+    total_found = 0
+
+    if task_id in sched._running:
+        sched._running[task_id]["progress"] = {"current": 0, "total": total}
+
+    for i, series in enumerate(series_with_gaps):
+        try:
+            result = await _bnf_check_one_series(series, db)
+            total_found += len(result.get("volumes_found", []))
+            total_assigned += result.get("assigned", 0)
+        except Exception:
+            pass
+        if task_id in sched._running:
+            sched._running[task_id]["progress"]["current"] = i + 1
+
+    return {"series_checked": total, "volumes_found": total_found, "assigned": total_assigned}
 
 
 @router.post("/api/series/purge")

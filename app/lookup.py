@@ -467,6 +467,8 @@ async def _lookup_bnf(client: httpx.AsyncClient, isbn: str) -> dict | None:
         date_raw = _bnf_text(rec, "date")
         language = _bnf_text(rec, "language")
         description = _bnf_text(rec, "description")
+        # dc:type = "Texte imprimé" → inutile ; genre sera récupéré via UNIMARC séparément
+        genre = None
 
         # BNF cover via Open Library covers API (fallback)
         cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg"
@@ -497,10 +499,61 @@ async def _lookup_bnf(client: httpx.AsyncClient, isbn: str) -> dict | None:
             "work_key": None,
             "series_name": series_name,
             "series_position": series_position,
+            "genre": genre,
         }
     except Exception as e:
         log.warning("lookup: BNF error: %s: %s", type(e).__name__, e)
         return None
+
+
+async def _lookup_genre_unimarc(client: httpx.AsyncClient, isbn: str) -> str | None:
+    """
+    Interroge BnF en UNIMARC pour extraire le genre (608 $a) ou le sujet (606 $a).
+    608 $a = forme/genre du document : "Bandes dessinées", "Romans", "Dictionnaires"…
+    606 $a = sujet thématique (fallback).
+    bib.isbn n'accepte que l'ISBN-10 — on essaie les deux formes.
+    """
+    ns = {"srw": "http://www.loc.gov/zing/srw/", "mxc": "info:lc/xmlns/marcxchange-v2"}
+
+    def _to_isbn10(isbn13: str) -> str | None:
+        if not isbn13 or not isbn13.startswith("978") or len(isbn13) != 13:
+            return None
+        body = isbn13[3:12]
+        s = sum((10 - i) * int(d) for i, d in enumerate(body))
+        r = (11 - s % 11) % 11
+        return body + ("X" if r == 10 else str(r))
+
+    queries = [f'bib.isbn any "{isbn}"']
+    if len(isbn) == 13:
+        isbn10 = _to_isbn10(isbn)
+        if isbn10:
+            queries.append(f'bib.isbn any "{isbn10}"')
+
+    for query in queries:
+        try:
+            resp = await client.get(
+                "https://catalogue.bnf.fr/api/SRU",
+                params={"version": "1.2", "operation": "searchRetrieve",
+                        "query": query, "maximumRecords": "1",
+                        "recordSchema": "unimarcxchange"},
+            )
+            if resp.status_code != 200:
+                continue
+            root = ET.fromstring(resp.text)
+            for rec in root.findall(".//mxc:record", ns):
+                # 608 $a = forme/genre (priorité)
+                for df in rec.findall("mxc:datafield[@tag='608']", ns):
+                    val = df.findtext("mxc:subfield[@code='a']", namespaces=ns)
+                    if val and val.strip():
+                        return val.strip().rstrip(".")
+                # 606 $a = sujet (fallback)
+                for df in rec.findall("mxc:datafield[@tag='606']", ns):
+                    val = df.findtext("mxc:subfield[@code='a']", namespaces=ns)
+                    if val and val.strip():
+                        return val.strip().rstrip(".")
+        except Exception:
+            continue
+    return None
 
 
 # ── SUDOC (Système Universitaire de Documentation) ───────────────────────────
@@ -599,7 +652,10 @@ async def _lookup_sudoc(client: httpx.AsyncClient, isbn: str) -> dict | None:
         # Résumé (330 $a)
         description = _unimarc_subfield(record, "330", "a")
 
-        log.debug("lookup: SUDOC %s → %r série=%r pos=%s", isbn, title, series_name, series_position)
+        # Genre (608 $a = forme/genre ; 606 $a = sujet/thème)
+        genre = _unimarc_subfield(record, "608", "a") or _unimarc_subfield(record, "606", "a")
+
+        log.debug("lookup: SUDOC %s → %r série=%r pos=%s genre=%r", isbn, title, series_name, series_position, genre)
 
         return {
             "title": title,
@@ -615,6 +671,7 @@ async def _lookup_sudoc(client: httpx.AsyncClient, isbn: str) -> dict | None:
             "work_key": None,
             "series_name": series_name,
             "series_position": series_position or _extract_series_position(title, subtitle),
+            "genre": genre,
         }
     except Exception as e:
         log.warning("lookup: SUDOC error: %s: %s", type(e).__name__, e)

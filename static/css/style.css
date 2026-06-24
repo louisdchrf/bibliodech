@@ -385,6 +385,7 @@ input:focus, select:focus {
 .badge-shelf   { background: #e0f2fe; color: #0369a1; }
 .badge-source  { background: var(--color-surface-2); color: var(--color-text-muted); border: 1px solid var(--color-border); }
 .badge-isbn    { background: #f0fdf4; color: #166534; }
+.badge-genre   { background: #fef3c7; color: #92400e; }
 .badge-count   { background: var(--color-surface-2); color: var(--color-text-muted); }
 .badge-pos     { background: var(--color-accent); color: #fff; }
 .badge-active  { background: var(--color-success-bg); color: var(--color-success); }
@@ -392,6 +393,8 @@ input:focus, select:focus {
 .badge-role-admin       { background: #fef3c7; color: #92400e; }
 .badge-role-contributeur{ background: var(--color-surface-2); color: var(--color-text-muted); }
 .badge-role-viewer      { background: #e0f2fe; color: #075985; }
+.badge-write-room { background: #dcfce7; color: #166534; }
+.badge-read-room  { background: #e0f2fe; color: #075985; }
 
 /* ── Login page ─────────────────────────────────────────────────────────── */
 .login-body {

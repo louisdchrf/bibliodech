@@ -43,6 +43,8 @@ SCHEDULABLE_TASKS = {
     "sudoc-series":    "Chercher les séries dans le catalogue (SUDOC)",
     "ocr-series":      "Lire les séries sur les couvertures (OCR)",
     "clean-series":    "Normaliser les noms de séries",
+    "bnf-series":      "Compléter les séries via la BnF",
+    "enrich-genres":   "Récupérer les genres des livres",
 }
 
 _DEFAULT_CONFIG = {
@@ -141,6 +143,16 @@ async def _execute_task(task_id: str, db) -> str:
     if task_id == "clean-series":
         from app.routers.series import _clean_series_names_logic
         return _clean_series_names_logic(db, task_id=task_id)
+
+    if task_id == "bnf-series":
+        from app.routers.series import _bnf_series_logic
+        result = await _bnf_series_logic(db, task_id=task_id)
+        return f"{result['assigned']} livre(s) rattaché(s) sur {result['series_checked']} série(s) vérifiées"
+
+    if task_id == "enrich-genres":
+        from app.routers.books import _enrich_genres_logic
+        result = await _enrich_genres_logic(db, task_id=task_id)
+        return f"{result['updated']}/{result['total']} livre(s) enrichi(s) avec un genre"
 
     return "tâche inconnue"
 

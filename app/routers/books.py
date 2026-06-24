@@ -22,6 +22,7 @@ def list_books(
     room_id: Optional[str] = Query(None),    # int ou "none" pour livres sans localisation
     source: Optional[str] = Query(None),     # filtre par source d'enrichissement
     series_id: Optional[str] = Query(None),  # int, "none" (sans série), ou "any" (avec série)
+    genre: Optional[str] = Query(None),      # valeur exacte ou "none"
     has_cover: Optional[str] = Query(None),  # "yes" ou "no"
     sort_by: str = Query("title"),
     limit: int = Query(200, ge=1, le=1000),
@@ -38,7 +39,11 @@ def list_books(
     if room_id == "none":
         q = q.filter(Book.room_id.is_(None))
     elif room_id is not None:
-        q = q.filter(Book.room_id == int(room_id))
+        parts = [p.strip() for p in room_id.split(",") if p.strip().lstrip("-").isdigit()]
+        if len(parts) == 1:
+            q = q.filter(Book.room_id == int(parts[0]))
+        elif parts:
+            q = q.filter(Book.room_id.in_([int(p) for p in parts]))
     if source == "none":
         q = q.filter(Book.enrichment_source.is_(None))
     elif source is not None:
@@ -50,6 +55,11 @@ def list_books(
         q = q.filter(Book.series_id.isnot(None))
     elif series_id is not None:
         q = q.filter(Book.series_id == int(series_id))
+
+    if genre == "none":
+        q = q.filter(Book.genre.is_(None))
+    elif genre is not None:
+        q = q.filter(Book.genre == genre)
 
     if has_cover == "no":
         q = q.filter(Book.cover_url.is_(None))
@@ -91,6 +101,18 @@ def list_sources(request: Request, db: Session = Depends(get_db)):
         {"id": src or "none", "label": SOURCE_LABELS.get(src, src or "Manuel / Import"), "count": cnt}
         for src, cnt in rows
     ]
+
+
+@router.get("/api/books/genres")
+def list_genres(request: Request, db: Session = Depends(get_db)):
+    """Retourne les genres présents en base avec leur nombre de livres."""
+    from sqlalchemy import func
+    get_current_user(request, db)
+    rows = db.query(Book.genre, func.count(Book.id))\
+        .filter(Book.genre.isnot(None))\
+        .group_by(Book.genre)\
+        .order_by(func.count(Book.id).desc()).all()
+    return [{"id": g, "count": cnt} for g, cnt in rows]
 
 
 @router.get("/api/books/{book_id}")
@@ -229,6 +251,44 @@ def clean_authors(request: Request, db: Session = Depends(get_db)):
     require_contributor(user)
     _clean_authors_logic(db)
     return {"ok": True}
+
+
+async def _enrich_genres_logic(db, task_id: str = "enrich-genres") -> dict:
+    """Interroge SUDOC puis BnF pour récupérer le genre des livres qui n'en ont pas encore."""
+    from app.lookup import _lookup_sudoc, _lookup_genre_unimarc
+    from app import scheduler as sched
+    import httpx
+
+    books = db.query(Book).filter(Book.isbn.isnot(None)).all()
+    total = len(books)
+    updated = 0
+
+    if task_id in sched._running:
+        sched._running[task_id]["progress"] = {"current": 0, "total": total}
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        for i, book in enumerate(books):
+            genre = None
+            try:
+                # SUDOC d'abord (608 $a en UNIMARC natif)
+                info = await _lookup_sudoc(client, book.isbn)
+                if info:
+                    genre = info.get("genre")
+                # Si pas trouvé via SUDOC, interroger BnF en UNIMARC
+                if not genre:
+                    genre = await _lookup_genre_unimarc(client, book.isbn)
+            except Exception:
+                pass
+            if genre and genre.lower() not in ("texte imprimé", "text", "texte"):
+                book.genre = genre
+                updated += 1
+                if updated % 20 == 0:
+                    db.commit()
+            if task_id in sched._running:
+                sched._running[task_id]["progress"]["current"] = i + 1
+
+    db.commit()
+    return {"total": total, "updated": updated}
 
 
 async def _refresh_covers_logic(db, task_id: str = "refresh-covers") -> dict:
