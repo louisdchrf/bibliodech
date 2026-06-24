@@ -3,10 +3,14 @@ import logging
 import re
 import json
 import time
+import asyncio
 import httpx
 import xml.etree.ElementTree as ET
 
 log = logging.getLogger(__name__)
+
+# Limite les requêtes BnF concurrentes pour éviter les timeouts en masse
+_BNF_SEM = asyncio.Semaphore(3)
 
 TIMEOUT = 3.0
 
@@ -424,124 +428,124 @@ async def _lookup_bnf(client: httpx.AsyncClient, isbn: str) -> dict | None:
         f'&query=bib.isbn%20adj%20%22{isbn}%22'
         f'&recordSchema=dublincore&maximumRecords=1'
     )
-    try:
+    async with _BNF_SEM:
         try:
-            resp = await client.get(url, timeout=12)
-        except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.ConnectError) as e:
-            log.warning("lookup: BNF timeout/connect %s, retry: %s", isbn, e)
-            resp = await client.get(url, timeout=12)
-        if resp.status_code != 200:
-            log.warning("lookup: BNF HTTP %s for ISBN %s", resp.status_code, isbn)
-            return None
-        resp.raise_for_status()
-        root = ET.fromstring(resp.content)
-        records = root.findall(f".//{{{_NS['srw']}}}record")
-        if not records:
-            return None
-        rec = records[0]
-        title_raw = _bnf_text(rec, "title")
-        if not title_raw:
-            return None
-        # BNF sometimes includes subtitle after " / " or " : "
-        title, subtitle = title_raw, None
-        for sep in [" / ", " : "]:
-            if sep in title_raw:
-                parts = title_raw.split(sep, 1)
-                title, subtitle = parts[0].strip(), parts[1].strip()
-                break
+            try:
+                resp = await client.get(url, timeout=15)
+            except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.ConnectError) as e:
+                log.warning("lookup: BNF timeout/connect %s, retry: %s", isbn, e)
+                resp = await client.get(url, timeout=15)
+            if resp.status_code != 200:
+                log.warning("lookup: BNF HTTP %s for ISBN %s", resp.status_code, isbn)
+                return None
+            resp.raise_for_status()
+            root = ET.fromstring(resp.content)
+            records = root.findall(f".//{{{_NS['srw']}}}record")
+            if not records:
+                return None
+            rec = records[0]
+            title_raw = _bnf_text(rec, "title")
+            if not title_raw:
+                return None
+            # BNF sometimes includes subtitle after " / " or " : "
+            title, subtitle = title_raw, None
+            for sep in [" / ", " : "]:
+                if sep in title_raw:
+                    parts = title_raw.split(sep, 1)
+                    title, subtitle = parts[0].strip(), parts[1].strip()
+                    break
 
-        creators = _bnf_texts(rec, "creator")
-        authors = []
-        for c in creators:
-            if c:
-                for a in _bnf_clean_creators(c):
-                    if a and a not in authors:
-                        authors.append(a)
+            creators = _bnf_texts(rec, "creator")
+            authors = []
+            for c in creators:
+                if c:
+                    for a in _bnf_clean_creators(c):
+                        if a and a not in authors:
+                            authors.append(a)
 
-        # Sous-titre : ignorer la mention de responsabilité BNF ("[dessin de] X ; [scénario de] Y")
-        if subtitle and (';' in subtitle or re.search(r'\[.+\]', subtitle)):
-            subtitle = None
+            # Sous-titre : ignorer la mention de responsabilité BNF ("[dessin de] X ; [scénario de] Y")
+            if subtitle and (';' in subtitle or re.search(r'\[.+\]', subtitle)):
+                subtitle = None
 
-        publisher_raw = _bnf_text(rec, "publisher")
-        # BNF publisher : "Éditeur (Ville)" → garder juste "Éditeur"
-        if publisher_raw:
-            publisher_raw = re.sub(r'\s*\([^)]+\)\s*$', '', publisher_raw).strip()
+            publisher_raw = _bnf_text(rec, "publisher")
+            # BNF publisher : "Éditeur (Ville)" → garder juste "Éditeur"
+            if publisher_raw:
+                publisher_raw = re.sub(r'\s*\([^)]+\)\s*$', '', publisher_raw).strip()
 
-        date_raw = _bnf_text(rec, "date")
-        language = _bnf_text(rec, "language")
-        description = _bnf_text(rec, "description")
-        # dc:type = "Texte imprimé" → inutile ; genre sera récupéré via UNIMARC séparément
-        genre = None
+            date_raw = _bnf_text(rec, "date")
+            language = _bnf_text(rec, "language")
+            description = _bnf_text(rec, "description")
+            genre = None
 
-        # BNF cover via Open Library covers API (fallback)
-        cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg"
+            # BNF cover via Open Library covers API (fallback)
+            cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg"
 
-        # BNF : série — d'abord UNIMARC 225/461 (précis), sinon dc:relation (heuristique)
-        series_name = None
-        series_position = _extract_series_position(title, subtitle)
-        try:
-            unimarc_url = (
-                "https://catalogue.bnf.fr/api/SRU"
-                f'?version=1.2&operation=searchRetrieve'
-                f'&query=bib.isbn%20adj%20%22{isbn}%22'
-                f'&recordSchema=unimarcxchange&maximumRecords=1'
-            )
-            uresp = await client.get(unimarc_url)
-            if uresp.status_code == 200:
-                uns = {"mxc": "info:lc/xmlns/marcxchange-v2"}
-                uroot = ET.fromstring(uresp.content)
-                for urec in uroot.findall(".//mxc:record", uns):
-                    for df in urec.findall("mxc:datafield", uns):
-                        tag = df.get("tag")
-                        subs = {sf.get("code"): sf.text for sf in df.findall("mxc:subfield", uns)}
-                        if tag == "225" and subs.get("a"):
-                            series_name = subs["a"]
-                            if subs.get("v"):
-                                m = re.search(r"(\d+)", subs["v"])
-                                if m:
-                                    try:
-                                        series_position = float(m.group(1))
-                                    except ValueError:
-                                        pass
+            # BNF : série — d'abord UNIMARC 225/461 (précis), sinon dc:relation (heuristique)
+            series_name = None
+            series_position = _extract_series_position(title, subtitle)
+            try:
+                unimarc_url = (
+                    "https://catalogue.bnf.fr/api/SRU"
+                    f'?version=1.2&operation=searchRetrieve'
+                    f'&query=bib.isbn%20adj%20%22{isbn}%22'
+                    f'&recordSchema=unimarcxchange&maximumRecords=1'
+                )
+                uresp = await client.get(unimarc_url, timeout=15)
+                if uresp.status_code == 200:
+                    uns = {"mxc": "info:lc/xmlns/marcxchange-v2"}
+                    uroot = ET.fromstring(uresp.content)
+                    for urec in uroot.findall(".//mxc:record", uns):
+                        for df in urec.findall("mxc:datafield", uns):
+                            tag = df.get("tag")
+                            subs = {sf.get("code"): sf.text for sf in df.findall("mxc:subfield", uns)}
+                            if tag == "225" and subs.get("a"):
+                                series_name = subs["a"]
+                                if subs.get("v"):
+                                    m = re.search(r"(\d+)", subs["v"])
+                                    if m:
+                                        try:
+                                            series_position = float(m.group(1))
+                                        except ValueError:
+                                            pass
+                                break
+                            if tag == "461" and subs.get("t") and not series_name:
+                                series_name = subs["t"]
+                                if subs.get("v"):
+                                    m = re.search(r"(\d+)", subs["v"])
+                                    if m:
+                                        try:
+                                            series_position = float(m.group(1))
+                                        except ValueError:
+                                            pass
+            except Exception:
+                pass
+            if not series_name:
+                for rel in _bnf_texts(rec, "relation"):
+                    rel_clean = rel.strip()
+                    if rel_clean and not rel_clean.startswith("http") and len(rel_clean) < 120:
+                        if not re.match(r'^[0-9\-X ]+$', rel_clean):
+                            series_name = rel_clean
                             break
-                        if tag == "461" and subs.get("t") and not series_name:
-                            series_name = subs["t"]
-                            if subs.get("v"):
-                                m = re.search(r"(\d+)", subs["v"])
-                                if m:
-                                    try:
-                                        series_position = float(m.group(1))
-                                    except ValueError:
-                                        pass
-        except Exception:
-            pass
-        if not series_name:
-            for rel in _bnf_texts(rec, "relation"):
-                rel_clean = rel.strip()
-                if rel_clean and not rel_clean.startswith("http") and len(rel_clean) < 120:
-                    if not re.match(r'^[0-9\-X ]+$', rel_clean):
-                        series_name = rel_clean
-                        break
 
-        return {
-            "title": title,
-            "subtitle": subtitle,
-            "authors": authors,
-            "publisher": publisher_raw,
-            "publish_date": date_raw,
-            "cover_url": cover_url,
-            "description": description,
-            "page_count": None,
-            "language": language,
-            "source": "bnf",
-            "work_key": None,
-            "series_name": series_name,
-            "series_position": series_position,
-            "genre": genre,
-        }
-    except Exception as e:
-        log.warning("lookup: BNF error for ISBN %s: %s: %s", isbn, type(e).__name__, e)
-        return None
+            return {
+                "title": title,
+                "subtitle": subtitle,
+                "authors": authors,
+                "publisher": publisher_raw,
+                "publish_date": date_raw,
+                "cover_url": cover_url,
+                "description": description,
+                "page_count": None,
+                "language": language,
+                "source": "bnf",
+                "work_key": None,
+                "series_name": series_name,
+                "series_position": series_position,
+                "genre": genre,
+            }
+        except Exception as e:
+            log.warning("lookup: BNF error for ISBN %s: %s: %s", isbn, type(e).__name__, e)
+            return None
 
 
 async def _lookup_genre_unimarc(client: httpx.AsyncClient, isbn: str) -> str | None:
@@ -1041,6 +1045,13 @@ async def lookup_isbn(isbn: str, db=None, sources: list | None = None) -> dict |
     # Priorité dans l'ordre de sources_cfg (premier = priorité haute pour les métadonnées)
     ordered = [results.get(s["id"]) for s in sources_cfg if results.get(s.get("id", ""))]
     result = ordered[0]
+
+    # Log si la source #1 configurée n'a pas répondu (timeout probable)
+    primary_id = sources_cfg[0]["id"] if sources_cfg else None
+    if primary_id and primary_id not in results and result.get("source") != primary_id:
+        log.warning("lookup: source primaire '%s' absente pour %s — enrichi via '%s' (timeout ?)",
+                    primary_id, isbn, result.get("source"))
+
     for other in ordered[1:]:
         result = _merge(result, other)
 
