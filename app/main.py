@@ -235,19 +235,15 @@ def get_stats(request: Request, db: Session = Depends(get_db)):
     top_authors = sorted(author_counts.items(), key=lambda x: x[1], reverse=True)[:10]
     top_authors = [{"name": n, "count": c} for n, c in top_authors]
 
-    # ── Ajouts par mois (12 derniers mois) ───────────────────────────────────
-    from datetime import datetime, timedelta
-    now = datetime.utcnow()
+    # ── Ajouts par jour (30 derniers jours) ──────────────────────────────────
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
     months = []
-    for i in range(11, -1, -1):
-        d = now.replace(day=1) - timedelta(days=1)
-        # reculer i mois
-        month_dt = now.replace(day=1)
-        for _ in range(i):
-            month_dt = (month_dt.replace(day=1) - timedelta(days=1)).replace(day=1)
-        label = month_dt.strftime("%b %Y")
+    for i in range(29, -1, -1):
+        day_dt = (now - timedelta(days=i)).date()
+        label = day_dt.strftime("%-d %b")
         count = db.query(func.count(Book.id)).filter(
-            func.strftime("%Y-%m", Book.added_at) == month_dt.strftime("%Y-%m")
+            func.strftime("%Y-%m-%d", Book.added_at) == day_dt.strftime("%Y-%m-%d")
         ).scalar()
         months.append({"label": label, "count": count})
 
@@ -264,8 +260,19 @@ def get_stats(request: Request, db: Session = Depends(get_db)):
     lang_rows = db.query(Book.language, func.count(Book.id))\
         .filter(Book.language.isnot(None), Book.language != "")\
         .group_by(Book.language).order_by(func.count(Book.id).desc()).all()
-    LANG_LABELS = {"fr": "Français", "en": "Anglais", "de": "Allemand", "es": "Espagnol",
-                   "it": "Italien", "pt": "Portugais", "nl": "Néerlandais", "ja": "Japonais"}
+    LANG_LABELS = {
+        "fr": "Français", "fre": "Français", "fra": "Français",
+        "en": "Anglais",  "eng": "Anglais",
+        "de": "Allemand", "ger": "Allemand", "deu": "Allemand",
+        "es": "Espagnol", "spa": "Espagnol",
+        "it": "Italien",  "ita": "Italien",
+        "pt": "Portugais","por": "Portugais",
+        "nl": "Néerlandais","nld": "Néerlandais","dut": "Néerlandais",
+        "ja": "Japonais", "jpn": "Japonais",
+        "zh": "Chinois",  "chi": "Chinois",  "zho": "Chinois",
+        "ar": "Arabe",    "ara": "Arabe",
+        "ru": "Russe",    "rus": "Russe",
+    }
     languages = [{"code": lang, "label": LANG_LABELS.get(lang, lang), "count": cnt}
                  for lang, cnt in lang_rows]
 

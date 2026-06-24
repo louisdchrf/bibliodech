@@ -370,6 +370,19 @@ async def apply_book_source(
         book.language = data["language"]
     if data.get("page_count"):
         book.page_count = data["page_count"]
+    if data.get("series_name"):
+        from app.models import Series
+        from app.routers.series import _norm
+        s_name = data["series_name"]
+        all_series = db.query(Series).all()
+        match = next((s for s in all_series if _norm(s.name) == _norm(s_name)), None)
+        if not match:
+            match = Series(name=s_name, source=source_id)
+            db.add(match)
+            db.flush()
+        book.series_id = match.id
+        if data.get("series_position") is not None and book.series_position is None:
+            book.series_position = float(data["series_position"])
     book.enrichment_source = source_id
     book.source = source_id
 

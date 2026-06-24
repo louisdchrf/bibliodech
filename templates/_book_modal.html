@@ -78,6 +78,20 @@
 <script>
 (function () {
   const isAdmin = {{ 'true' if user.role == 'admin' else 'false' }};
+  const LANG_LABELS = {
+    fr:'Français',fre:'Français',fra:'Français',
+    en:'Anglais',eng:'Anglais',
+    de:'Allemand',ger:'Allemand',deu:'Allemand',
+    es:'Espagnol',spa:'Espagnol',
+    it:'Italien',ita:'Italien',
+    pt:'Portugais',por:'Portugais',
+    nl:'Néerlandais',nld:'Néerlandais',dut:'Néerlandais',
+    ja:'Japonais',jpn:'Japonais',
+    zh:'Chinois',chi:'Chinois',zho:'Chinois',
+    ar:'Arabe',ara:'Arabe',
+    ru:'Russe',rus:'Russe',
+  };
+  function langLabel(code) { return code ? (LANG_LABELS[code] || code) : ''; }
   const overlay = document.getElementById('book-modal-overlay');
   const content = document.getElementById('book-modal-content');
   let locTree = [];
@@ -164,7 +178,8 @@
         let val = data[key];
         if (val === null || val === undefined || val === '') return `<td class="src-cell src-empty">—</td>`;
         if (Array.isArray(val)) val = val.join(', ');
-        const isChosen = String(val) === String(bookVal ?? '');
+        if (key === 'language') val = langLabel(String(val));
+        const isChosen = String(val) === String(bookVal ?? '') || (key === 'language' && langLabel(String(bookVal ?? '')) === val);
         return `<td class="src-cell ${isChosen ? 'src-chosen' : ''}">${escHtml(String(val))}</td>`;
       });
       return `<tr><th class="src-row-label">${label}</th>${cells.join('')}</tr>`;
