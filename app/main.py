@@ -174,7 +174,16 @@ def export_books_csv(request: Request, db: Session = Depends(get_db)):
                      "Pages", "Localisation", "Ajouté le"])
     for b in books:
         authors = ", ".join(json.loads(b.authors)) if b.authors else ""
-        loc = b.location.label if b.location else (b.shelf or "")
+        if b.room:
+            parts = []
+            if b.room.site:
+                parts.append(b.room.site.name)
+            parts.append(b.room.name)
+            loc = " / ".join(parts)
+        elif b.location:
+            loc = b.location.label
+        else:
+            loc = b.shelf or ""
         writer.writerow([
             b.isbn or "", b.title, b.subtitle or "", authors, b.publisher or "",
             b.publish_date or "", b.language or "", b.page_count or "",

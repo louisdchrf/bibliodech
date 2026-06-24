@@ -373,16 +373,21 @@ def bulk_books(
     user = get_current_user(request, db)
     require_contributor(user)
 
-    books = db.query(Book).filter(Book.id.in_(body.ids)).all()
+    # SQLite limite le nombre de variables dans IN() à ~999 — on découpe en chunks
+    CHUNK = 900
+    ids = list(body.ids)
+    books = []
+    for i in range(0, len(ids), CHUNK):
+        books += db.query(Book).filter(Book.id.in_(ids[i:i+CHUNK])).all()
     if not books:
         raise HTTPException(status_code=404, detail="Aucun livre trouvé")
 
     if body.action == "delete":
         require_admin(user)
-        for b in books:
-            db.delete(b)
+        for i in range(0, len(ids), CHUNK):
+            db.query(Book).filter(Book.id.in_(ids[i:i+CHUNK])).delete(synchronize_session=False)
         db.commit()
-        return {"deleted": len(books)}
+        return {"deleted": len(ids)}
 
     if body.action == "update":
         d = body.data
