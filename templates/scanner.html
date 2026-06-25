@@ -140,6 +140,7 @@
     } else {
       selRoom.disabled = true;
     }
+    updateScanEnabled();
   });
 
   selRoom.addEventListener('change', () => {
@@ -158,11 +159,26 @@
 
   function resolveRoomId()     { return parseInt(selRoom.value)  || null; }
   function resolveLocationId() { return parseInt(selShelf.value) || null; }
+  function hasLocation()       { return !!selSite.value; }
+
+  const hintText = document.getElementById('scan-hint-text');
+
+  function updateScanEnabled() {
+    const ok = hasLocation();
+    isbnInput.disabled = !ok;
+    camBtn.disabled    = !ok;
+    isbnInput.placeholder = ok ? 'Saisir un ISBN…' : 'Choisissez d\'abord une adresse';
+    hintText.textContent  = ok
+      ? 'Saisissez un ISBN ou utilisez la caméra'
+      : 'Sélectionnez une adresse pour commencer';
+    hintText.style.color = ok ? '' : 'var(--color-warning, #e08c00)';
+  }
 
   // ── Scan ─────────────────────────────────────────────────────────────────
   let autoSubmitTimer = null;
 
   isbnInput.addEventListener('input', () => {
+    if (!hasLocation()) return;
     clearTimeout(autoSubmitTimer);
     const val = isbnInput.value.replace(/\D/g, '');
     if (val.length === 13 || val.length === 10) {
@@ -176,6 +192,7 @@
   isbnInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
+      if (!hasLocation()) return;
       clearTimeout(autoSubmitTimer);
       const isbn = isbnInput.value.trim();
       if (isbn) submitScan(isbn);
@@ -645,6 +662,7 @@
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && liveActive) stopCamera(); });
 
   // ── Init ─────────────────────────────────────────────────────────────────
+  updateScanEnabled();
   loadLocations();
   isbnInput.focus();
 })();
