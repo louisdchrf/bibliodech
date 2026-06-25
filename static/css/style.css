@@ -587,15 +587,16 @@ input:focus, select:focus {
 }
 .toolbar-search-icon {
   position: absolute;
-  left: .75rem;
+  left: .65rem;
   top: 50%;
   transform: translateY(-50%);
   color: var(--color-text-muted);
   pointer-events: none;
+  z-index: 1;
 }
 .toolbar-search-input {
   width: 100%;
-  padding: .55rem .8rem .55rem 2.5rem;
+  padding: .55rem .8rem .55rem 2.2rem;
   border: 1.5px solid var(--color-border);
   border-radius: var(--radius-sm);
   font-size: .95rem;
