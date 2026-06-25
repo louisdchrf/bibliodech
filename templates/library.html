@@ -170,7 +170,7 @@
 
   function makeMselMore(btnId, dropId, onChangeCb) {
     const btn = document.getElementById(btnId);
-    if (!btn) return { getValues: () => [], setOptions: () => {}, clear: () => {} };
+    if (!btn) return { getValues: () => [], setOptions: () => {}, clear: () => {}, _onchange: () => {} };
     const drop = document.getElementById(dropId);
     btn.addEventListener('click', e => {
       e.stopPropagation();
@@ -181,6 +181,15 @@
     function getValues() {
       return [...drop.querySelectorAll('input[type=checkbox]:checked')].map(c => c.value);
     }
+    function _onchange() {
+      const hasChecked = getValues().length > 0;
+      btn.classList.toggle('msel-active', hasChecked);
+      if (hasChecked) {
+        const group = btn.closest('.filter-module');
+        group?.querySelectorAll('.filter-chip:not(.filter-chip-more)').forEach(c => c.classList.remove('active'));
+      }
+      onChangeCb();
+    }
     function setOptions(opts) {
       drop.querySelectorAll('label').forEach(l => l.remove());
       opts.forEach(o => {
@@ -190,7 +199,6 @@
         lbl.querySelector('input').addEventListener('change', () => {
           const hasChecked = getValues().length > 0;
           btn.classList.toggle('msel-active', hasChecked);
-          // Désactiver les chips statiques du même groupe si sélection dans le dropdown
           if (hasChecked) {
             const group = btn.closest('.filter-module');
             group?.querySelectorAll('.filter-chip:not(.filter-chip-more)').forEach(c => c.classList.remove('active'));
@@ -204,7 +212,7 @@
       drop.querySelectorAll('input[type=checkbox]').forEach(c => c.checked = false);
       btn.classList.remove('msel-active');
     }
-    return { getValues, setOptions, clear };
+    return { getValues, setOptions, clear, _onchange };
   }
 
   const getLocChip   = wireChipGroup('loc-chip',    () => { mselMoreLocation.clear(); updateFilterReset(); loadBooks(); });
@@ -329,13 +337,40 @@
   async function loadLocations() {
     const res = await fetch('/api/locations/tree');
     locTree = await res.json();
-    const opts = locTree.flatMap(s => {
-      const rows = [];
-      if (s.id) rows.push({ value: `site:${s.id}`, label: `📍 ${s.name}` });
-      s.rooms.forEach(r => rows.push({ value: String(r.id), label: s.id ? `  ${r.name}` : r.name }));
-      return rows;
+    const drop = document.getElementById('msel-location-drop');
+    // Vider le dropdown (garder les labels spéciaux du HTML si nécessaire)
+    drop.innerHTML = '';
+    locTree.forEach(site => {
+      // Niveau site (adresse)
+      if (site.id) {
+        const siteEl = document.createElement('label');
+        siteEl.className = 'msel-opt msel-opt-site';
+        siteEl.innerHTML = `<input type="checkbox" value="site:${escHtml(String(site.id))}"> <strong>${escHtml(site.name)}</strong>`;
+        siteEl.querySelector('input').addEventListener('change', () => { mselMoreLocation._onchange(); });
+        drop.appendChild(siteEl);
+      } else {
+        const hdr = document.createElement('div');
+        hdr.className = 'msel-group-header';
+        hdr.textContent = site.name;
+        drop.appendChild(hdr);
+      }
+      site.rooms.forEach(room => {
+        // Niveau pièce
+        const roomEl = document.createElement('label');
+        roomEl.className = 'msel-opt msel-opt-room';
+        roomEl.innerHTML = `<input type="checkbox" value="${escHtml(String(room.id))}"> ${escHtml(room.name)}`;
+        roomEl.querySelector('input').addEventListener('change', () => { mselMoreLocation._onchange(); });
+        drop.appendChild(roomEl);
+        // Niveau étagère
+        (room.shelves || []).forEach(shelf => {
+          const shelfEl = document.createElement('label');
+          shelfEl.className = 'msel-opt msel-opt-shelf';
+          shelfEl.innerHTML = `<input type="checkbox" value="shelf:${escHtml(String(shelf.id))}"> ${escHtml(shelf.name)}`;
+          shelfEl.querySelector('input').addEventListener('change', () => { mselMoreLocation._onchange(); });
+          drop.appendChild(shelfEl);
+        });
+      });
     });
-    mselMoreLocation.setOptions(opts);
   }
 
   // ── Books ─────────────────────────────────────────────────────────────────
@@ -348,10 +383,12 @@
     const locMore = mselMoreLocation.getValues();
     const locChip = getLocChip();
     if (locMore.length) {
-      const rooms = locMore.filter(v => !v.startsWith('site:'));
-      const sites = locMore.filter(v => v.startsWith('site:')).map(v => v.slice(5));
-      if (rooms.length === 1) params.set('room_id', rooms[0]);
-      else if (sites.length === 1 && !rooms.length) params.set('site_id', sites[0]);
+      const sites  = locMore.filter(v => v.startsWith('site:')).map(v => v.slice(5));
+      const shelves = locMore.filter(v => v.startsWith('shelf:')).map(v => v.slice(6));
+      const rooms  = locMore.filter(v => !v.startsWith('site:') && !v.startsWith('shelf:'));
+      if (sites.length === 1 && !rooms.length && !shelves.length) params.set('site_id', sites[0]);
+      else if (shelves.length === 1 && !rooms.length) params.set('location_id', shelves[0]);
+      else if (rooms.length === 1) params.set('room_id', rooms[0]);
     } else if (locChip === 'none') {
       params.set('room_id', 'none');
     }

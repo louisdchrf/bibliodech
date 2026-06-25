@@ -595,7 +595,7 @@ input:focus, select:focus {
 }
 .toolbar-search-input {
   width: 100%;
-  padding: .55rem .8rem .55rem 2.25rem;
+  padding: .55rem .8rem .55rem 2.5rem;
   border: 1.5px solid var(--color-border);
   border-radius: var(--radius-sm);
   font-size: .95rem;
@@ -2160,6 +2160,19 @@ html.dark .missing-vol-tobuy     { background: #2d0f0f; }
 }
 .msel-opt:hover { background: var(--color-surface-2); }
 .msel-opt input[type=checkbox] { flex-shrink: 0; accent-color: var(--color-primary); }
+
+/* Hiérarchie localisation */
+.msel-group-header {
+  padding: .3rem .75rem .1rem;
+  font-size: .7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--color-text-muted);
+}
+.msel-opt-site { font-weight: 600; }
+.msel-opt-room { padding-left: 1.5rem; }
+.msel-opt-shelf { padding-left: 2.75rem; font-size: .82rem; color: var(--color-text-muted); }
 
 /* ── Prochain lancement ──────────────────────────────────────────────────── */
 .task-next-run {
