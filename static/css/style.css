@@ -2199,18 +2199,18 @@ html.dark .missing-vol-tobuy     { background: #2d0f0f; }
 .msel-opt:hover { background: var(--color-surface-2); }
 .msel-opt input[type=checkbox] { flex-shrink: 0; accent-color: var(--color-primary); }
 
-/* Hiérarchie localisation */
-.msel-group-header {
-  padding: .3rem .75rem .1rem;
-  font-size: .7rem;
-  font-weight: 600;
+/* En-tête de groupe dans les listes de filtres */
+.fp-list-header {
+  padding: .3rem .75rem .15rem;
+  font-size: .68rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: .06em;
+  letter-spacing: .07em;
   color: var(--color-text-muted);
+  margin-top: .2rem;
 }
-.msel-opt-site { font-weight: 600; }
-.msel-opt-room { padding-left: 1.5rem; }
-.msel-opt-shelf { padding-left: 2.75rem; font-size: .82rem; color: var(--color-text-muted); }
+.fp-list-header:first-child { margin-top: 0; }
+.msel-opt-shelf { padding-left: 1.5rem; font-size: .82rem; color: var(--color-text-muted); }
 
 /* ── Prochain lancement ──────────────────────────────────────────────────── */
 .task-next-run {

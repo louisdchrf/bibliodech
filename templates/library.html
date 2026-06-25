@@ -375,27 +375,18 @@
     // Vider le dropdown (garder les labels spéciaux du HTML si nécessaire)
     drop.innerHTML = '';
     locTree.forEach(site => {
-      // Niveau site (adresse)
-      if (site.id) {
-        const siteEl = document.createElement('label');
-        siteEl.className = 'msel-opt msel-opt-site';
-        siteEl.innerHTML = `<input type="checkbox" value="site:${escHtml(String(site.id))}"> <strong>${escHtml(site.name)}</strong>`;
-        siteEl.querySelector('input').addEventListener('change', () => { mselMoreLocation._onchange(); });
-        drop.appendChild(siteEl);
-      } else {
-        const hdr = document.createElement('div');
-        hdr.className = 'msel-group-header';
-        hdr.textContent = site.name;
-        drop.appendChild(hdr);
-      }
+      // Adresse = en-tête non-cliquable
+      const hdr = document.createElement('div');
+      hdr.className = 'fp-list-header';
+      hdr.textContent = site.name;
+      drop.appendChild(hdr);
+
       site.rooms.forEach(room => {
-        // Niveau pièce
         const roomEl = document.createElement('label');
-        roomEl.className = 'msel-opt msel-opt-room';
+        roomEl.className = 'msel-opt';
         roomEl.innerHTML = `<input type="checkbox" value="${escHtml(String(room.id))}"> ${escHtml(room.name)}`;
         roomEl.querySelector('input').addEventListener('change', () => { mselMoreLocation._onchange(); });
         drop.appendChild(roomEl);
-        // Niveau étagère
         (room.shelves || []).forEach(shelf => {
           const shelfEl = document.createElement('label');
           shelfEl.className = 'msel-opt msel-opt-shelf';
