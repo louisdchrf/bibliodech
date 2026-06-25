@@ -52,6 +52,7 @@
           <button class="filter-chip series-chip" data-val="none">Sans</button>
           <button class="filter-chip series-chip" data-val="any">Avec</button>
         </div>
+        <div class="fp-list" id="msel-series-drop"></div>
       </div>
     </div>
     <div class="filter-sep"></div>
@@ -197,11 +198,12 @@
   }
 
   const mselMoreLocation = makeInlineList('msel-location-drop', () => { updateFilterReset(); refreshBadges(); loadBooks(); });
+  const mselMoreSeries   = makeInlineList('msel-series-drop',   () => { updateFilterReset(); refreshBadges(); loadBooks(); });
   const mselMoreGenre    = makeInlineList('msel-genre-drop',    () => { updateFilterReset(); refreshBadges(); loadBooks(); });
   const mselMoreSource   = makeInlineList('msel-source-drop',   () => { updateFilterReset(); refreshBadges(); loadBooks(); });
 
   const getLocChip   = wireChipGroup('loc-chip',    () => { mselMoreLocation.clear(); updateFilterReset(); refreshBadges(); loadBooks(); });
-  const getSerChip   = wireChipGroup('series-chip',  () => { updateFilterReset(); refreshBadges(); loadBooks(); });
+  const getSerChip   = wireChipGroup('series-chip',  () => { mselMoreSeries.clear(); updateFilterReset(); refreshBadges(); loadBooks(); });
   const getCovChip   = wireChipGroup('cover-chip',   () => { updateFilterReset(); refreshBadges(); loadBooks(); });
   const getGenChip   = wireChipGroup('genre-chip',   () => { mselMoreGenre.clear(); updateFilterReset(); refreshBadges(); loadBooks(); });
   const getSrcChip   = wireChipGroup('source-chip',  () => { mselMoreSource.clear(); updateFilterReset(); refreshBadges(); loadBooks(); });
@@ -244,8 +246,9 @@
     const locMore = mselMoreLocation.getValues();
     const locChip = getLocChip();
     updateBadge('badge-location', locMore.length ? `${locMore.length} sél.` : locChip === 'none' ? 'Sans' : '');
+    const serMore = mselMoreSeries.getValues();
     const ser = getSerChip();
-    updateBadge('badge-series', ser === 'none' ? 'Sans' : ser === 'any' ? 'Avec' : '');
+    updateBadge('badge-series', serMore.length ? `${serMore.length} sél.` : ser === 'none' ? 'Sans' : ser === 'any' ? 'Avec' : '');
     const cov = getCovChip();
     updateBadge('badge-cover', cov === 'yes' ? 'Avec' : cov === 'no' ? 'Sans' : '');
     const genMore = mselMoreGenre.getValues();
@@ -260,7 +263,8 @@
   function updateFilterReset() {
     const chipActive = cls => { const a = document.querySelector(`.${cls}.active`); return a && a.dataset.val !== ''; };
     const hasFilters = chipActive('loc-chip') || mselMoreLocation.getValues().length
-      || chipActive('series-chip') || chipActive('cover-chip')
+      || chipActive('series-chip') || mselMoreSeries.getValues().length
+      || chipActive('cover-chip')
       || chipActive('genre-chip') || mselMoreGenre.getValues().length
       || chipActive('source-chip') || mselMoreSource.getValues().length;
     btnFilterReset.style.display = hasFilters ? 'inline-flex' : 'none';
@@ -270,7 +274,7 @@
       document.querySelectorAll(`.${cls}`).forEach(c => c.classList.remove('active'));
       document.querySelector(`.${cls}[data-val=""]`)?.classList.add('active');
     });
-    [mselMoreLocation, mselMoreGenre, mselMoreSource].forEach(m => m.clear());
+    [mselMoreLocation, mselMoreSeries, mselMoreGenre, mselMoreSource].forEach(m => m.clear());
     btnFilterReset.style.display = 'none';
     loadBooks();
   });
@@ -282,7 +286,7 @@
     moreDrop.style.display = moreDrop.style.display === 'none' ? 'block' : 'none';
   });
   document.addEventListener('click', () => {
-    document.querySelectorAll('.msel-dropdown, .toolbar-more-drop').forEach(d => d.style.display = 'none');
+    document.querySelectorAll('.toolbar-more-drop').forEach(d => d.style.display = 'none');
   });
 
   // ── Modale sélection sources ──────────────────────────────────────────────
@@ -424,8 +428,10 @@
     }
 
     // Série
+    const serMore = mselMoreSeries.getValues();
     const serChip = getSerChip();
-    if (serChip === 'none') params.set('series_id', 'none');
+    if (serMore.length) params.set('series_id', serMore[0]);
+    else if (serChip === 'none') params.set('series_id', 'none');
     else if (serChip === 'any') params.set('series_id', 'any');
 
     // Couverture
@@ -762,7 +768,14 @@
     mselMoreGenre.setOptions(genres.map(g => ({ value: g.id, label: `${g.id} (${g.count})` })));
   }
 
-  Promise.all([loadLocations(), loadSourceFilter(), loadGenreFilter()]).then(async () => {
+  async function loadSeriesFilter() {
+    const res = await fetch('/api/series');
+    if (!res.ok) return;
+    const series = await res.json();
+    mselMoreSeries.setOptions(series.map(s => ({ value: s.id, label: `${s.name} (${s.book_count})` })));
+  }
+
+  Promise.all([loadLocations(), loadSourceFilter(), loadGenreFilter(), loadSeriesFilter()]).then(async () => {
     // Pré-sélectionner les salles en écriture dans le dropdown localisation
     {
       const meRes = await fetch('/api/me');
@@ -776,7 +789,7 @@
           // Désactiver le chip "Toute" si des salles sont pré-sélectionnées
           if (ids.length) {
             document.querySelectorAll('.loc-chip').forEach(c => c.classList.remove('active'));
-            document.getElementById('msel-location-btn')?.classList.add('msel-active');
+            mselMoreLocation._onchange();
           }
         }
       }
