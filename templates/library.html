@@ -36,30 +36,33 @@
     <div class="filter-module" id="fg-location">
       <button class="filter-module-label" data-panel="fp-location">Localisation<span class="filter-module-badge" id="badge-location"></span></button>
       <div class="filter-module-panel" id="fp-location">
-        <button class="filter-chip loc-chip active" data-val="">Toute</button>
-        <button class="filter-chip loc-chip" data-val="none">Sans</button>
-        <div class="msel-wrap" id="msel-location">
-          <button type="button" class="filter-chip filter-chip-more" id="msel-location-btn">▾</button>
-          <div class="msel-dropdown" id="msel-location-drop" style="display:none"></div>
+        <div class="fp-chips">
+          <button class="filter-chip loc-chip active" data-val="">Toute</button>
+          <button class="filter-chip loc-chip" data-val="none">Sans</button>
         </div>
+        <div class="fp-list" id="msel-location-drop"></div>
       </div>
     </div>
     <div class="filter-sep"></div>
     <div class="filter-module" id="fg-series">
       <button class="filter-module-label" data-panel="fp-series">Série<span class="filter-module-badge" id="badge-series"></span></button>
       <div class="filter-module-panel" id="fp-series">
-        <button class="filter-chip series-chip active" data-val="">Toutes</button>
-        <button class="filter-chip series-chip" data-val="none">Sans</button>
-        <button class="filter-chip series-chip" data-val="any">Avec</button>
+        <div class="fp-chips">
+          <button class="filter-chip series-chip active" data-val="">Toutes</button>
+          <button class="filter-chip series-chip" data-val="none">Sans</button>
+          <button class="filter-chip series-chip" data-val="any">Avec</button>
+        </div>
       </div>
     </div>
     <div class="filter-sep"></div>
     <div class="filter-module" id="fg-cover">
       <button class="filter-module-label" data-panel="fp-cover">Couverture<span class="filter-module-badge" id="badge-cover"></span></button>
       <div class="filter-module-panel" id="fp-cover">
-        <button class="filter-chip cover-chip active" data-val="">Toutes</button>
-        <button class="filter-chip cover-chip" data-val="yes">Avec</button>
-        <button class="filter-chip cover-chip" data-val="no">Sans</button>
+        <div class="fp-chips">
+          <button class="filter-chip cover-chip active" data-val="">Toutes</button>
+          <button class="filter-chip cover-chip" data-val="yes">Avec</button>
+          <button class="filter-chip cover-chip" data-val="no">Sans</button>
+        </div>
       </div>
       <select id="filter-cover" style="display:none"></select>
     </div>
@@ -67,23 +70,21 @@
     <div class="filter-module" id="fg-genre">
       <button class="filter-module-label" data-panel="fp-genre">Genre<span class="filter-module-badge" id="badge-genre"></span></button>
       <div class="filter-module-panel" id="fp-genre">
-        <button class="filter-chip genre-chip active" data-val="">Tous</button>
-        <button class="filter-chip genre-chip" data-val="none">Sans</button>
-        <div class="msel-wrap" id="msel-genre">
-          <button type="button" class="filter-chip filter-chip-more" id="msel-genre-btn">▾</button>
-          <div class="msel-dropdown" id="msel-genre-drop" style="display:none"></div>
+        <div class="fp-chips">
+          <button class="filter-chip genre-chip active" data-val="">Tous</button>
+          <button class="filter-chip genre-chip" data-val="none">Sans</button>
         </div>
+        <div class="fp-list" id="msel-genre-drop"></div>
       </div>
     </div>
     <div class="filter-sep"></div>
     <div class="filter-module" id="fg-source">
       <button class="filter-module-label" data-panel="fp-source">Source<span class="filter-module-badge" id="badge-source"></span></button>
       <div class="filter-module-panel" id="fp-source">
-        <button class="filter-chip source-chip active" data-val="">Toutes</button>
-        <div class="msel-wrap" id="msel-source">
-          <button type="button" class="filter-chip filter-chip-more" id="msel-source-btn">▾</button>
-          <div class="msel-dropdown" id="msel-source-drop" style="display:none"></div>
+        <div class="fp-chips">
+          <button class="filter-chip source-chip active" data-val="">Toutes</button>
         </div>
+        <div class="fp-list" id="msel-source-drop"></div>
       </div>
     </div>
     <button class="filter-reset" id="btn-filter-reset" style="display:none" title="Effacer les filtres">✕ Réinitialiser</button>
@@ -152,10 +153,8 @@
   function wireChipGroup(chipClass, onChangeCb) {
     document.querySelectorAll(`.${chipClass}`).forEach(chip => {
       chip.addEventListener('click', () => {
-        // Désactiver msel du même groupe si on clique un chip statique
         const group = chip.closest('.filter-module');
-        group?.querySelectorAll('.msel-dropdown input[type=checkbox]').forEach(c => c.checked = false);
-        group?.querySelectorAll('.filter-chip-more').forEach(b => b.classList.remove('msel-active'));
+        group?.querySelectorAll('.fp-list input[type=checkbox]').forEach(c => c.checked = false);
         document.querySelectorAll(`.${chipClass}`).forEach(c => c.classList.remove('active'));
         chip.classList.add('active');
         onChangeCb();
@@ -167,25 +166,17 @@
     };
   }
 
-  function makeMselMore(btnId, dropId, onChangeCb) {
-    const btn = document.getElementById(btnId);
-    if (!btn) return { getValues: () => [], setOptions: () => {}, clear: () => {}, _onchange: () => {} };
+  function makeInlineList(dropId, onChangeCb) {
     const drop = document.getElementById(dropId);
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      const open = drop.style.display !== 'none';
-      document.querySelectorAll('.msel-dropdown, .toolbar-more-drop').forEach(d => d.style.display = 'none');
-      drop.style.display = open ? 'none' : 'block';
-    });
+    if (!drop) return { getValues: () => [], setOptions: () => {}, clear: () => {}, _onchange: () => {} };
     function getValues() {
       return [...drop.querySelectorAll('input[type=checkbox]:checked')].map(c => c.value);
     }
     function _onchange() {
       const hasChecked = getValues().length > 0;
-      btn.classList.toggle('msel-active', hasChecked);
       if (hasChecked) {
-        const group = btn.closest('.filter-module');
-        group?.querySelectorAll('.filter-chip:not(.filter-chip-more)').forEach(c => c.classList.remove('active'));
+        const group = drop.closest('.filter-module');
+        group?.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
       }
       onChangeCb();
     }
@@ -200,29 +191,26 @@
           btn.classList.toggle('msel-active', hasChecked);
           if (hasChecked) {
             const group = btn.closest('.filter-module');
-            group?.querySelectorAll('.filter-chip:not(.filter-chip-more)').forEach(c => c.classList.remove('active'));
-          }
-          onChangeCb();
+          _onchange();
         });
         drop.appendChild(lbl);
       });
     }
     function clear() {
       drop.querySelectorAll('input[type=checkbox]').forEach(c => c.checked = false);
-      btn.classList.remove('msel-active');
     }
     return { getValues, setOptions, clear, _onchange };
   }
+
+  const mselMoreLocation = makeInlineList('msel-location-drop', () => { updateFilterReset(); refreshBadges(); loadBooks(); });
+  const mselMoreGenre    = makeInlineList('msel-genre-drop',    () => { updateFilterReset(); refreshBadges(); loadBooks(); });
+  const mselMoreSource   = makeInlineList('msel-source-drop',   () => { updateFilterReset(); refreshBadges(); loadBooks(); });
 
   const getLocChip   = wireChipGroup('loc-chip',    () => { mselMoreLocation.clear(); updateFilterReset(); refreshBadges(); loadBooks(); });
   const getSerChip   = wireChipGroup('series-chip',  () => { updateFilterReset(); refreshBadges(); loadBooks(); });
   const getCovChip   = wireChipGroup('cover-chip',   () => { updateFilterReset(); refreshBadges(); loadBooks(); });
   const getGenChip   = wireChipGroup('genre-chip',   () => { mselMoreGenre.clear(); updateFilterReset(); refreshBadges(); loadBooks(); });
   const getSrcChip   = wireChipGroup('source-chip',  () => { mselMoreSource.clear(); updateFilterReset(); refreshBadges(); loadBooks(); });
-
-  const mselMoreLocation = makeMselMore('msel-location-btn', 'msel-location-drop', () => { updateFilterReset(); refreshBadges(); loadBooks(); });
-  const mselMoreGenre    = makeMselMore('msel-genre-btn',    'msel-genre-drop',    () => { updateFilterReset(); refreshBadges(); loadBooks(); });
-  const mselMoreSource   = makeMselMore('msel-source-btn',   'msel-source-drop',   () => { updateFilterReset(); refreshBadges(); loadBooks(); });
 
   // ── Accordéon filtres ────────────────────────────────────────────────────
   document.querySelectorAll('.filter-module-label[data-panel]').forEach(btn => {
@@ -234,8 +222,8 @@
       // Fermer tous les panels
       document.querySelectorAll('.filter-module-panel.open').forEach(p => p.classList.remove('open'));
       document.querySelectorAll('.filter-module-label.open').forEach(b => b.classList.remove('open'));
-      // Fermer les dropdowns msel
-      document.querySelectorAll('.msel-dropdown').forEach(d => d.style.display = 'none');
+      // Fermer les dropdowns de la toolbar
+      document.querySelectorAll('.toolbar-more-drop').forEach(d => d.style.display = 'none');
       if (!isOpen) {
         panel.classList.add('open');
         btn.classList.add('open');
