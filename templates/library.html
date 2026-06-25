@@ -186,13 +186,7 @@
         const lbl = document.createElement('label');
         lbl.className = 'msel-opt';
         lbl.innerHTML = `<input type="checkbox" value="${escHtml(String(o.value))}"> ${escHtml(o.label)}`;
-        lbl.querySelector('input').addEventListener('change', () => {
-          const hasChecked = getValues().length > 0;
-          btn.classList.toggle('msel-active', hasChecked);
-          if (hasChecked) {
-            const group = btn.closest('.filter-module');
-          _onchange();
-        });
+        lbl.querySelector('input').addEventListener('change', _onchange);
         drop.appendChild(lbl);
       });
     }
