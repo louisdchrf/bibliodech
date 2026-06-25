@@ -6,7 +6,6 @@
   <!-- Barre de recherche + actions -->
   <div class="toolbar-top">
     <div class="toolbar-search-wrap">
-      <svg class="toolbar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input type="text" id="search" placeholder="Rechercher titre, auteur, ISBN…" class="toolbar-search-input">
     </div>
     <div class="toolbar-actions">
@@ -32,11 +31,11 @@
     </div>
   </div>
 
-  <!-- Bloc filtres flat -->
+  <!-- Bloc filtres -->
   <div class="filter-block" id="filter-block">
     <div class="filter-module" id="fg-location">
-      <span class="filter-module-label">Localisation</span>
-      <div class="filter-module-chips">
+      <button class="filter-module-label" data-panel="fp-location">Localisation<span class="filter-module-badge" id="badge-location"></span></button>
+      <div class="filter-module-panel" id="fp-location">
         <button class="filter-chip loc-chip active" data-val="">Toute</button>
         <button class="filter-chip loc-chip" data-val="none">Sans</button>
         <div class="msel-wrap" id="msel-location">
@@ -47,8 +46,8 @@
     </div>
     <div class="filter-sep"></div>
     <div class="filter-module" id="fg-series">
-      <span class="filter-module-label">Série</span>
-      <div class="filter-module-chips">
+      <button class="filter-module-label" data-panel="fp-series">Série<span class="filter-module-badge" id="badge-series"></span></button>
+      <div class="filter-module-panel" id="fp-series">
         <button class="filter-chip series-chip active" data-val="">Toutes</button>
         <button class="filter-chip series-chip" data-val="none">Sans</button>
         <button class="filter-chip series-chip" data-val="any">Avec</button>
@@ -56,8 +55,8 @@
     </div>
     <div class="filter-sep"></div>
     <div class="filter-module" id="fg-cover">
-      <span class="filter-module-label">Couverture</span>
-      <div class="filter-module-chips">
+      <button class="filter-module-label" data-panel="fp-cover">Couverture<span class="filter-module-badge" id="badge-cover"></span></button>
+      <div class="filter-module-panel" id="fp-cover">
         <button class="filter-chip cover-chip active" data-val="">Toutes</button>
         <button class="filter-chip cover-chip" data-val="yes">Avec</button>
         <button class="filter-chip cover-chip" data-val="no">Sans</button>
@@ -66,8 +65,8 @@
     </div>
     <div class="filter-sep"></div>
     <div class="filter-module" id="fg-genre">
-      <span class="filter-module-label">Genre</span>
-      <div class="filter-module-chips">
+      <button class="filter-module-label" data-panel="fp-genre">Genre<span class="filter-module-badge" id="badge-genre"></span></button>
+      <div class="filter-module-panel" id="fp-genre">
         <button class="filter-chip genre-chip active" data-val="">Tous</button>
         <button class="filter-chip genre-chip" data-val="none">Sans</button>
         <div class="msel-wrap" id="msel-genre">
@@ -78,8 +77,8 @@
     </div>
     <div class="filter-sep"></div>
     <div class="filter-module" id="fg-source">
-      <span class="filter-module-label">Source</span>
-      <div class="filter-module-chips">
+      <button class="filter-module-label" data-panel="fp-source">Source<span class="filter-module-badge" id="badge-source"></span></button>
+      <div class="filter-module-panel" id="fp-source">
         <button class="filter-chip source-chip active" data-val="">Toutes</button>
         <div class="msel-wrap" id="msel-source">
           <button type="button" class="filter-chip filter-chip-more" id="msel-source-btn">▾</button>
@@ -215,15 +214,64 @@
     return { getValues, setOptions, clear, _onchange };
   }
 
-  const getLocChip   = wireChipGroup('loc-chip',    () => { mselMoreLocation.clear(); updateFilterReset(); loadBooks(); });
-  const getSerChip   = wireChipGroup('series-chip',  () => { updateFilterReset(); loadBooks(); });
-  const getCovChip   = wireChipGroup('cover-chip',   () => { updateFilterReset(); loadBooks(); });
-  const getGenChip   = wireChipGroup('genre-chip',   () => { mselMoreGenre.clear(); updateFilterReset(); loadBooks(); });
-  const getSrcChip   = wireChipGroup('source-chip',  () => { mselMoreSource.clear(); updateFilterReset(); loadBooks(); });
+  const getLocChip   = wireChipGroup('loc-chip',    () => { mselMoreLocation.clear(); updateFilterReset(); refreshBadges(); loadBooks(); });
+  const getSerChip   = wireChipGroup('series-chip',  () => { updateFilterReset(); refreshBadges(); loadBooks(); });
+  const getCovChip   = wireChipGroup('cover-chip',   () => { updateFilterReset(); refreshBadges(); loadBooks(); });
+  const getGenChip   = wireChipGroup('genre-chip',   () => { mselMoreGenre.clear(); updateFilterReset(); refreshBadges(); loadBooks(); });
+  const getSrcChip   = wireChipGroup('source-chip',  () => { mselMoreSource.clear(); updateFilterReset(); refreshBadges(); loadBooks(); });
 
-  const mselMoreLocation = makeMselMore('msel-location-btn', 'msel-location-drop', () => { updateFilterReset(); loadBooks(); });
-  const mselMoreGenre    = makeMselMore('msel-genre-btn',    'msel-genre-drop',    () => { updateFilterReset(); loadBooks(); });
-  const mselMoreSource   = makeMselMore('msel-source-btn',   'msel-source-drop',   () => { updateFilterReset(); loadBooks(); });
+  const mselMoreLocation = makeMselMore('msel-location-btn', 'msel-location-drop', () => { updateFilterReset(); refreshBadges(); loadBooks(); });
+  const mselMoreGenre    = makeMselMore('msel-genre-btn',    'msel-genre-drop',    () => { updateFilterReset(); refreshBadges(); loadBooks(); });
+  const mselMoreSource   = makeMselMore('msel-source-btn',   'msel-source-drop',   () => { updateFilterReset(); refreshBadges(); loadBooks(); });
+
+  // ── Accordéon filtres ────────────────────────────────────────────────────
+  document.querySelectorAll('.filter-module-label[data-panel]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const panelId = btn.dataset.panel;
+      const panel = document.getElementById(panelId);
+      const isOpen = panel.classList.contains('open');
+      // Fermer tous les panels
+      document.querySelectorAll('.filter-module-panel.open').forEach(p => p.classList.remove('open'));
+      document.querySelectorAll('.filter-module-label.open').forEach(b => b.classList.remove('open'));
+      // Fermer les dropdowns msel
+      document.querySelectorAll('.msel-dropdown').forEach(d => d.style.display = 'none');
+      if (!isOpen) {
+        panel.classList.add('open');
+        btn.classList.add('open');
+      }
+    });
+  });
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.filter-module')) {
+      document.querySelectorAll('.filter-module-panel.open').forEach(p => p.classList.remove('open'));
+      document.querySelectorAll('.filter-module-label.open').forEach(b => b.classList.remove('open'));
+    }
+  });
+
+  function updateBadge(badgeId, text) {
+    const el = document.getElementById(badgeId);
+    if (!el) return;
+    el.textContent = text ? ` · ${text}` : '';
+    el.style.display = text ? '' : 'none';
+    const btn = el.closest('.filter-module-label');
+    btn?.classList.toggle('has-filter', !!text);
+  }
+
+  function refreshBadges() {
+    const locMore = mselMoreLocation.getValues();
+    const locChip = getLocChip();
+    updateBadge('badge-location', locMore.length ? `${locMore.length} sél.` : locChip === 'none' ? 'Sans' : '');
+    const ser = getSerChip();
+    updateBadge('badge-series', ser === 'none' ? 'Sans' : ser === 'any' ? 'Avec' : '');
+    const cov = getCovChip();
+    updateBadge('badge-cover', cov === 'yes' ? 'Avec' : cov === 'no' ? 'Sans' : '');
+    const genMore = mselMoreGenre.getValues();
+    const genChip = getGenChip();
+    updateBadge('badge-genre', genMore.length ? `${genMore.length} sél.` : genChip === 'none' ? 'Sans' : '');
+    const srcMore = mselMoreSource.getValues();
+    updateBadge('badge-source', srcMore.length ? `${srcMore.length} sél.` : '');
+  }
 
   // ── Bouton reset filtres ──────────────────────────────────────────────────
   const btnFilterReset = document.getElementById('btn-filter-reset');
