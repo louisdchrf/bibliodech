@@ -592,10 +592,11 @@ input:focus, select:focus {
   transform: translateY(-50%);
   width: 16px;
   height: 16px;
+  min-width: 16px;
   color: var(--color-text-muted);
   pointer-events: none;
   z-index: 1;
-  flex-shrink: 0;
+  display: block;
 }
 .toolbar-search-input {
   width: 100%;
