@@ -747,6 +747,7 @@ input:focus, select:focus {
 .fp-list {
   display: flex;
   flex-direction: column;
+  gap: .15rem;
   max-height: 220px;
   overflow-y: auto;
   border-top: 1px solid var(--color-border);
