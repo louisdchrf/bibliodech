@@ -2201,14 +2201,14 @@ html.dark .missing-vol-tobuy     { background: #2d0f0f; }
 
 /* En-tête de groupe dans les listes de filtres */
 .fp-list-header {
-  padding: .4rem .75rem .1rem;
+  padding: .4rem .75rem;
   font-size: .68rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .07em;
   color: var(--color-text-muted);
 }
-.msel-opt-shelf { padding-left: 1.5rem; font-size: .82rem; color: var(--color-text-muted); }
+.msel-opt-shelf { padding: .4rem .75rem; font-size: .875rem; color: var(--color-text-muted); }
 
 /* ── Prochain lancement ──────────────────────────────────────────────────── */
 .task-next-run {
