@@ -1400,12 +1400,12 @@ async def _bnf_check_one_series(series: Series, db) -> dict:
             if changed:
                 assigned += 1
 
-    # 3. Pour les volumes sans ISBN BnF : chercher par titre normalisé
-    #    - d'abord parmi les livres de cette série sans position
+    # 3. Pour les volumes non encore trouvés : chercher par titre normalisé
+    #    - d'abord parmi les livres de cette série (toutes positions)
     #    - ensuite parmi les livres sans série
-    books_no_pos = [b for b in series.books if b.series_position is None]
+    books_in_series = list(series.books)
     books_no_series = db.query(Book).filter(Book.series_id.is_(None)).all()
-    candidates = books_no_pos + books_no_series
+    candidates = books_in_series + books_no_series
     for vol in volumes_found:
         if vol in in_library:
             continue
@@ -1415,9 +1415,11 @@ async def _bnf_check_one_series(series: Series, db) -> dict:
         for book in candidates:
             if _norm(book.title) == title_bnf:
                 in_library[vol] = book.id
-                book.series_id = series.id
-                book.series_position = float(vol)
-                assigned += 1
+                if book.series_id != series.id:
+                    book.series_id = series.id
+                    assigned += 1
+                if book.series_position is None:
+                    book.series_position = float(vol)
                 break
 
     if assigned:
