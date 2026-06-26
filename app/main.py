@@ -620,7 +620,7 @@ _DOC_FILES = [
     ("SCRIPTS",             "docs/SCRIPTS.md",             "Scripts Python"),
 ]
 
-@app.get("/docs", response_class=HTMLResponse)
+@app.get("/aide", response_class=HTMLResponse)
 def docs_page(request: Request, db: Session = Depends(get_db)):
     try:
         user = get_current_user(request, db)
@@ -632,7 +632,7 @@ def docs_page(request: Request, db: Session = Depends(get_db)):
         "build_version": BUILD_VERSION, "doc_files": files,
     })
 
-@app.get("/api/docs/{slug}", response_class=PlainTextResponse)
+@app.get("/api/aide/{slug}", response_class=PlainTextResponse)
 def docs_content(slug: str, request: Request, db: Session = Depends(get_db)):
     get_current_user(request, db)
     from fastapi import HTTPException

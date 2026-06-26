@@ -139,7 +139,7 @@
     navItems.forEach(n => n.classList.toggle('active', n.dataset.slug === slug));
 
     try {
-      const r = await fetch(`/api/docs/${slug}`);
+      const r = await fetch(`/api/aide/${slug}`);
       if (!r.ok) throw new Error('Erreur');
       const md = await r.text();
       docsBody.innerHTML = marked.parse(md);
