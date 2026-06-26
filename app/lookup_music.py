@@ -135,6 +135,27 @@ async def _lookup_discogs(barcode: str, api_key: str = "") -> dict | None:
         return None
 
 
+async def _cover_from_itunes(artist: str, title: str) -> str | None:
+    """Cherche une pochette sur iTunes Search API (gratuit, sans clé)."""
+    if not artist or not title:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=6) as client:
+            r = await client.get(
+                "https://itunes.apple.com/search",
+                params={"term": f"{artist} {title}", "media": "music", "entity": "album", "limit": 3},
+            )
+            if r.status_code != 200:
+                return None
+            for item in r.json().get("results", []):
+                url = item.get("artworkUrl100", "")
+                if url:
+                    return url.replace("100x100bb", "600x600bb")
+    except Exception:
+        return None
+    return None
+
+
 async def lookup_barcode(barcode: str, discogs_key: str = "") -> dict | None:
     """Cherche un code-barres musical sur MusicBrainz puis Discogs en fallback."""
     result = await _lookup_musicbrainz(barcode)
@@ -143,8 +164,12 @@ async def lookup_barcode(barcode: str, discogs_key: str = "") -> dict | None:
             discogs = await _lookup_discogs(barcode, discogs_key)
             if discogs and discogs.get("cover_url"):
                 result["cover_url"] = discogs["cover_url"]
+        if not result.get("cover_url"):
+            result["cover_url"] = await _cover_from_itunes(result.get("artist"), result.get("title"))
         return result
     result = await _lookup_discogs(barcode, discogs_key)
+    if result and not result.get("cover_url"):
+        result["cover_url"] = await _cover_from_itunes(result.get("artist"), result.get("title"))
     return result
 
 
