@@ -36,7 +36,6 @@
 - Support Rakuten Books pour les codes JAN japonais.
 - Export vers Calibre ou autres formats standard.
 - Mode hors-ligne pour le scanner mobile (PWA / cache).
-- **Vidéothèque (DVDs, Blu-rays)** : pas de base de données libre avec lookup EAN fiable pour les éditions françaises. Approche envisagée : EAN-Search.org (payant, ~10$/mois) ou saisie semi-manuelle du titre → recherche TMDB (gratuit, clé API) pour les métadonnées complètes (affiche, réalisateur, casting, genre, durée). À envisager après la médiathèque musicale.
 
 ---
 

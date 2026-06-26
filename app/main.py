@@ -213,6 +213,66 @@ def export_books_csv(request: Request, db: Session = Depends(get_db)):
     )
 
 
+@app.get("/api/music/export/csv")
+def export_discs_csv(request: Request, db: Session = Depends(get_db)):
+    from app.models import Disc
+    get_current_user(request, db)
+    discs = db.query(Disc).order_by(Disc.artist, Disc.title).all()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Code-barres", "Titre", "Artiste", "Label", "N° catalogue", "Format", "Année",
+                     "Genre", "Pistes", "Pays", "Langue", "Localisation", "Ajouté le"])
+    for d in discs:
+        if d.room:
+            loc = f"{d.room.site.name} / {d.room.name}" if d.room.site else d.room.name
+        else:
+            loc = ""
+        writer.writerow([
+            d.barcode or "", d.title or "", d.artist or "", d.label or "",
+            d.catalog_number or "", d.format or "", d.year or "",
+            d.genre or "", d.track_count or "", d.country or "", d.language or "",
+            loc, d.added_at.strftime("%Y-%m-%d") if d.added_at else "",
+        ])
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=bibliodech-musique.csv"},
+    )
+
+
+@app.get("/api/search")
+def search_all(q: str, request: Request, db: Session = Depends(get_db)):
+    from app.models import Disc
+    get_current_user(request, db)
+    if not q or len(q.strip()) < 2:
+        return {"books": [], "discs": []}
+    term = f"%{q.strip()}%"
+
+    books_q = db.query(Book).filter(
+        Book.title.ilike(term) |
+        Book.authors.ilike(term) |
+        Book.isbn.ilike(term)
+    ).limit(8).all()
+
+    discs_q = db.query(Disc).filter(
+        Disc.title.ilike(term) |
+        Disc.artist.ilike(term) |
+        Disc.barcode.ilike(term)
+    ).limit(8).all()
+
+    def book_dict(b):
+        authors = json.loads(b.authors) if b.authors else []
+        return {"id": b.id, "title": b.title, "subtitle": b.subtitle,
+                "authors": authors, "cover_url": b.cover_url, "type": "book"}
+
+    def disc_dict(d):
+        return {"id": d.id, "title": d.title, "artist": d.artist,
+                "cover_url": d.cover_url, "format": d.format, "type": "disc"}
+
+    return {"books": [book_dict(b) for b in books_q], "discs": [disc_dict(d) for d in discs_q]}
+
+
 @app.get("/api/stats")
 def get_stats(request: Request, db: Session = Depends(get_db)):
     from sqlalchemy import func, extract
@@ -338,6 +398,18 @@ def get_stats(request: Request, db: Session = Depends(get_db)):
         key=lambda x: x["count"], reverse=True
     )[:10]
 
+    # ── Stats musique ──────────────────────────────────────────────────────────
+    from app.models import Disc
+    total_discs = db.query(func.count(Disc.id)).scalar()
+    top_artists_rows = db.query(Disc.artist, func.count(Disc.id))\
+        .filter(Disc.artist.isnot(None))\
+        .group_by(Disc.artist).order_by(func.count(Disc.id).desc()).limit(10).all()
+    top_artists = [{"name": a, "count": c} for a, c in top_artists_rows]
+    format_rows = db.query(Disc.format, func.count(Disc.id))\
+        .filter(Disc.format.isnot(None))\
+        .group_by(Disc.format).order_by(func.count(Disc.id).desc()).all()
+    by_format = [{"label": f, "count": c} for f, c in format_rows]
+
     return {
         "totals": {
             "books": total_books,
@@ -363,6 +435,11 @@ def get_stats(request: Request, db: Session = Depends(get_db)):
             "books_no_series": books_no_series,
             "empty_series": empty_series,
             "top_series": top_series,
+        },
+        "music": {
+            "total": total_discs,
+            "top_artists": top_artists,
+            "by_format": by_format,
         },
     }
 

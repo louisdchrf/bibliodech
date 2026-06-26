@@ -83,7 +83,7 @@
           ${d.format ? `<p class="modal-publisher">${escHtml(d.format)}</p>` : ''}
           <div class="modal-badges">
             ${d.enrichment_status === 'pending'   ? `<span class="badge" style="background:var(--color-warning,#f59e0b);color:#fff">⏳ En cours…</span>` : ''}
-            ${d.enrichment_status === 'not_found' ? `<span class="badge" style="background:var(--color-danger);color:#fff">Non trouvé</span>` : ''}
+            ${d.enrichment_status === 'not_found' ? `<span class="badge" style="background:var(--color-danger);color:#fff">Non trouvé</span> <button class="btn btn-ghost btn-xs" id="dm-reenrich-btn" style="font-size:.78rem">Relancer la recherche</button>` : ''}
             ${extLinks.length ? extLinks.join('<span style="color:var(--color-border)"> · </span>') : ''}
           </div>
         </div>
@@ -164,6 +164,28 @@
         setTimeout(closeModal, 800);
       } else {
         msg.textContent = 'Erreur'; msg.className = 'edit-msg edit-msg-err';
+      }
+    });
+
+    // Relancer l'enrichissement
+    document.getElementById('dm-reenrich-btn')?.addEventListener('click', async () => {
+      const btn = document.getElementById('dm-reenrich-btn');
+      btn.disabled = true; btn.textContent = '⏳';
+      const r = await fetch(`/api/music/${d.id}/reenrich`, { method: 'POST' });
+      if (r.ok) {
+        _currentDisc = { ..._currentDisc, enrichment_status: 'pending' };
+        renderModal(_currentDisc);
+        _pollTimer = setInterval(async () => {
+          const r2 = await fetch(`/api/music/${d.id}`);
+          if (!r2.ok) return;
+          const updated = await r2.json();
+          if (updated.enrichment_status !== 'pending') {
+            clearInterval(_pollTimer); _pollTimer = null;
+            _currentDisc = updated;
+            renderModal(updated);
+            window.onDiscSaved?.();
+          }
+        }, 1500);
       }
     });
 

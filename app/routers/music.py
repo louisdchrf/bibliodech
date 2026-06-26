@@ -246,6 +246,26 @@ def update_disc(
     return disc_to_dict(disc)
 
 
+@router.post("/api/music/{disc_id}/reenrich")
+async def reenrich_disc(
+    disc_id: int,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    user = get_current_user(request, db)
+    require_contributor(user)
+    disc = db.query(Disc).filter(Disc.id == disc_id).first()
+    if not disc:
+        raise HTTPException(status_code=404, detail="Disque introuvable")
+    if not disc.barcode:
+        raise HTTPException(status_code=400, detail="Pas de code-barres pour relancer l'enrichissement")
+    disc.enrichment_status = "pending"
+    db.commit()
+    background_tasks.add_task(_enrich_disc, disc.id, disc.barcode)
+    return {"status": "pending"}
+
+
 @router.delete("/api/music/{disc_id}")
 def delete_disc(disc_id: int, request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)

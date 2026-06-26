@@ -57,6 +57,20 @@
       <div id="chart-top-series"></div>
     </div>
   </div>
+
+  <!-- Section Musique -->
+  <h2 class="page-title" style="margin:2rem 0 1rem;font-size:1.25rem">Médiathèque musicale</h2>
+  <div class="stat-kpis" id="kpis-music"></div>
+  <div class="stats-grid" id="stats-music" style="display:none">
+    <div class="stat-card">
+      <h2 class="stat-card-title">Formats</h2>
+      <div id="chart-disc-formats"></div>
+    </div>
+    <div class="stat-card">
+      <h2 class="stat-card-title">Top artistes</h2>
+      <div id="chart-top-artists"></div>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
@@ -285,6 +299,19 @@
     if (d.series) {
       renderSeries(d.series);
       barChart(document.getElementById('chart-top-series'), d.series.top_series.map(s => ({ label: s.name, count: s.count })), { color: ACCENT });
+    }
+    if (d.music) {
+      const m = d.music;
+      document.getElementById('kpis-music').innerHTML = [
+        { value: m.total, label: 'Disques', icon: '💿' },
+        { value: m.top_artists.length, label: 'Artistes', icon: '🎵' },
+        { value: m.by_format.length,  label: 'Formats',  icon: '🎛️' },
+      ].map(i => `<div class="stat-kpi"><span class="stat-kpi-icon">${i.icon}</span><span class="stat-kpi-value">${i.value}</span><span class="stat-kpi-label">${i.label}</span></div>`).join('');
+      if (m.total > 0) {
+        document.getElementById('stats-music').style.display = '';
+        donutChart(document.getElementById('chart-disc-formats'), m.by_format.map(f => ({ code: f.label, label: f.label, count: f.count })));
+        barChart(document.getElementById('chart-top-artists'), m.top_artists.map(a => ({ label: a.name, count: a.count })), { color: ACCENT });
+      }
     }
   }
 

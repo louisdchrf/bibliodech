@@ -62,6 +62,15 @@
       {% endif %}
       <a href="/aide" {% if active=='docs' %}class="active"{% endif %}>Aide</a>
     </div>
+    <div class="nav-search" id="nav-search-wrap">
+      <button class="nav-search-icon" id="nav-search-btn" aria-label="Rechercher" title="Rechercher">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </button>
+      <div class="nav-search-panel" id="nav-search-panel" style="display:none">
+        <input type="search" id="nav-search-input" class="nav-search-input" placeholder="Rechercher livres, disques…" autocomplete="off" spellcheck="false">
+        <div class="nav-search-results" id="nav-search-results"></div>
+      </div>
+    </div>
     <div class="nav-user">
       <button id="activity-btn" class="btn btn-ghost btn-sm activity-nav-btn" title="Activité en cours" style="display:none" aria-haspopup="true">
         <span class="activity-spinner"></span>
@@ -504,6 +513,94 @@
   })();
   </script>
 
+  <!-- Recherche globale -->
+  <script>
+  (function(){
+    var btn    = document.getElementById('nav-search-btn');
+    var panel  = document.getElementById('nav-search-panel');
+    var input  = document.getElementById('nav-search-input');
+    var results= document.getElementById('nav-search-results');
+    var _timer = null;
+
+    function openSearch() {
+      panel.style.display = '';
+      input.focus();
+    }
+    function closeSearch() {
+      panel.style.display = 'none';
+      input.value = '';
+      results.innerHTML = '';
+    }
+
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      panel.style.display === 'none' ? openSearch() : closeSearch();
+    });
+    document.addEventListener('click', function(e) {
+      if (!document.getElementById('nav-search-wrap').contains(e.target)) closeSearch();
+    });
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') closeSearch();
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); openSearch(); }
+    });
+
+    input.addEventListener('input', function() {
+      clearTimeout(_timer);
+      var q = input.value.trim();
+      if (q.length < 2) { results.innerHTML = ''; return; }
+      results.innerHTML = '<div class="nav-search-loading">Recherche…</div>';
+      _timer = setTimeout(async function() {
+        try {
+          var r = await fetch('/api/search?q=' + encodeURIComponent(q));
+          if (!r.ok) return;
+          var d = await r.json();
+          renderResults(d);
+        } catch(e) {}
+      }, 220);
+    });
+
+    function renderResults(d) {
+      var html = '';
+      if (d.books.length === 0 && d.discs.length === 0) {
+        results.innerHTML = '<div class="nav-search-empty">Aucun résultat</div>';
+        return;
+      }
+      if (d.books.length) {
+        html += '<div class="nav-search-group">Livres</div>';
+        html += d.books.map(function(b) {
+          var cover = b.cover_url ? `<img src="${escHtml(b.cover_url)}" class="nav-search-thumb">` : '<div class="nav-search-thumb nav-search-thumb-empty"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div>';
+          var sub = (b.authors || []).slice(0,2).map(escHtml).join(', ');
+          return `<a class="nav-search-item" href="/library" data-book-id="${b.id}">${cover}<div><div class="nav-search-item-title">${escHtml(b.title)}</div>${sub ? `<div class="nav-search-item-sub">${sub}</div>` : ''}</div></a>`;
+        }).join('');
+      }
+      if (d.discs.length) {
+        html += '<div class="nav-search-group">Musique</div>';
+        html += d.discs.map(function(b) {
+          var cover = b.cover_url ? `<img src="${escHtml(b.cover_url)}" class="nav-search-thumb">` : '<div class="nav-search-thumb nav-search-thumb-empty"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="3" x2="12" y2="9"/></svg></div>';
+          var sub = [b.artist, b.format].filter(Boolean).map(escHtml).join(' · ');
+          return `<a class="nav-search-item" href="/music" data-disc-id="${b.id}">${cover}<div><div class="nav-search-item-title">${escHtml(b.title)}</div>${sub ? `<div class="nav-search-item-sub">${sub}</div>` : ''}</div></a>`;
+        }).join('');
+      }
+      results.innerHTML = html;
+
+      // Clic sur un résultat → ouvrir la modale si on est sur la bonne page, sinon naviguer
+      results.querySelectorAll('[data-book-id]').forEach(function(el) {
+        el.addEventListener('click', function(e) {
+          var id = +el.dataset.bookId;
+          if (window.openBookModal) { e.preventDefault(); closeSearch(); openBookModal(id); }
+          else closeSearch();
+        });
+      });
+      results.querySelectorAll('[data-disc-id]').forEach(function(el) {
+        el.addEventListener('click', function(e) {
+          var id = +el.dataset.discId;
+          if (window.openDiscModal) { e.preventDefault(); closeSearch(); openDiscModal(id); }
+          else closeSearch();
+        });
+      });
+    }
+  })();
+  </script>
   <script src="/static/js/app.js"></script>
   {% block scripts %}{% endblock %}
 </body>
