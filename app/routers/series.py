@@ -1293,13 +1293,25 @@ async def _bnf_check_one_series(series: Series, db) -> dict:
             for rec in root.findall(".//mxc:record", ns_map):
                 name_225 = None
                 name_461 = None
+                fields_225 = []
                 for df in rec.findall("mxc:datafield", ns_map):
                     tag = df.get("tag")
                     subs = {sf.get("code"): sf.text for sf in df.findall("mxc:subfield", ns_map)}
-                    if tag == "225" and subs.get("a") and subs.get("v"):
-                        name_225 = subs["a"]
+                    if tag == "225" and subs.get("a"):
+                        fields_225.append(subs)
                     elif tag == "461" and subs.get("t") and subs.get("v"):
                         name_461 = subs["t"]
+                # Préférer le champ 225 dont $v est un entier pur < 500 (numéro de tome)
+                for subs in fields_225:
+                    try:
+                        n = int(re.sub(r"[^\d]", "", subs.get("v", "") or ""))
+                        if 0 < n < 500:
+                            name_225 = subs["a"]
+                            break
+                    except ValueError:
+                        pass
+                if name_225 is None and fields_225:
+                    name_225 = fields_225[0]["a"]
                 bnf_series_name = name_225 or name_461
                 if bnf_series_name:
                     break
@@ -1331,13 +1343,17 @@ async def _bnf_check_one_series(series: Series, db) -> dict:
                 if tag == "225" and _norm(subs.get("a", "")) == norm_search:
                     series_match = True
                     try:
-                        vol_num = int(re.sub(r"[^\d]", "", subs.get("v", "") or ""))
+                        n = int(re.sub(r"[^\d]", "", subs.get("v", "") or ""))
+                        if 0 < n < 500:
+                            vol_num = n
                     except ValueError:
                         pass
                 if tag == "461" and _norm(subs.get("t", "")) == norm_search:
                     series_match = True
                     try:
-                        vol_num = int(re.sub(r"[^\d]", "", subs.get("v", "") or ""))
+                        n = int(re.sub(r"[^\d]", "", subs.get("v", "") or ""))
+                        if 0 < n < 500:
+                            vol_num = n
                     except ValueError:
                         pass
                 if tag == "200" and subs.get("a"):
