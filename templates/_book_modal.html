@@ -216,6 +216,8 @@
   function closeModal() {
     overlay.style.display = 'none';
     document.body.classList.remove('modal-open');
+    window.onBookModalClosed?.();
+    window.onBookModalClosed = null;
   }
 
   // ── Rendu ─────────────────────────────────────────────────────────────────

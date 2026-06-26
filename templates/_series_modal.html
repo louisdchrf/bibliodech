@@ -213,7 +213,7 @@
     const books = series.books || [];
     if (!books.length) return '<p style="color:var(--color-text-muted);padding:.5rem 0">Aucun tome dans cette série.</p>';
     const items = books.map(b => `
-      <a href="#" onclick="event.preventDefault();openBookModal(${b.id})" style="text-decoration:none;color:inherit;display:flex;align-items:center;gap:.85rem;padding:.6rem .5rem;border-radius:6px;transition:background .1s" onmouseover="this.style.background='var(--color-surface-2)'" onmouseout="this.style.background=''">
+      <a href="#" onclick="event.preventDefault();openBookFromSeriesModal(${b.id})" style="text-decoration:none;color:inherit;display:flex;align-items:center;gap:.85rem;padding:.6rem .5rem;border-radius:6px;transition:background .1s" onmouseover="this.style.background='var(--color-surface-2)'" onmouseout="this.style.background=''">
         ${b.cover_url
           ? `<img src="${escHtml(b.cover_url)}" style="width:42px;height:60px;object-fit:cover;border-radius:3px;flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">`
           : `<div style="width:42px;height:60px;background:var(--color-border);border-radius:3px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:1rem">📖</div>`}
@@ -252,6 +252,13 @@
     }).join('');
     return `<div>${rows}</div>`;
   }
+
+  // ── Ouvrir un livre depuis l'onglet Tomes ────────────────────────────────
+  window.openBookFromSeriesModal = function(bookId) {
+    overlay.style.display = 'none';
+    openBookModal(bookId);
+    window.onBookModalClosed = () => { overlay.style.display = 'flex'; };
+  };
 
   // ── Fermeture ─────────────────────────────────────────────────────────────
   document.getElementById('series-modal-close').addEventListener('click', closeModal);
