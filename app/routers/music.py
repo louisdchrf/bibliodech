@@ -16,6 +16,7 @@ router = APIRouter()
 
 
 def disc_to_dict(d: Disc) -> dict:
+    site = d.room.site if d.room else None
     return {
         "id": d.id,
         "barcode": d.barcode,
@@ -33,7 +34,9 @@ def disc_to_dict(d: Disc) -> dict:
         "mbid": d.mbid,
         "room_id": d.room_id,
         "room_name": d.room.name if d.room else None,
-        "site_name": d.room.site.name if d.room and d.room.site else None,
+        "site_id": site.id if site else None,
+        "site_name": site.name if site else None,
+        "location_id": d.location_id,
         "enrichment_status": d.enrichment_status,
         "added_at": d.added_at.isoformat() if d.added_at else None,
     }
@@ -52,6 +55,7 @@ class DiscUpdateRequest(BaseModel):
     format: str | None = None
     genre: str | None = None
     room_id: int | None = None
+    location_id: int | None = None
 
 
 async def _apply_info_to_disc(disc: Disc, info: dict, db) -> None:

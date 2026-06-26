@@ -219,12 +219,14 @@ class Disc(Base):
     cover_url = Column(String, nullable=True)
     mbid = Column(String, nullable=True)     # MusicBrainz release ID
     room_id = Column(Integer, ForeignKey("rooms.id"), nullable=True, index=True)
+    location_id = Column(Integer, ForeignKey("shelves.id"), nullable=True)
     enrichment_status = Column(String, nullable=False, default="ok", index=True)
     source_data = Column(Text, nullable=True)
     added_at = Column(DateTime, default=_utcnow)
     added_by = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     room = relationship("Room", foreign_keys=[room_id])
+    location = relationship("Shelf", foreign_keys=[location_id])
 
 
 class AppLog(Base):

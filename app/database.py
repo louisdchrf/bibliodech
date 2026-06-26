@@ -89,6 +89,12 @@ def init_db():
             """))
             conn.execute(text("CREATE INDEX ix_app_logs_created_at ON app_logs (created_at)"))
 
+        # ── Migration colonnes discs ──────────────────────────────────────────
+        if "discs" in tables:
+            disc_cols = [r[1] for r in conn.execute(text("PRAGMA table_info(discs)"))]
+            if "location_id" not in disc_cols:
+                conn.execute(text("ALTER TABLE discs ADD COLUMN location_id INTEGER REFERENCES shelves(id)"))
+
         # ── Index de performance (idempotents via IF NOT EXISTS) ─────────────
         existing_idx = {r[0] for r in conn.execute(text(
             "SELECT name FROM sqlite_master WHERE type='index'"

@@ -13,10 +13,10 @@
   const content = document.getElementById('disc-modal-content');
   let _currentDisc = null;
   let _pollTimer = null;
-  let _rooms = [];
+  let _locTree = [];
 
-  // Charger les salles une fois
-  fetch('/api/rooms').then(r => r.ok ? r.json() : []).then(r => { _rooms = r; }).catch(() => {});
+  // Charger l'arbre de localisation une fois
+  fetch('/api/locations/tree').then(r => r.ok ? r.json() : []).then(t => { _locTree = t; }).catch(() => {});
 
   function closeModal() {
     overlay.style.display = 'none';
@@ -71,7 +71,14 @@
     if (d.mbid)    extLinks.push(`<a href="https://musicbrainz.org/release/${d.mbid}" target="_blank" rel="noopener" class="btn-link" style="font-size:.82rem">MusicBrainz ↗</a>`);
     if (d.barcode) extLinks.push(`<a href="https://www.discogs.com/search/?q=${encodeURIComponent(d.barcode)}&type=release" target="_blank" rel="noopener" class="btn-link" style="font-size:.82rem">Discogs ↗</a>`);
 
-    const roomOptions = _rooms.map(r => `<option value="${r.id}" ${d.room_id == r.id ? 'selected' : ''}>${escHtml(r.name)}</option>`).join('');
+    const siteOptions = '<option value="">— Choisir —</option>'
+      + _locTree.map(s => `<option value="${s.id}" ${d.site_id == s.id ? 'selected' : ''}>${escHtml(s.name)}</option>`).join('');
+    const currentSite = _locTree.find(s => s.id == d.site_id);
+    const roomOptions = '<option value="">— Choisir —</option>'
+      + (currentSite?.rooms || []).map(r => `<option value="${r.id}" ${d.room_id == r.id ? 'selected' : ''}>${escHtml(r.name)}</option>`).join('');
+    const currentRoom = currentSite?.rooms?.find(r => r.id == d.room_id);
+    const shelfOptions = '<option value="">— Choisir —</option>'
+      + (currentRoom?.shelves || []).map(sh => `<option value="${sh.id}" ${d.location_id == sh.id ? 'selected' : ''}>${escHtml(sh.name)}</option>`).join('');
 
     content.innerHTML = `
       <div class="modal-header">
@@ -116,12 +123,19 @@
             <div class="field"><label>Année</label><input type="number" name="year" value="${escHtml(d.year || '')}" min="1900" max="2099"></div>
           </div>
           <div class="field-separator">Localisation</div>
-          <div class="field">
-            <label>Salle</label>
-            <select name="room_id" class="input-full">
-              <option value="">— Sans —</option>
-              ${roomOptions}
-            </select>
+          <div class="form-grid form-grid-2" style="margin-top:.25rem">
+            <div class="field">
+              <label>Adresse</label>
+              <select id="dm-loc-site" class="input-full">${siteOptions}</select>
+            </div>
+            <div class="field">
+              <label>Pièce</label>
+              <select id="dm-loc-room" name="room_id" class="input-full" ${!currentSite ? 'disabled' : ''}>${roomOptions}</select>
+            </div>
+            <div class="field">
+              <label>Étagère <span style="font-weight:400;color:var(--color-text-muted)">(optionnel)</span></label>
+              <select id="dm-loc-shelf" name="location_id" class="input-full" ${!currentRoom ? 'disabled' : ''}>${shelfOptions}</select>
+            </div>
           </div>
           <div class="modal-actions">
             <button type="submit" class="btn btn-primary">Enregistrer</button>
@@ -141,18 +155,39 @@
       });
     });
 
+    // Cascade localisation
+    const dmSite  = content.querySelector('#dm-loc-site');
+    const dmRoom  = content.querySelector('#dm-loc-room');
+    const dmShelf = content.querySelector('#dm-loc-shelf');
+    dmSite?.addEventListener('change', () => {
+      const site = _locTree.find(s => s.id == dmSite.value);
+      dmRoom.innerHTML = '<option value="">— Choisir —</option>'
+        + (site?.rooms || []).map(r => `<option value="${r.id}">${escHtml(r.name)}</option>`).join('');
+      dmRoom.disabled = !site?.rooms?.length;
+      dmShelf.innerHTML = '<option value="">— Choisir —</option>';
+      dmShelf.disabled = true;
+    });
+    dmRoom?.addEventListener('change', () => {
+      const site = _locTree.find(s => s.id == dmSite.value);
+      const room = site?.rooms?.find(r => r.id == dmRoom.value);
+      dmShelf.innerHTML = '<option value="">— Choisir —</option>'
+        + (room?.shelves || []).map(sh => `<option value="${sh.id}">${escHtml(sh.name)}</option>`).join('');
+      dmShelf.disabled = !room?.shelves?.length;
+    });
+
     // Enregistrer
     document.getElementById('dm-edit-form').addEventListener('submit', async e => {
       e.preventDefault();
       const fd = new FormData(e.target);
       const body = {
-        title:   fd.get('title')  || undefined,
-        artist:  fd.get('artist') || undefined,
-        label:   fd.get('label')  || undefined,
-        genre:   fd.get('genre')  || undefined,
-        format:  fd.get('format') || undefined,
-        year:    fd.get('year')   || undefined,
-        room_id: fd.get('room_id') ? +fd.get('room_id') : null,
+        title:       fd.get('title')      || undefined,
+        artist:      fd.get('artist')     || undefined,
+        label:       fd.get('label')      || undefined,
+        genre:       fd.get('genre')      || undefined,
+        format:      fd.get('format')     || undefined,
+        year:        fd.get('year')       || undefined,
+        room_id:     fd.get('room_id')     ? +fd.get('room_id')     : null,
+        location_id: fd.get('location_id') ? +fd.get('location_id') : null,
       };
       const r = await fetch(`/api/music/${d.id}`, {
         method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body),
