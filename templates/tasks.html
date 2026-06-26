@@ -59,6 +59,9 @@
     { id: 'bnf-series',     name: 'Compléter les séries via la BnF',     desc: 'Pour chaque série avec des trous, interroge la BnF par ISBN pour trouver les tomes manquants et les rattache automatiquement à la série s\'ils sont déjà en bibliothèque.' },
     { id: 'enrich-genres',  name: 'Récupérer les genres des livres',     desc: 'Interroge SUDOC et BnF par ISBN pour récupérer le genre (BD, Roman, Documentaire…) des livres qui n\'en ont pas encore.' },
     { id: 'backup',         name: 'Sauvegarder la base de données',      desc: 'Crée une copie de la base de données sur le serveur. Les 20 dernières sauvegardes sont conservées. Gérez-les dans Paramètres > Sauvegardes.' },
+    { id: 'reenrich-discs',      name: 'Compléter les disques manquants',       desc: 'Relance l\'enrichissement sur les disques non trouvés via MusicBrainz et Discogs.', section: 'Musique' },
+    { id: 'fetch-disc-covers',   name: 'Rechercher les pochettes manquantes',   desc: 'Télécharge les pochettes absentes pour les disques enrichis, via MusicBrainz et Discogs.' },
+    { id: 'refresh-disc-covers', name: 'Re-télécharger toutes les pochettes',   desc: 'Force le re-cache HD de toutes les pochettes de disques.' },
   ];
 
   // Tâches planifiables : toutes passent par /api/tasks/run/{id}
@@ -76,7 +79,15 @@
   function renderSchedulableCards() {
     const list = document.getElementById('tasks-list');
     const firstStatic = list.querySelector('.task-card');
+    let _lastSection = null;
     SCHEDULABLE.forEach(t => {
+      if (t.section && t.section !== _lastSection) {
+        _lastSection = t.section;
+        const sep = document.createElement('div');
+        sep.className = 'tasks-section-sep';
+        sep.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="3" x2="12" y2="9"/></svg> ${t.section}`;
+        list.insertBefore(sep, firstStatic);
+      }
       const cfg = _schedules[t.id] || { enabled: false, interval_minutes: 60, last_run: null, last_result: null };
       const lastRun = cfg.last_run
         ? new Date(cfg.last_run).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })

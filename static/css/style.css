@@ -2285,3 +2285,16 @@ html.dark .missing-vol-tobuy     { background: #2d0f0f; }
 .task-item-status.ok { color: var(--color-success, #22c55e); }
 .task-item-status.err { color: var(--color-danger); }
 .task-item-status.running { color: var(--color-text-muted); }
+
+/* ── Séparateur de section dans la page Tâches ───────────────────────────── */
+.tasks-section-sep {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-size: .82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--color-text-muted);
+  padding: 1.25rem 0 .5rem;
+}
