@@ -73,7 +73,14 @@ async def _enrich_disc(disc_id: int, barcode: str) -> None:
         disc.track_count = info.get("track_count")
         disc.language = info.get("language")
         disc.country = info.get("country")
-        disc.cover_url = info.get("cover_url")
+        # Télécharger et mettre en cache la pochette localement
+        remote_cover = info.get("cover_url")
+        if remote_cover:
+            from app.covers import fetch_and_save
+            local = await fetch_and_save(f"disc_{barcode}", remote_cover)
+            disc.cover_url = local or remote_cover
+        else:
+            disc.cover_url = None
         disc.mbid = info.get("mbid")
         disc.enrichment_status = "ok"
         disc.source_data = json.dumps(info)
