@@ -1008,12 +1008,27 @@ def _clean_series_names_logic(db, task_id: str = "clean-series") -> str:
         if existing:
             # Garder celui qui a le plus de livres
             keeper, dup = (existing, s) if len(existing.books) >= len(s.books) else (s, existing)
-            keeper.name = cleaned
             _merge_into(keeper, dup)
+            db.flush()
+            keeper.name = cleaned
             merged += 1
         else:
             s.name = cleaned
-            renamed += 1
+            try:
+                db.flush()
+            except Exception:
+                db.rollback()
+                # Doublon déjà en base : fusionner
+                existing2 = db.query(Series).filter(Series.name == cleaned, Series.id != s.id).first()
+                if existing2:
+                    keeper2, dup2 = (existing2, s) if len(existing2.books) >= len(s.books) else (s, existing2)
+                    _merge_into(keeper2, dup2)
+                    db.flush()
+                    keeper2.name = cleaned
+                    merged += 1
+                    renamed -= 1
+            else:
+                renamed += 1
     db.commit()
 
     # Passe 2 : fusionner les séries avec le même _norm() (casse, accents)
@@ -1028,6 +1043,7 @@ def _clean_series_names_logic(db, task_id: str = "clean-series") -> str:
                 keeper, s = s, keeper
                 norm_map[key] = keeper
             _merge_into(keeper, s)
+            db.flush()
             merged += 1
         else:
             norm_map[key] = s
