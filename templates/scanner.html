@@ -571,8 +571,23 @@
     }, delayMs);
   }
 
+  function isBarcodeInFrame(result) {
+    // Vérifie que le centre du code-barres est dans la zone du viseur
+    // (correspond aux marges area: top/bottom 25%, left/right 11%)
+    const box = result.box;
+    if (!box || !box.length) return true; // pas de box → on laisse passer
+    const vp = document.getElementById('quagga-viewport');
+    if (!vp) return true;
+    const W = vp.offsetWidth, H = vp.offsetHeight;
+    const cx = box.reduce((s, p) => s + p[0], 0) / box.length;
+    const cy = box.reduce((s, p) => s + p[1], 0) / box.length;
+    const marginX = W * 0.11, marginY = H * 0.25;
+    return cx >= marginX && cx <= W - marginX && cy >= marginY && cy <= H - marginY;
+  }
+
   function onBarcodeDetected(result) {
     if (scanPaused) return;
+    if (!isBarcodeInFrame(result)) return;
     const raw = (result.codeResult.code || '').replace(/\D/g, '');
     if (!raw || (raw.length !== 13 && raw.length !== 10)) return;
     if (!isValidBarcode(raw)) return;
