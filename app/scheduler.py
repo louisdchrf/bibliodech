@@ -35,17 +35,20 @@ def get_next_runs() -> dict[str, str | None]:
 # Tâches planifiables : id → (label, coroutine_factory)
 # Chaque coroutine_factory reçoit (db) et exécute la logique directement
 SCHEDULABLE_TASKS = {
-    "reenrich":        "Compléter les livres manquants",
-    "fetch-covers":    "Rechercher les couvertures manquantes",
-    "refresh-covers":  "Re-télécharger toutes les couvertures (HD)",
-    "clean-authors":   "Normaliser les auteurs",
-    "detect-series":   "Détecter les séries",
-    "sudoc-series":    "Chercher les séries dans le catalogue (SUDOC)",
-    "ocr-series":      "Lire les séries sur les couvertures (OCR)",
-    "clean-series":    "Normaliser les noms de séries",
-    "bnf-series":      "Compléter les séries via la BnF",
-    "enrich-genres":   "Récupérer les genres des livres",
-    "backup":          "Sauvegarder la base de données",
+    "reenrich":             "Compléter les livres manquants",
+    "fetch-covers":         "Rechercher les couvertures manquantes",
+    "refresh-covers":       "Re-télécharger toutes les couvertures (HD)",
+    "clean-authors":        "Normaliser les auteurs",
+    "detect-series":        "Détecter les séries",
+    "sudoc-series":         "Chercher les séries dans le catalogue (SUDOC)",
+    "ocr-series":           "Lire les séries sur les couvertures (OCR)",
+    "clean-series":         "Normaliser les noms de séries",
+    "bnf-series":           "Compléter les séries via la BnF",
+    "enrich-genres":        "Récupérer les genres des livres",
+    "backup":               "Sauvegarder la base de données",
+    "reenrich-discs":       "Compléter les disques manquants",
+    "fetch-disc-covers":    "Rechercher les pochettes manquantes",
+    "refresh-disc-covers":  "Re-télécharger toutes les pochettes (HD)",
 }
 
 _DEFAULT_CONFIG = {
@@ -160,6 +163,21 @@ async def _execute_task(task_id: str, db) -> str:
         b = _create_backup()
         size_kb = round(b["size"] / 1024)
         return f"Sauvegarde créée : {b['filename']} ({size_kb} Ko)"
+
+    if task_id == "reenrich-discs":
+        from app.routers.music import _reenrich_missing_discs
+        result = await _reenrich_missing_discs(db, task_id=task_id)
+        return f"{result['updated']}/{result['total']} disque(s) enrichi(s)"
+
+    if task_id == "fetch-disc-covers":
+        from app.routers.music import _fetch_disc_covers_logic
+        result = await _fetch_disc_covers_logic(db, task_id=task_id)
+        return f"{result['updated']} pochette(s) récupérée(s)"
+
+    if task_id == "refresh-disc-covers":
+        from app.routers.music import _refresh_disc_covers_logic
+        result = await _refresh_disc_covers_logic(db, task_id=task_id)
+        return f"{result['updated']}/{result['total']} pochette(s) mises à jour"
 
     return "tâche inconnue"
 

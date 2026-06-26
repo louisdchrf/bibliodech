@@ -89,6 +89,135 @@ async def _enrich_disc(disc_id: int, barcode: str) -> None:
         db.close()
 
 
+async def _reenrich_missing_discs(db, task_id: str = "reenrich-discs") -> dict:
+    """Re-enrichit les disques not_found ou pending."""
+    import asyncio
+    from app import scheduler as sched
+
+    discs = db.query(Disc).filter(
+        Disc.enrichment_status.in_(["not_found", "pending"])
+    ).filter(Disc.barcode.isnot(None)).all()
+
+    total = len(discs)
+    updated = 0
+
+    if task_id in sched._running:
+        sched._running[task_id]["progress"] = {"current": 0, "total": total}
+
+    for i, disc in enumerate(discs):
+        discogs_key = cfg.get(db, "discogs_api_key") or ""
+        info = await lookup_barcode(disc.barcode, discogs_key)
+        if info:
+            disc.title = info.get("title") or disc.barcode
+            disc.artist = info.get("artist")
+            disc.label = info.get("label")
+            disc.catalog_number = info.get("catalog_number")
+            disc.year = str(info["year"]) if info.get("year") else None
+            disc.format = info.get("format")
+            disc.track_count = info.get("track_count")
+            disc.language = info.get("language")
+            disc.country = info.get("country")
+            remote_cover = info.get("cover_url")
+            if remote_cover:
+                from app.covers import fetch_and_save
+                local = await fetch_and_save(f"disc_{disc.barcode}", remote_cover)
+                disc.cover_url = local or remote_cover
+            disc.mbid = info.get("mbid")
+            disc.enrichment_status = "ok"
+            disc.source_data = json.dumps(info)
+            db.commit()
+            updated += 1
+        if task_id in sched._running:
+            sched._running[task_id]["progress"] = {"current": i + 1, "total": total}
+        await asyncio.sleep(1.2)
+
+    return {"updated": updated, "total": total}
+
+
+async def _fetch_disc_covers_logic(db, task_id: str = "fetch-disc-covers") -> dict:
+    """Cherche les pochettes manquantes pour les disques qui n'en ont pas."""
+    import asyncio
+    from app.covers import fetch_and_save
+    from app import scheduler as sched
+    from app.lookup_music import _lookup_discogs
+
+    discs = db.query(Disc).filter(
+        (Disc.cover_url.is_(None)) | (Disc.cover_url == "")
+    ).filter(Disc.enrichment_status == "ok").all()
+
+    total = len(discs)
+    updated = 0
+
+    if task_id in sched._running:
+        sched._running[task_id]["progress"] = {"current": 0, "total": total}
+
+    for i, disc in enumerate(discs):
+        url = None
+        if disc.mbid:
+            from app.lookup_music import _cover_from_mbid
+            async with __import__("httpx").AsyncClient(
+                timeout=5,
+                headers={"User-Agent": "Bibliodech/1.0 (contact@bibliodech.local)"},
+            ) as client:
+                url = await _cover_from_mbid(client, disc.mbid)
+        if not url and disc.barcode:
+            discogs_key = cfg.get(db, "discogs_api_key") or ""
+            res = await _lookup_discogs(disc.barcode, discogs_key)
+            if res:
+                url = res.get("cover_url")
+        if url:
+            local = await fetch_and_save(f"disc_{disc.barcode or disc.id}", url)
+            if local:
+                disc.cover_url = local
+                db.commit()
+                updated += 1
+        if task_id in sched._running:
+            sched._running[task_id]["progress"] = {"current": i + 1, "total": total}
+        await asyncio.sleep(0.3)
+
+    return {"updated": updated, "total": total}
+
+
+async def _refresh_disc_covers_logic(db, task_id: str = "refresh-disc-covers") -> dict:
+    """Re-télécharge toutes les pochettes de disques."""
+    import asyncio
+    from app.covers import fetch_and_save
+    from app.lookup_music import _lookup_discogs, _cover_from_mbid
+    from app import scheduler as sched
+
+    discs = db.query(Disc).filter(Disc.enrichment_status == "ok").all()
+    total = len(discs)
+    updated = 0
+
+    if task_id in sched._running:
+        sched._running[task_id]["progress"] = {"current": 0, "total": total}
+
+    for i, disc in enumerate(discs):
+        url = None
+        if disc.mbid:
+            async with __import__("httpx").AsyncClient(
+                timeout=5,
+                headers={"User-Agent": "Bibliodech/1.0 (contact@bibliodech.local)"},
+            ) as client:
+                url = await _cover_from_mbid(client, disc.mbid)
+        if not url and disc.barcode:
+            discogs_key = cfg.get(db, "discogs_api_key") or ""
+            res = await _lookup_discogs(disc.barcode, discogs_key)
+            if res:
+                url = res.get("cover_url")
+        if url:
+            local = await fetch_and_save(f"disc_{disc.barcode or disc.id}", url)
+            if local:
+                disc.cover_url = local
+                db.commit()
+                updated += 1
+        if task_id in sched._running:
+            sched._running[task_id]["progress"] = {"current": i + 1, "total": total}
+        await asyncio.sleep(0.3)
+
+    return {"updated": updated, "total": total}
+
+
 @router.post("/api/scan/music")
 async def scan_music(
     body: DiscScanRequest,

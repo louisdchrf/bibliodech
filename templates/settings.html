@@ -15,6 +15,7 @@
     <button class="settings-tab" data-tab="display">Affichage</button>
     <button class="settings-tab" data-tab="email">Email</button>
     <button class="settings-tab" data-tab="backups">Sauvegardes</button>
+    <button class="settings-tab" data-tab="tasks">Tâches</button>
   </div>
 
   <!-- Onglet Sources -->
@@ -226,6 +227,31 @@
     </div>
   </div>
 
+  <!-- Onglet Tâches -->
+  <div id="tab-tasks" class="settings-tab-panel" style="display:none">
+    <div class="tasks-columns">
+
+      <!-- Colonne Livres -->
+      <div class="tasks-column">
+        <div class="tasks-column-header">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          Bibliothèque
+        </div>
+        <div class="tasks-list" id="tasks-list-books"></div>
+      </div>
+
+      <!-- Colonne Disques -->
+      <div class="tasks-column">
+        <div class="tasks-column-header">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="3" x2="12" y2="9"/></svg>
+          Musique
+        </div>
+        <div class="tasks-list" id="tasks-list-music"></div>
+      </div>
+
+    </div>
+  </div>
+
   <!-- Onglet Comptes -->
   <div id="tab-users" class="settings-tab-panel" style="display:none">
     <div style="display:flex;justify-content:flex-end;margin-bottom:1rem">
@@ -397,6 +423,7 @@
       if (btn.dataset.tab === 'users') loadUsers();
       if (btn.dataset.tab === 'email') loadEmailSettings();
       if (btn.dataset.tab === 'backups') loadBackups();
+      if (btn.dataset.tab === 'tasks') loadTasks();
     });
   });
 
@@ -1088,6 +1115,72 @@
       showSaveMsg(r.ok ? '✓ Clé Discogs enregistrée' : 'Erreur', r.ok);
     });
   })();
+
+  // ── Tâches ───────────────────────────────────────────────────────────────
+  const TASKS_BOOKS = [
+    { id: 'reenrich',       label: 'Compléter les livres manquants',          desc: 'Relance l\'enrichissement sur les livres non trouvés.' },
+    { id: 'fetch-covers',   label: 'Rechercher les couvertures manquantes',   desc: 'Télécharge les couvertures absentes.' },
+    { id: 'refresh-covers', label: 'Re-télécharger toutes les couvertures',   desc: 'Force le re-cache HD de toutes les couvertures.' },
+    { id: 'clean-authors',  label: 'Normaliser les auteurs',                  desc: 'Harmonise la casse et les espaces dans les noms d\'auteurs.' },
+    { id: 'enrich-genres',  label: 'Récupérer les genres',                    desc: 'Complète les genres manquants via les sources actives.' },
+    { id: 'detect-series',  label: 'Détecter les séries',                     desc: 'Analyse les titres pour détecter des appartements à une série.' },
+    { id: 'clean-series',   label: 'Normaliser les noms de séries',           desc: 'Harmonise les noms de séries existants.' },
+  ];
+  const TASKS_MUSIC = [
+    { id: 'reenrich-discs',      label: 'Compléter les disques manquants',    desc: 'Relance l\'enrichissement sur les disques non trouvés.' },
+    { id: 'fetch-disc-covers',   label: 'Rechercher les pochettes manquantes', desc: 'Télécharge les pochettes absentes via MusicBrainz et Discogs.' },
+    { id: 'refresh-disc-covers', label: 'Re-télécharger toutes les pochettes', desc: 'Force le re-cache HD de toutes les pochettes.' },
+  ];
+
+  let _tasksLoaded = false;
+
+  async function loadTasks() {
+    if (_tasksLoaded) return;
+    _tasksLoaded = true;
+    renderTaskList('tasks-list-books', TASKS_BOOKS);
+    renderTaskList('tasks-list-music', TASKS_MUSIC);
+  }
+
+  function renderTaskList(containerId, tasks) {
+    const el = document.getElementById(containerId);
+    el.innerHTML = tasks.map(t => `
+      <div class="task-item" id="task-item-${t.id}">
+        <div class="task-item-info">
+          <div class="task-item-label">${t.label}</div>
+          <div class="task-item-desc">${t.desc}</div>
+        </div>
+        <div class="task-item-right">
+          <span class="task-item-status" id="task-status-${t.id}"></span>
+          <button class="btn btn-sm btn-ghost task-run-btn" data-task="${t.id}">Lancer</button>
+        </div>
+      </div>`).join('');
+
+    el.querySelectorAll('.task-run-btn').forEach(btn => {
+      btn.addEventListener('click', () => runTask(btn.dataset.task, btn));
+    });
+  }
+
+  async function runTask(taskId, btn) {
+    const statusEl = document.getElementById(`task-status-${taskId}`);
+    btn.disabled = true;
+    statusEl.textContent = '⏳ En cours…';
+    statusEl.className = 'task-item-status running';
+    try {
+      const r = await fetch(`/api/tasks/run/${taskId}`, { method: 'POST' });
+      const data = await r.json();
+      if (r.ok) {
+        statusEl.textContent = '✓ ' + (data.result || 'Terminé');
+        statusEl.className = 'task-item-status ok';
+      } else {
+        statusEl.textContent = '✗ Erreur';
+        statusEl.className = 'task-item-status err';
+      }
+    } catch {
+      statusEl.textContent = '✗ Erreur réseau';
+      statusEl.className = 'task-item-status err';
+    }
+    btn.disabled = false;
+  }
 
   // ── Init ──────────────────────────────────────────────────────────────────
   loadSources();
