@@ -139,6 +139,10 @@ async def lookup_barcode(barcode: str, discogs_key: str = "") -> dict | None:
     """Cherche un code-barres musical sur MusicBrainz puis Discogs en fallback."""
     result = await _lookup_musicbrainz(barcode)
     if result:
+        if not result.get("cover_url"):
+            discogs = await _lookup_discogs(barcode, discogs_key)
+            if discogs and discogs.get("cover_url"):
+                result["cover_url"] = discogs["cover_url"]
         return result
     result = await _lookup_discogs(barcode, discogs_key)
     return result
