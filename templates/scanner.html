@@ -410,6 +410,11 @@
   const DEBOUNCE_MS = 3000;
   let scanPaused    = false;
 
+  // Compteur de répétitions pour les codes non-ISBN (évite les faux positifs sur packaging)
+  let _pendingCode  = null;
+  let _pendingCount = 0;
+  const MUSIC_CONFIRM_COUNT = 3;
+
   function isValidBarcode(code) {
     if (code.length === 13) {
       const sum = code.split('').slice(0, 12).reduce((s, d, i) => s + parseInt(d) * (i % 2 === 0 ? 1 : 3), 0);
@@ -499,6 +504,19 @@
     if (!isValidBarcode(raw)) return;
     const now = Date.now();
     if (raw === lastScanned && now - lastScannedAt < DEBOUNCE_MS) return;
+
+    // Les codes non-ISBN doivent être détectés MUSIC_CONFIRM_COUNT fois de suite
+    if (!isBookBarcode(raw)) {
+      if (_pendingCode === raw) {
+        _pendingCount++;
+      } else {
+        _pendingCode = raw;
+        _pendingCount = 1;
+      }
+      if (_pendingCount < MUSIC_CONFIRM_COUNT) return;
+      _pendingCode = null; _pendingCount = 0;
+    }
+
     lastScanned = raw; lastScannedAt = now;
 
     // Pause de 2s pour laisser le temps de voir le résultat
