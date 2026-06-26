@@ -605,3 +605,43 @@ def series_proposals_page(request: Request, db: Session = Depends(get_db)):
         "pending_count": pending,
         "series_list": [{"id": s.id, "name": s.name} for s in series_list],
     })
+
+
+# ── Documentation ─────────────────────────────────────────────────────────────
+import pathlib
+from fastapi.responses import PlainTextResponse
+
+_DOCS_ROOT = pathlib.Path(__file__).parent.parent
+
+_DOC_FILES = [
+    ("README",              "README.md",                   "Présentation"),
+    ("ROADMAP",             "ROADMAP.md",                  "Roadmap"),
+    ("FONCTIONNALITES",     "docs/FONCTIONNALITES.md",     "Fonctionnalités"),
+    ("STACK",               "docs/STACK.md",               "Stack technique"),
+    ("SERIE_ASSIGNATION",   "docs/SERIE_ASSIGNATION.md",   "Assignation des séries"),
+    ("SCRIPTS",             "docs/SCRIPTS.md",             "Scripts Python"),
+]
+
+@app.get("/docs", response_class=HTMLResponse)
+def docs_page(request: Request, db: Session = Depends(get_db)):
+    try:
+        user = get_current_user(request, db)
+    except Exception:
+        return RedirectResponse(url="/login", status_code=302)
+    files = [{"slug": slug, "label": label} for slug, _, label in _DOC_FILES]
+    return templates.TemplateResponse("docs.html", {
+        "request": request, "user": user, "active": "docs",
+        "build_version": BUILD_VERSION, "doc_files": files,
+    })
+
+@app.get("/api/docs/{slug}", response_class=PlainTextResponse)
+def docs_content(slug: str, request: Request, db: Session = Depends(get_db)):
+    get_current_user(request, db)
+    from fastapi import HTTPException
+    entry = next((e for e in _DOC_FILES if e[0] == slug), None)
+    if not entry:
+        raise HTTPException(404)
+    path = _DOCS_ROOT / entry[1]
+    if not path.exists():
+        raise HTTPException(404, "Fichier introuvable")
+    return path.read_text(encoding="utf-8")

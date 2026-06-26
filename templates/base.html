@@ -32,6 +32,7 @@
       <a href="/locations" {% if active=='locations' %}class="active"{% endif %}>Localisations</a>
       <a href="/loans" {% if active=='loans' %}class="active"{% endif %}>Prêts</a>
       <a href="/stats" {% if active=='stats' %}class="active"{% endif %}>Statistiques</a>
+      <a href="/docs" {% if active=='docs' %}class="active"{% endif %}>Aide</a>
       {% if user.role == 'admin' %}
       <div class="nav-menu" id="nav-menu-settings">
         <span class="nav-menu-trigger {% if active in ['settings','users','tasks','logs'] %}active{% endif %}">
