@@ -1071,6 +1071,7 @@ def get_missing_volumes(request: Request, db: Session = Depends(get_db)):
         if not gaps:
             continue
         cover = next((b.cover_url for b in s.books if b.cover_url), None)
+        no_position = [b for b in s.books if b.series_position is None]
         result.append({
             "id": s.id,
             "name": s.name,
@@ -1078,6 +1079,8 @@ def get_missing_volumes(request: Request, db: Session = Depends(get_db)):
             "owned": sorted(owned),
             "max_owned": max_pos,
             "gaps": gaps,
+            "no_position_count": len(no_position),
+            "no_position_books": [{"id": b.id, "title": b.title} for b in no_position],
             "books": [
                 {
                     "id": b.id,
@@ -1273,15 +1276,19 @@ async def _bnf_check_one_series(series: Series, db) -> dict:
             if changed:
                 assigned += 1
 
-    # 3. Pour les volumes sans ISBN BnF : chercher par titre normalisé dans la bibliothèque
-    books_without_series = db.query(Book).filter(Book.series_id.is_(None)).all()
+    # 3. Pour les volumes sans ISBN BnF : chercher par titre normalisé
+    #    - d'abord parmi les livres de cette série sans position
+    #    - ensuite parmi les livres sans série
+    books_no_pos = [b for b in series.books if b.series_position is None]
+    books_no_series = db.query(Book).filter(Book.series_id.is_(None)).all()
+    candidates = books_no_pos + books_no_series
     for vol in volumes_found:
         if vol in in_library:
             continue
         title_bnf = _norm(titles_found.get(vol, ""))
         if not title_bnf:
             continue
-        for book in books_without_series:
+        for book in candidates:
             if _norm(book.title) == title_bnf:
                 in_library[vol] = book.id
                 book.series_id = series.id

@@ -92,6 +92,11 @@
           <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:.75rem">
             ${timelineCells.join('')}
           </div>
+          ${s.no_position_count ? `<div style="font-size:.8rem;color:var(--color-warn,#e07b00);margin-bottom:.5rem">
+            ⚠ ${s.no_position_count} ouvrage${s.no_position_count > 1 ? 's' : ''} sans numéro de tome :
+            ${s.no_position_books.map(b => `<a href="#" onclick="event.preventDefault();openBookModal(${b.id})" style="color:inherit;text-decoration:underline">${escHtml(b.title)}</a>`).join(', ')}
+            — ces tomes peuvent combler des trous mais ne sont pas comptés.
+          </div>` : ''}
           <div id="${bnfId}">
             <button class="btn btn-ghost btn-sm" onclick="checkBnF(${s.id}, '${escAttr(s.name)}')">
               🔍 Vérifier via BnF
