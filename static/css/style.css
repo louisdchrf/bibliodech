@@ -2364,3 +2364,120 @@ html.dark .missing-vol-tobuy     { background: #2d0f0f; }
   color: var(--color-primary);
   background: color-mix(in srgb, var(--color-primary) 8%, transparent);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOBILE IMPROVEMENTS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. Hauteur viewport dynamique (fix iOS Safari barre nav flottante) ─── */
+.modal-overlay {
+  min-height: 100dvh;
+}
+.modal-card, .modal-card-sm {
+  max-height: calc(100dvh - 2rem);
+}
+
+/* ── 2. Cibles tactiles minimum 44px ────────────────────────────────────── */
+@media (max-width: 768px) {
+  .btn { min-height: 44px; }
+  .btn-sm { min-height: 38px; padding: .45rem .85rem; }
+  .btn-xs { min-height: 34px; padding: .35rem .6rem; }
+  .toolbar-icon-btn { width: 44px; height: 44px; }
+  .toolbar-sort { min-height: 44px; padding: .6rem .75rem; }
+  .modal-close { width: 2.5rem; height: 2.5rem; top: .75rem; right: .75rem; }
+  .nav-search-icon { padding: .65rem; }
+  .tasks-switch-btn { min-height: 44px; }
+}
+
+/* ── 3. Barre de recherche navbar fluide sur mobile ─────────────────────── */
+@media (max-width: 480px) {
+  .nav-search-panel {
+    width: calc(100vw - 1rem);
+    right: calc(-1 * (100vw - 1rem) / 2 + 50%);
+    left: auto;
+  }
+}
+@media (max-width: 768px) {
+  .nav-search-panel { width: min(340px, calc(100vw - 1rem)); right: 0; left: auto; }
+}
+
+/* ── 4. Menu hamburger — sous-menus en accordéon (pas fly-out) ──────────── */
+@media (max-width: 768px) {
+  .nav-menu-dropdown {
+    display: none;
+    position: static;
+    box-shadow: none;
+    border: none;
+    border-radius: 0;
+    background: rgba(255,255,255,.07);
+    padding: 0;
+  }
+  .nav-menu.open .nav-menu-dropdown { display: block; }
+  .nav-menu-trigger {
+    display: flex; width: 100%; text-align: left;
+    padding: .75rem 1.5rem; border-radius: 0;
+    font-size: 1rem; color: rgba(255,255,255,.85);
+    background: none; border: none; cursor: pointer;
+    align-items: center; justify-content: space-between;
+  }
+  .nav-menu-trigger.active { color: #fff; font-weight: 600; }
+  .nav-menu-item { padding: .65rem 2rem; font-size: .95rem !important; }
+  .nav-submenu-panel {
+    position: static;
+    box-shadow: none;
+    border: none;
+    border-radius: 0;
+    background: rgba(255,255,255,.05);
+  }
+  .nav-submenu-trigger { padding: .65rem 2rem; font-size: .95rem; }
+  .nav-submenu-trigger:hover { background: rgba(255,255,255,.08); }
+}
+
+/* ── 5. Toolbar bibliothèque / musique ──────────────────────────────────── */
+@media (max-width: 600px) {
+  .toolbar-top { flex-wrap: wrap; gap: .5rem; }
+  .toolbar-search-wrap { flex: 1 1 100%; order: -1; }
+  .toolbar-actions { flex-wrap: wrap; gap: .35rem; }
+  /* Masquer le libellé texte des boutons vue grille/liste sur petit écran */
+  .toolbar-text-btn .btn-label { display: none; }
+}
+
+/* ── 6. Barre bulk — pleine largeur sur mobile ──────────────────────────── */
+@media (max-width: 600px) {
+  .bulk-bar {
+    left: .75rem;
+    right: .75rem;
+    bottom: .75rem;
+    transform: none;
+    border-radius: 1rem;
+    padding: .65rem 1rem;
+  }
+  .bulk-actions { gap: .35rem; }
+  .bulk-actions .btn { padding: .4rem .65rem; font-size: .78rem; min-height: 36px; }
+}
+
+/* ── 7. Modale — padding réduit + header colonne sur petit écran ────────── */
+@media (max-width: 480px) {
+  .modal-card { padding: 1.25rem 1rem; }
+  .modal-header { flex-direction: column; align-items: flex-start; gap: .75rem; }
+  .modal-cover { width: 60px; height: 85px; }
+  .modal-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; }
+  .modal-tab { white-space: nowrap; flex-shrink: 0; }
+}
+
+/* ── 8. Grille de cartes — colonnes adaptées ────────────────────────────── */
+@media (max-width: 400px) {
+  .book-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: .75rem; }
+}
+
+/* ── 9. Scanner — champ de saisie plus grand sur mobile ─────────────────── */
+@media (max-width: 768px) {
+  .isbn-input { font-size: 1rem; min-height: 44px; }
+  .scan-input-row { max-width: 100%; }
+}
+
+/* ── 10. Tasks switcher wrap sur très petit écran ───────────────────────── */
+@media (max-width: 480px) {
+  .tasks-switcher { gap: .35rem; }
+  .tasks-switch-btn { padding: .5rem .75rem; font-size: .82rem; }
+}
