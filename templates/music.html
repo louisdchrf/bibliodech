@@ -166,7 +166,7 @@
       <div class="book-info">
         <div class="book-title">${d.title}</div>
         <div class="book-author">${d.artist || ''}</div>
-        ${d.format ? `<div class="book-meta-small">${d.format}${d.year ? ' · ' + d.year : ''}</div>` : ''}
+        ${d.format || d.year ? `<div class="book-author" style="font-size:.75rem">${[d.format, d.year].filter(Boolean).join(' · ')}</div>` : ''}
       </div>
     </div>`;
   }
