@@ -416,7 +416,9 @@ def bulk_books(
 
 @router.get("/api/logs")
 def get_all_logs(request: Request, db: Session = Depends(get_db), limit: int = 500):
-    get_current_user(request, db)
+    from app.auth import require_admin
+    user = get_current_user(request, db)
+    require_admin(user)
     from app.models import AuditLog
     logs = (
         db.query(AuditLog)
@@ -440,7 +442,9 @@ def get_all_logs(request: Request, db: Session = Depends(get_db), limit: int = 5
 
 @router.get("/api/books/{book_id}/logs")
 def get_book_logs(book_id: int, request: Request, db: Session = Depends(get_db)):
-    get_current_user(request, db)
+    from app.auth import require_admin
+    user = get_current_user(request, db)
+    require_admin(user)
     from app.models import AuditLog, User
     logs = (
         db.query(AuditLog)
@@ -603,8 +607,10 @@ async def run_task_manual(task_id: str, request: Request, db: Session = Depends(
     require_contributor(user)
     from app import scheduler as sched
     from app.applog import log_task, log_error
+    if task_id not in sched.SCHEDULABLE_TASKS:
+        raise HTTPException(status_code=404, detail="Tâche inconnue")
     sched._running[task_id] = {
-        "label": sched.SCHEDULABLE_TASKS.get(task_id, task_id),
+        "label": sched.SCHEDULABLE_TASKS[task_id],
         "started_at": datetime.now(timezone.utc).isoformat(),
     }
     started = datetime.now(timezone.utc)

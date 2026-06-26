@@ -80,13 +80,13 @@ function renderCard(p) {
         ? `<img src="${b.cover_url}" style="width:32px;height:46px;object-fit:cover;border-radius:3px;flex-shrink:0">`
         : `<div style="width:32px;height:46px;background:var(--color-border);border-radius:3px;flex-shrink:0"></div>`}
       <div style="min-width:0">
-        <div style="font-size:.85rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${b.title}</div>
-        <div style="font-size:.75rem;color:var(--color-text-muted)">${(b.authors||[]).join(', ')}</div>
+        <div style="font-size:.85rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(b.title)}</div>
+        <div style="font-size:.75rem;color:var(--color-text-muted)">${escHtml((b.authors||[]).join(', '))}</div>
       </div>
     </div>`).join('');
 
   const seriesOptions = SERIES_LIST.map(s =>
-    `<option value="${s.id}" ${p.existing_series_id == s.id ? 'selected' : ''}>${s.name}</option>`
+    `<option value="${s.id}" ${p.existing_series_id == s.id ? 'selected' : ''}>${escHtml(s.name)}</option>`
   ).join('');
 
   const nameVal = p.proposed_name || p.existing_series_name || '';

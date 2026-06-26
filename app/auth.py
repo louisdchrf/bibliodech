@@ -39,10 +39,23 @@ _login_blocked:  dict[str, float]       = {}
 
 
 def _client_ip(request: Request) -> str:
-    xff = request.headers.get("X-Forwarded-For")
-    if xff:
-        return xff.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    # On ne fait confiance à X-Forwarded-For que si la requête vient d'un proxy local (Caddy).
+    # Sinon un attaquant peut le forger pour bypasser le brute-force.
+    real_ip = request.client.host if request.client else "unknown"
+    _trusted = {"127.0.0.1", "::1", "172.16.0.0/12"}
+    try:
+        import ipaddress
+        is_trusted = any(
+            ipaddress.ip_address(real_ip) in ipaddress.ip_network(n, strict=False)
+            for n in _trusted
+        )
+    except ValueError:
+        is_trusted = False
+    if is_trusted:
+        xff = request.headers.get("X-Forwarded-For")
+        if xff:
+            return xff.split(",")[0].strip()
+    return real_ip
 
 
 def check_brute_force(request: Request) -> None:

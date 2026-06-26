@@ -291,7 +291,7 @@
           <div style="display:flex;align-items:center;gap:.75rem">
             <span class="activity-spinner" style="flex-shrink:0"></span>
             <div style="flex:1">
-              <div style="font-weight:500;font-size:.9rem">${t.label}</div>
+              <div style="font-weight:500;font-size:.9rem">${escHtml(t.label)}</div>
               <div style="font-size:.75rem;color:var(--color-text-muted)">Démarré il y a ${fmtDuration(t.started_at)}</div>
             </div>
           </div>
