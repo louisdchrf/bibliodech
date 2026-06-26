@@ -368,7 +368,7 @@
     var _pendingAvatar = null; // File object en attente d'upload
 
     // Initiales ou image dans la navbar
-    var _currentAvatar = {{ ('"' + user.avatar + '"') | safe if user.avatar else 'null' }};
+    var _currentAvatar = {{ user.avatar | tojson if user.avatar else 'null' }};
 
     function renderNavAvatar(src) {
       var navAvatar = document.getElementById('nav-avatar');

@@ -469,7 +469,10 @@ def get_app_logs(
     category: str | None = None,
     level: str | None = None,
 ):
-    get_current_user(request, db)
+    from app.auth import require_admin
+    user = get_current_user(request, db)
+    require_admin(user)
+    limit = min(limit, 1000)
     from app.models import AppLog
     q = db.query(AppLog).order_by(AppLog.created_at.desc())
     if category:
@@ -575,7 +578,9 @@ def get_activity(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/api/activity/cancel")
 def cancel_activity(request: Request, db: Session = Depends(get_db)):
-    get_current_user(request, db)
+    from app.auth import require_contributor
+    user = get_current_user(request, db)
+    require_contributor(user)
     from app import scheduler as sched
     sched._running.clear()
     return {"ok": True}

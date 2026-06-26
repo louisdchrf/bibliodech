@@ -157,6 +157,8 @@ async def upload_backup(request: Request, db: Session = Depends(get_db)):
     _ensure_dir()
     _create_backup(db)
     data = await file.read()
+    if not data.startswith(b"SQLite format 3\x00"):
+        raise HTTPException(status_code=422, detail="Fichier SQLite invalide")
     with open(DB_PATH, "wb") as f:
         f.write(data)
     return {"ok": True, "restored": file.filename}

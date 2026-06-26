@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db, init_db
 from app.auth import (
-    get_current_user, verify_password, create_session, clear_session, bootstrap_admin
+    get_current_user, verify_password, create_session, clear_session, bootstrap_admin, require_admin
 )
 from app.models import User, Book, Series
 from app.routers import scan, books, users, settings as settings_router, locations as locations_router, loans as loans_router, series as series_router, backup as backup_router, music as music_router
@@ -91,17 +91,40 @@ def login_page(request: Request, error: str = ""):
 
 @app.post("/login")
 async def login(request: Request, db: Session = Depends(get_db)):
+    from app.auth import check_brute_force, record_failed_login, _client_ip
+    from app.models import AppLog
+    try:
+        check_brute_force(request)
+    except HTTPException as e:
+        return templates.TemplateResponse(
+            "login.html",
+            {"request": request, "error": e.detail},
+            status_code=429,
+        )
+
     form = await request.form()
     username = form.get("username", "")
     password = form.get("password", "")
+    ip = _client_ip(request)
+    ua = request.headers.get("User-Agent", "")[:200]
 
     user = db.query(User).filter(User.username == username, User.is_active == True).first()
     if not user or not verify_password(password, user.password_hash):
+        record_failed_login(request)
+        db.add(AppLog(level="warning", category="auth",
+                      message=f"Échec de connexion pour « {username} »",
+                      detail=json.dumps({"ip": ip, "ua": ua})))
+        db.commit()
         return templates.TemplateResponse(
             "login.html",
             {"request": request, "error": "Identifiants incorrects"},
             status_code=401,
         )
+
+    db.add(AppLog(level="info", category="auth",
+                  message=f"Connexion de « {user.username} »",
+                  detail=json.dumps({"ip": ip, "ua": ua})))
+    db.commit()
 
     dest = "/change-password" if user.must_change_password else "/scanner"
     response = RedirectResponse(url=dest, status_code=302)
@@ -654,6 +677,7 @@ def stats_page(request: Request, db: Session = Depends(get_db)):
 @app.get("/logs", response_class=HTMLResponse)
 async def page_logs(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
+    require_admin(user)
     return templates.TemplateResponse("applogs.html", {"request": request, "user": user, "active": "logs", "build_version": BUILD_VERSION})
 
 

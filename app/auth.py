@@ -1,5 +1,7 @@
 import logging
 import os
+import time
+from collections import defaultdict
 from datetime import datetime
 
 from fastapi import Request, HTTPException, status
@@ -27,6 +29,43 @@ _COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").lower() in ("1", "true
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 serializer = URLSafeTimedSerializer(SECRET_KEY)
+
+# ── Brute-force protection ────────────────────────────────────────────────────
+_BRUTE_WINDOW = 60        # secondes
+_BRUTE_MAX    = 10        # tentatives max dans la fenêtre
+_BRUTE_BLOCK  = 60        # durée de blocage en secondes
+_login_attempts: dict[str, list[float]] = defaultdict(list)
+_login_blocked:  dict[str, float]       = {}
+
+
+def _client_ip(request: Request) -> str:
+    xff = request.headers.get("X-Forwarded-For")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def check_brute_force(request: Request) -> None:
+    ip = _client_ip(request)
+    now = time.time()
+    blocked_until = _login_blocked.get(ip, 0)
+    if now < blocked_until:
+        remaining = int(blocked_until - now)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Trop de tentatives. Réessayez dans {remaining}s.",
+        )
+    # Purger les tentatives hors fenêtre
+    _login_attempts[ip] = [t for t in _login_attempts[ip] if now - t < _BRUTE_WINDOW]
+
+
+def record_failed_login(request: Request) -> None:
+    ip = _client_ip(request)
+    now = time.time()
+    _login_attempts[ip].append(now)
+    if len(_login_attempts[ip]) >= _BRUTE_MAX:
+        _login_blocked[ip] = now + _BRUTE_BLOCK
+        _login_attempts[ip] = []
 
 
 # ── Password helpers ─────────────────────────────────────────────────────────
