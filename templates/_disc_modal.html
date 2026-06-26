@@ -24,6 +24,9 @@
       <!-- Détails -->
       <div id="disc-detail-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem .75rem;font-size:.88rem;margin-bottom:1.25rem"></div>
 
+      <!-- Liens externes -->
+      <div id="disc-external-links" style="margin-bottom:.75rem;display:flex;gap:.75rem"></div>
+
       <!-- Statut enrichissement -->
       <div id="disc-pending-notice" style="display:none;background:var(--color-surface-2);border-radius:6px;padding:.6rem .85rem;font-size:.84rem;color:var(--color-text-muted);margin-bottom:1rem">
         ⏳ Recherche des informations en cours…
@@ -144,6 +147,13 @@
     grid.innerHTML = rows.map(([k, v]) =>
       `<div><span style="color:var(--color-text-muted)">${k}</span><br><strong>${v}</strong></div>`
     ).join('');
+
+    // Liens externes
+    const links = [];
+    if (d.mbid) links.push(`<a href="https://musicbrainz.org/release/${d.mbid}" target="_blank" rel="noopener" style="color:var(--color-primary);font-size:.82rem;text-decoration:none">MusicBrainz ↗</a>`);
+    if (d.barcode) links.push(`<a href="https://www.discogs.com/search/?q=${d.barcode}&type=release" target="_blank" rel="noopener" style="color:var(--color-primary);font-size:.82rem;text-decoration:none">Discogs ↗</a>`);
+    const linksEl = document.getElementById('disc-external-links');
+    if (linksEl) linksEl.innerHTML = links.join('<span style="color:var(--color-border)"> · </span>');
 
     document.getElementById('disc-pending-notice').style.display =
       d.enrichment_status === 'pending' ? '' : 'none';
