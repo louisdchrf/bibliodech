@@ -84,7 +84,7 @@
           <h2 class="modal-title">${escHtml(d.title)}</h2>
           ${d.artist ? `<p class="modal-authors">${escHtml(d.artist)}</p>` : ''}
           ${d.label  ? `<p class="modal-publisher">${escHtml(d.label)}${d.year ? ' · ' + escHtml(d.year) : ''}</p>` : (d.year ? `<p class="modal-publisher">${escHtml(d.year)}</p>` : '')}
-          ${d.format ? `<p class="modal-authors">${escHtml(d.format)}</p>` : ''}
+          ${d.format ? `<p class="modal-publisher">${escHtml(d.format)}</p>` : ''}
           <div class="modal-badges">
             ${d.enrichment_status === 'pending'   ? `<span class="badge" style="background:var(--color-warning,#f59e0b);color:#fff">⏳ En cours…</span>` : ''}
             ${d.enrichment_status === 'not_found' ? `<span class="badge" style="background:var(--color-danger);color:#fff">Non trouvé</span>` : ''}
