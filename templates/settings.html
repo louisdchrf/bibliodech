@@ -19,9 +19,30 @@
 
   <!-- Onglet Sources -->
   <div id="tab-sources" class="settings-tab-panel">
+    <h3 class="settings-section-title">Sources — Livres</h3>
     <p class="settings-desc">Glissez pour réordonner. Les sources sont interrogées en parallèle mais leur priorité détermine quelle information est retenue en cas de doublon. Désactiver une source accélère la recherche.</p>
-
     <ul id="sources-list" class="sources-list"></ul>
+
+    <h3 class="settings-section-title" style="margin-top:2rem">Sources — Musique</h3>
+    <p class="settings-desc">Sources utilisées lors du scan de CDs, vinyles et cassettes.</p>
+    <ul class="sources-list">
+      <li class="source-item">
+        <span class="source-label">MusicBrainz</span>
+        <span class="source-id">Gratuit · open source · couvertures via Cover Art Archive</span>
+        <label class="toggle-switch"><input type="checkbox" id="src-musicbrainz" checked disabled><span class="toggle-slider"></span></label>
+      </li>
+      <li class="source-item" style="flex-wrap:wrap;gap:.5rem">
+        <span class="source-label">Discogs</span>
+        <span class="source-id">Fallback · clé API gratuite (25 req/min)</span>
+        <label class="toggle-switch"><input type="checkbox" id="src-discogs-toggle"><span class="toggle-slider"></span></label>
+        <div id="discogs-key-wrap" style="display:none;width:100%;padding-left:.25rem">
+          <div style="display:flex;gap:.5rem;align-items:center;margin-top:.25rem">
+            <input type="text" id="discogs-api-key" class="input-sm" style="width:260px" placeholder="Clé API Discogs">
+            <button class="btn btn-sm btn-primary" id="btn-save-discogs">Enregistrer</button>
+          </div>
+        </div>
+      </li>
+    </ul>
   </div>
 
   <!-- Onglet Affichage -->
@@ -1040,6 +1061,33 @@
   }
 
   initDisplayTab();
+
+  // ── Sources musique — Discogs ─────────────────────────────────────────────
+  (function initMusicSources() {
+    const toggle = document.getElementById('src-discogs-toggle');
+    const keyWrap = document.getElementById('discogs-key-wrap');
+    const keyInput = document.getElementById('discogs-api-key');
+    if (!toggle) return;
+
+    fetch('/api/settings').then(r => r.json()).then(cfg => {
+      const key = cfg.discogs_api_key || '';
+      if (key) { toggle.checked = true; keyWrap.style.display = ''; keyInput.value = key; }
+    });
+
+    toggle.addEventListener('change', () => {
+      keyWrap.style.display = toggle.checked ? '' : 'none';
+    });
+
+    document.getElementById('btn-save-discogs').addEventListener('click', async () => {
+      const val = keyInput.value.trim();
+      const r = await fetch('/api/settings/discogs_api_key', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: val }),
+      });
+      showSaveMsg(r.ok ? '✓ Clé Discogs enregistrée' : 'Erreur', r.ok);
+    });
+  })();
 
   // ── Init ──────────────────────────────────────────────────────────────────
   loadSources();

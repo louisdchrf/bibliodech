@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+{% block title %}Médiathèque – Bibliodech{% endblock %}
+
+{% block content %}
+<div class="library-page">
+
+  <div class="toolbar-top">
+    <div class="toolbar-search-wrap">
+      <input type="text" id="search" placeholder="Rechercher titre, artiste, label…" class="toolbar-search-input">
+    </div>
+    <div class="toolbar-actions">
+      <select id="sort-by" class="toolbar-sort">
+        <option value="artist">Artiste</option>
+        <option value="title">Titre</option>
+        <option value="year">Année</option>
+        <option value="added_at">Date d'ajout</option>
+      </select>
+      <button id="btn-view-toggle" class="toolbar-icon-btn" title="Changer l'affichage" aria-label="Vue liste / grille">
+        <svg id="icon-grid" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <svg id="icon-list" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3" cy="6" r="1" fill="currentColor" stroke="none"/><circle cx="3" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="3" cy="18" r="1" fill="currentColor" stroke="none"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Filtres -->
+  <div class="filter-block" id="filter-block">
+    <div class="filter-module" id="fg-format">
+      <button class="filter-module-label" data-panel="fp-format">Format<span class="filter-module-badge" id="badge-format"></span></button>
+      <div class="filter-module-panel" id="fp-format">
+        <div class="fp-chips" id="format-chips">
+          <button class="filter-chip fmt-chip active" data-val="">Tous</button>
+        </div>
+      </div>
+    </div>
+    <div class="filter-sep"></div>
+    <div class="filter-module" id="fg-location">
+      <button class="filter-module-label" data-panel="fp-location">Localisation<span class="filter-module-badge" id="badge-location"></span></button>
+      <div class="filter-module-panel" id="fp-location">
+        <div class="fp-chips">
+          <button class="filter-chip loc-chip active" data-val="">Toute</button>
+          <button class="filter-chip loc-chip" data-val="none">Sans</button>
+        </div>
+        <div class="fp-list" id="room-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Compteur -->
+  <div class="library-meta" id="lib-meta"></div>
+
+  <!-- Grille -->
+  <div id="disc-grid" class="book-grid"></div>
+  <div id="disc-list" class="book-list" style="display:none"></div>
+
+</div>
+
+{% include "_disc_modal.html" %}
+
+<script>
+(function () {
+  const rooms = {{ rooms | tojson }};
+
+  let _all = [];
+  let _view = localStorage.getItem('music-view') || 'grid';
+  let _sortBy = localStorage.getItem('music-sort') || 'artist';
+  let _filterFormat = '';
+  let _filterRoom = '';
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+
+  document.getElementById('sort-by').value = _sortBy;
+  setView(_view);
+
+  // Localisation rooms
+  const roomListEl = document.getElementById('room-list');
+  rooms.forEach(r => {
+    const btn = document.createElement('button');
+    btn.className = 'filter-chip loc-chip';
+    btn.dataset.val = String(r.id);
+    btn.textContent = r.name;
+    roomListEl.appendChild(btn);
+  });
+
+  loadDiscs();
+
+  // ── Data ──────────────────────────────────────────────────────────────────
+
+  async function loadDiscs() {
+    const r = await fetch('/api/music');
+    _all = await r.json();
+    buildFormatChips();
+    render();
+  }
+
+  function buildFormatChips() {
+    const formats = [...new Set(_all.map(d => d.format).filter(Boolean))].sort();
+    const chips = document.getElementById('format-chips');
+    // Remove existing non-"Tous" chips
+    [...chips.querySelectorAll('.fmt-chip:not([data-val=""])')].forEach(c => c.remove());
+    formats.forEach(f => {
+      const btn = document.createElement('button');
+      btn.className = 'filter-chip fmt-chip';
+      btn.dataset.val = f;
+      btn.textContent = f;
+      chips.appendChild(btn);
+    });
+    chips.querySelectorAll('.fmt-chip').forEach(c => {
+      c.addEventListener('click', () => {
+        _filterFormat = c.dataset.val;
+        chips.querySelectorAll('.fmt-chip').forEach(x => x.classList.remove('active'));
+        c.classList.add('active');
+        const badge = document.getElementById('badge-format');
+        badge.textContent = _filterFormat ? _filterFormat : '';
+        render();
+      });
+    });
+  }
+
+  function filtered() {
+    const q = document.getElementById('search').value.toLowerCase().trim();
+    return _all.filter(d => {
+      if (_filterFormat && d.format !== _filterFormat) return false;
+      if (_filterRoom === 'none' && d.room_id) return false;
+      if (_filterRoom && _filterRoom !== 'none' && String(d.room_id) !== _filterRoom) return false;
+      if (!q) return true;
+      return (d.title||'').toLowerCase().includes(q)
+          || (d.artist||'').toLowerCase().includes(q)
+          || (d.label||'').toLowerCase().includes(q)
+          || (d.barcode||'').includes(q);
+    }).sort((a, b) => {
+      if (_sortBy === 'artist') return (a.artist||'').localeCompare(b.artist||'') || (a.title||'').localeCompare(b.title||'');
+      if (_sortBy === 'title') return (a.title||'').localeCompare(b.title||'');
+      if (_sortBy === 'year') return (b.year||'0').localeCompare(a.year||'0');
+      if (_sortBy === 'added_at') return (b.added_at||'').localeCompare(a.added_at||'');
+      return 0;
+    });
+  }
+
+  function render() {
+    const list = filtered();
+    document.getElementById('lib-meta').textContent = `${list.length} disque${list.length > 1 ? 's' : ''}`;
+
+    if (_view === 'grid') {
+      document.getElementById('disc-grid').innerHTML = list.map(cardHtml).join('');
+      document.getElementById('disc-grid').querySelectorAll('.book-card').forEach(el => {
+        el.addEventListener('click', () => openDiscModal(+el.dataset.id));
+      });
+    } else {
+      document.getElementById('disc-list').innerHTML = '<table class="books-table"><thead><tr><th></th><th>Titre</th><th>Artiste</th><th>Format</th><th>Année</th><th>Localisation</th></tr></thead><tbody>'
+        + list.map(rowHtml).join('') + '</tbody></table>';
+      document.getElementById('disc-list').querySelectorAll('tr[data-id]').forEach(el => {
+        el.addEventListener('click', () => openDiscModal(+el.dataset.id));
+      });
+    }
+  }
+
+  function coverEl(d) {
+    if (d.cover_url) return `<img src="${d.cover_url}" alt="" loading="lazy">`;
+    return `<div class="book-cover-placeholder"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="3" x2="12" y2="9"/></svg></div>`;
+  }
+
+  function cardHtml(d) {
+    const pending = d.enrichment_status === 'pending';
+    return `<div class="book-card${pending ? ' pending' : ''}" data-id="${d.id}">
+      <div class="book-cover">${coverEl(d)}</div>
+      <div class="book-info">
+        <div class="book-title">${d.title}</div>
+        <div class="book-author">${d.artist || ''}</div>
+        ${d.format ? `<div class="book-meta-small">${d.format}${d.year ? ' · ' + d.year : ''}</div>` : ''}
+      </div>
+    </div>`;
+  }
+
+  function rowHtml(d) {
+    return `<tr data-id="${d.id}" style="cursor:pointer">
+      <td style="width:48px">${d.cover_url ? `<img src="${d.cover_url}" style="width:40px;height:40px;object-fit:cover;border-radius:4px" loading="lazy">` : '<div style="width:40px;height:40px;background:var(--color-surface-2);border-radius:4px;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg></div>'}</td>
+      <td>${d.title}</td>
+      <td>${d.artist || '—'}</td>
+      <td>${d.format || '—'}</td>
+      <td>${d.year || '—'}</td>
+      <td>${d.room_name || '—'}</td>
+    </tr>`;
+  }
+
+  // ── Events ────────────────────────────────────────────────────────────────
+
+  document.getElementById('search').addEventListener('input', render);
+
+  document.getElementById('sort-by').addEventListener('change', e => {
+    _sortBy = e.target.value;
+    localStorage.setItem('music-sort', _sortBy);
+    render();
+  });
+
+  document.getElementById('btn-view-toggle').addEventListener('click', () => {
+    setView(_view === 'grid' ? 'list' : 'grid');
+    render();
+  });
+
+  function setView(v) {
+    _view = v;
+    localStorage.setItem('music-view', v);
+    document.getElementById('disc-grid').style.display = v === 'grid' ? '' : 'none';
+    document.getElementById('disc-list').style.display = v === 'list' ? '' : 'none';
+    document.getElementById('icon-grid').style.display = v === 'list' ? '' : 'none';
+    document.getElementById('icon-list').style.display = v === 'grid' ? '' : 'none';
+  }
+
+  // Filtres panels
+  document.querySelectorAll('.filter-module-label').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const panelId = btn.dataset.panel;
+      const panel = document.getElementById(panelId);
+      const isOpen = panel.classList.contains('open');
+      document.querySelectorAll('.filter-module-panel').forEach(p => p.classList.remove('open'));
+      if (!isOpen) panel.classList.add('open');
+    });
+  });
+
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.filter-module-panel').forEach(p => p.classList.remove('open'));
+  });
+
+  document.querySelectorAll('.filter-module-panel').forEach(p => {
+    p.addEventListener('click', e => e.stopPropagation());
+  });
+
+  // Localisation filter
+  document.querySelectorAll('.loc-chip').forEach(c => {
+    c.addEventListener('click', () => {
+      _filterRoom = c.dataset.val;
+      document.querySelectorAll('.loc-chip').forEach(x => x.classList.remove('active'));
+      c.classList.add('active');
+      const badge = document.getElementById('badge-location');
+      badge.textContent = _filterRoom ? (rooms.find(r => String(r.id) === _filterRoom)?.name || (_filterRoom === 'none' ? 'Sans' : '')) : '';
+      render();
+    });
+  });
+
+  // Callback depuis modale
+  window.onDiscSaved = () => loadDiscs();
+  window.onDiscDeleted = () => loadDiscs();
+
+})();
+</script>
+{% endblock %}

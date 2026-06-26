@@ -14,7 +14,7 @@ from app.auth import (
     get_current_user, verify_password, create_session, clear_session, bootstrap_admin
 )
 from app.models import User, Book, Series
-from app.routers import scan, books, users, settings as settings_router, locations as locations_router, loans as loans_router, series as series_router, backup as backup_router
+from app.routers import scan, books, users, settings as settings_router, locations as locations_router, loans as loans_router, series as series_router, backup as backup_router, music as music_router
 from app.lookup import debug_isbn
 
 logging.basicConfig(
@@ -49,6 +49,7 @@ app.include_router(locations_router.router)
 app.include_router(loans_router.router)
 app.include_router(series_router.router)
 app.include_router(backup_router.router)
+app.include_router(music_router.router)
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────
@@ -150,6 +151,21 @@ def library_page(request: Request, db: Session = Depends(get_db)):
     if redir := _require_pw_changed(user): return redir
     return templates.TemplateResponse("library.html", {"request": request, "user": user, "active": "library", "build_version": BUILD_VERSION})
 
+
+
+@app.get("/music", response_class=HTMLResponse)
+def music_page(request: Request, db: Session = Depends(get_db)):
+    try:
+        user = get_current_user(request, db)
+    except Exception:
+        return RedirectResponse(url="/login", status_code=302)
+    if redir := _require_pw_changed(user): return redir
+    from app.models import Room
+    rooms = db.query(Room).order_by(Room.name).all()
+    return templates.TemplateResponse("music.html", {
+        "request": request, "user": user, "active": "music",
+        "rooms": rooms, "build_version": BUILD_VERSION,
+    })
 
 
 @app.get("/tasks", response_class=HTMLResponse)

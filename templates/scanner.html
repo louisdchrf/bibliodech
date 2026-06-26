@@ -412,7 +412,6 @@
 
   function isValidBarcode(code) {
     if (code.length === 13) {
-      if (!code.startsWith('978') && !code.startsWith('979')) return false;
       const sum = code.split('').slice(0, 12).reduce((s, d, i) => s + parseInt(d) * (i % 2 === 0 ? 1 : 3), 0);
       return (10 - sum % 10) % 10 === parseInt(code[12]);
     }
@@ -422,6 +421,10 @@
       return check === (code[9] === 'X' ? 10 : parseInt(code[9]));
     }
     return false;
+  }
+
+  function isBookBarcode(code) {
+    return code.startsWith('978') || code.startsWith('979') || code.length === 10;
   }
 
   // ── Charger Quagga2 à la demande ─────────────────────────────────────────
@@ -526,26 +529,50 @@
     // Recherche en arrière-plan — caméra reste ouverte
     const room_id     = resolveRoomId();
     const location_id = resolveLocationId();
-    fetch('/api/scan', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isbn: raw, room_id, location_id }),
-    }).then(r => r.json()).then(data => {
-      if (data.status === 'exists') {
-        toast.className = 'cam-toast cam-toast-warn';
-        toast.innerHTML = `⚠ <strong>${escHtml(data.book.title)}</strong> <span>déjà dans la bibliothèque</span>`;
+
+    if (isBookBarcode(raw)) {
+      fetch('/api/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isbn: raw, room_id, location_id }),
+      }).then(r => r.json()).then(data => {
+        if (data.status === 'exists') {
+          toast.className = 'cam-toast cam-toast-warn';
+          toast.innerHTML = `⚠ <strong>${escHtml(data.book.title)}</strong> <span>déjà dans la bibliothèque</span>`;
+          dismissToast(toast, 2000);
+        } else {
+          toast.className = 'cam-toast cam-toast-ok';
+          toast.innerHTML = `✓ <strong>${escHtml(data.book.title || raw)}</strong>`;
+          if (data.status === 'pending') pollToast(toast, data.book.id, raw);
+          else dismissToast(toast, 2000);
+        }
+      }).catch(() => {
+        toast.className = 'cam-toast cam-toast-err';
+        toast.innerHTML = `✗ Erreur réseau — ${raw}`;
         dismissToast(toast, 2000);
-      } else {
-        toast.className = 'cam-toast cam-toast-ok';
-        toast.innerHTML = `✓ <strong>${escHtml(data.book.title || raw)}</strong>`;
-        if (data.status === 'pending') pollToast(toast, data.book.id, raw);
-        else dismissToast(toast, 2000);
-      }
-    }).catch(() => {
-      toast.className = 'cam-toast cam-toast-err';
-      toast.innerHTML = `✗ Erreur réseau — ${raw}`;
-      dismissToast(toast, 2000);
-    });
+      });
+    } else {
+      fetch('/api/scan/music', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barcode: raw, room_id }),
+      }).then(r => r.json()).then(data => {
+        if (data.status === 'exists') {
+          toast.className = 'cam-toast cam-toast-warn';
+          toast.innerHTML = `⚠ 💿 <strong>${escHtml(data.disc.title)}</strong> <span>déjà dans la médiathèque</span>`;
+          dismissToast(toast, 2500);
+        } else {
+          toast.className = 'cam-toast cam-toast-ok';
+          toast.innerHTML = `💿 <strong>${escHtml(data.disc.title || raw)}</strong>`;
+          if (data.status === 'pending') pollMusicToast(toast, data.disc.id, raw);
+          else dismissToast(toast, 2500);
+        }
+      }).catch(() => {
+        toast.className = 'cam-toast cam-toast-err';
+        toast.innerHTML = `✗ Erreur réseau — ${raw}`;
+        dismissToast(toast, 2000);
+      });
+    }
   }
 
   async function pollToast(toast, bookId, isbn, attempt = 0) {
@@ -570,6 +597,31 @@
         pollToast(toast, bookId, isbn, attempt + 1);
       }
     } catch { pollToast(toast, bookId, isbn, attempt + 1); }
+  }
+
+  async function pollMusicToast(toast, discId, barcode, attempt = 0) {
+    if (attempt > 20) {
+      toast.className = 'cam-toast cam-toast-warn';
+      toast.innerHTML = `💿 <strong>${barcode}</strong> <span>introuvable</span>`;
+      dismissToast(toast, 2500);
+      return;
+    }
+    await new Promise(r => setTimeout(r, attempt === 0 ? 500 : 1000));
+    try {
+      const res = await fetch(`/api/music/${discId}`);
+      const data = await res.json();
+      if (data.enrichment_status === 'ok') {
+        toast.className = 'cam-toast cam-toast-ok';
+        toast.innerHTML = `💿 <strong>${escHtml(data.title)}</strong>${data.artist ? ' <span>— ' + escHtml(data.artist) + '</span>' : ''}`;
+        dismissToast(toast, 2500);
+      } else if (data.enrichment_status === 'not_found') {
+        toast.className = 'cam-toast cam-toast-warn';
+        toast.innerHTML = `💿 <strong>${barcode}</strong> <span>introuvable</span>`;
+        dismissToast(toast, 2500);
+      } else {
+        pollMusicToast(toast, discId, barcode, attempt + 1);
+      }
+    } catch { pollMusicToast(toast, discId, barcode, attempt + 1); }
   }
 
   function stopCamera() {

@@ -201,6 +201,32 @@ class UserRoomPermission(Base):
     room = relationship("Room", foreign_keys=[room_id])
 
 
+class Disc(Base):
+    __tablename__ = "discs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    barcode = Column(String, nullable=True, index=True, unique=True)
+    title = Column(String, nullable=False)
+    artist = Column(String, nullable=True)
+    label = Column(String, nullable=True)
+    catalog_number = Column(String, nullable=True)
+    year = Column(String, nullable=True)
+    format = Column(String, nullable=True)   # CD, Vinyl, Cassette…
+    genre = Column(String, nullable=True)
+    track_count = Column(Integer, nullable=True)
+    language = Column(String, nullable=True)
+    country = Column(String, nullable=True)
+    cover_url = Column(String, nullable=True)
+    mbid = Column(String, nullable=True)     # MusicBrainz release ID
+    room_id = Column(Integer, ForeignKey("rooms.id"), nullable=True, index=True)
+    enrichment_status = Column(String, nullable=False, default="ok", index=True)
+    source_data = Column(Text, nullable=True)
+    added_at = Column(DateTime, default=_utcnow)
+    added_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    room = relationship("Room", foreign_keys=[room_id])
+
+
 class AppLog(Base):
     __tablename__ = "app_logs"
 
