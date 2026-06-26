@@ -44,6 +44,18 @@
       <h2 class="stat-card-title">Prêts</h2>
       <div id="chart-loans"></div>
     </div>
+
+    <!-- Séries -->
+    <div class="stat-card">
+      <h2 class="stat-card-title">Séries</h2>
+      <div id="chart-series"></div>
+    </div>
+
+    <!-- Top séries -->
+    <div class="stat-card">
+      <h2 class="stat-card-title">Top séries</h2>
+      <div id="chart-top-series"></div>
+    </div>
   </div>
 </div>
 {% endblock %}
@@ -67,6 +79,7 @@
     const items = [
       { value: t.books,        label: 'Livres',           icon: '📚' },
       { value: t.authors,      label: 'Auteurs',          icon: '✍️' },
+      { value: t.series,       label: 'Séries',           icon: '📖' },
       { value: t.active_loans, label: 'Prêts en cours',   icon: '🔖' },
     ];
     document.getElementById('kpis').innerHTML = items.map(i => `
@@ -235,6 +248,29 @@
     `;
   }
 
+  // ── Section Séries ────────────────────────────────────────────────────────
+  function renderSeries(series) {
+    const pct = series.total ? Math.round((series.books_in_series / (series.books_in_series + series.books_no_series)) * 100) : 0;
+    document.getElementById('chart-series').innerHTML = `
+      <div class="stat-loan-kpis">
+        <div class="stat-loan-kpi">
+          <span class="stat-loan-num">${series.total}</span>
+          <span class="stat-loan-lbl">séries</span>
+        </div>
+        <div class="stat-loan-kpi">
+          <span class="stat-loan-num">${series.books_in_series}</span>
+          <span class="stat-loan-lbl">livres en série</span>
+        </div>
+        <div class="stat-loan-kpi">
+          <span class="stat-loan-num">${pct}%</span>
+          <span class="stat-loan-lbl">catalogués</span>
+        </div>
+      </div>
+      ${series.books_no_series > 0 ? `<p style="font-size:.8rem;color:var(--color-text-muted);margin-top:.75rem">${series.books_no_series} livre${series.books_no_series > 1 ? 's' : ''} sans série</p>` : ''}
+      ${series.empty_series > 0 ? `<p style="font-size:.8rem;color:var(--color-warn,#e07b00);margin-top:.25rem">⚠ ${series.empty_series} série${series.empty_series > 1 ? 's' : ''} vide${series.empty_series > 1 ? 's' : ''} — <a href="/series" style="color:inherit">gérer</a></p>` : ''}
+    `;
+  }
+
   // ── Init ──────────────────────────────────────────────────────────────────
   async function load() {
     const res = await fetch('/api/stats');
@@ -248,6 +284,10 @@
     barChart(document.getElementById('chart-authors'),   d.top_authors,  { color: ACCENT });
     barChart(document.getElementById('chart-sources'),   (d.by_source || []).map(s => ({ label: s.label, count: s.count })), { color: PRIMARY });
     renderLoans(d.loans);
+    if (d.series) {
+      renderSeries(d.series);
+      barChart(document.getElementById('chart-top-series'), d.series.top_series.map(s => ({ label: s.name, count: s.count })), { color: ACCENT });
+    }
   }
 
   load();

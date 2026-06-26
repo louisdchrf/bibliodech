@@ -311,11 +311,23 @@ def get_stats(request: Request, db: Session = Depends(get_db)):
         if b:
             top_loaned.append({"title": b.title, "count": cnt})
 
+    # ── Séries ────────────────────────────────────────────────────────────────
+    all_series = db.query(Series).all()
+    total_series = len(all_series)
+    books_in_series = db.query(func.count(Book.id)).filter(Book.series_id.isnot(None)).scalar()
+    books_no_series = total_books - books_in_series
+    empty_series = sum(1 for s in all_series if len(s.books) == 0)
+    top_series = sorted(
+        [{"name": s.name, "count": len(s.books)} for s in all_series if s.books],
+        key=lambda x: x["count"], reverse=True
+    )[:10]
+
     return {
         "totals": {
             "books": total_books,
             "authors": len(unique_authors),
             "active_loans": active_loans,
+            "series": total_series,
         },
         "by_location": by_location,
         "by_source": by_source,
@@ -328,6 +340,13 @@ def get_stats(request: Request, db: Session = Depends(get_db)):
             "active": active_loans,
             "top_borrowers": top_borrowers,
             "top_loaned": top_loaned,
+        },
+        "series": {
+            "total": total_series,
+            "books_in_series": books_in_series,
+            "books_no_series": books_no_series,
+            "empty_series": empty_series,
+            "top_series": top_series,
         },
     }
 

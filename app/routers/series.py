@@ -931,6 +931,23 @@ def list_series(request: Request, db: Session = Depends(get_db)):
     return out
 
 
+@router.delete("/api/series/{series_id}", status_code=204)
+def delete_series(series_id: int, request: Request, db: Session = Depends(get_db)):
+    from fastapi import HTTPException
+    from app.auth import require_admin
+    user = get_current_user(request, db)
+    require_admin(user)
+    series = db.query(Series).filter(Series.id == series_id).first()
+    if not series:
+        raise HTTPException(404, "Série introuvable")
+    for book in series.books:
+        book.series_id = None
+        book.series_position = None
+    db.query(SeriesProposal).filter(SeriesProposal.existing_series_id == series_id).delete()
+    db.delete(series)
+    db.commit()
+
+
 @router.get("/api/series/{series_id}/books")
 def get_series_books(series_id: int, request: Request, db: Session = Depends(get_db)):
     get_current_user(request, db)
