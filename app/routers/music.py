@@ -32,6 +32,7 @@ def disc_to_dict(d: Disc) -> dict:
         "mbid": d.mbid,
         "room_id": d.room_id,
         "room_name": d.room.name if d.room else None,
+        "site_name": d.room.site.name if d.room and d.room.site else None,
         "enrichment_status": d.enrichment_status,
         "added_at": d.added_at.isoformat() if d.added_at else None,
     }
