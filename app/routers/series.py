@@ -931,6 +931,44 @@ def list_series(request: Request, db: Session = Depends(get_db)):
     return out
 
 
+@router.patch("/api/series/{series_id}")
+def update_series(series_id: int, body: dict, request: Request, db: Session = Depends(get_db)):
+    from fastapi import HTTPException
+    from app.auth import require_contributor
+    user = get_current_user(request, db)
+    require_contributor(user)
+    series = db.query(Series).filter(Series.id == series_id).first()
+    if not series:
+        raise HTTPException(404, "Série introuvable")
+
+    # Renommer la série
+    if "name" in body and body["name"].strip():
+        new_name = body["name"].strip()
+        conflict = db.query(Series).filter(Series.name == new_name, Series.id != series_id).first()
+        if conflict:
+            raise HTTPException(409, "Une série avec ce nom existe déjà")
+        series.name = new_name
+
+    # Appliquer auteurs, éditeur, localisation à tous les livres
+    authors_val = body.get("authors")  # liste ou None
+    publisher_val = body.get("publisher")
+    room_id = body.get("room_id")
+    location_id = body.get("location_id")
+
+    for book in series.books:
+        if authors_val is not None:
+            book.authors = json.dumps(authors_val, ensure_ascii=False)
+        if publisher_val is not None:
+            book.publisher = publisher_val or None
+        if room_id is not None:
+            book.room_id = room_id or None
+        if location_id is not None:
+            book.location_id = location_id or None
+
+    db.commit()
+    return {"id": series.id, "name": series.name, "book_count": len(series.books)}
+
+
 @router.delete("/api/series/{series_id}", status_code=204)
 def delete_series(series_id: int, request: Request, db: Session = Depends(get_db)):
     from fastapi import HTTPException
@@ -967,6 +1005,8 @@ def get_series_books(series_id: int, request: Request, db: Session = Depends(get
                 "cover_url": b.cover_url,
                 "series_position": b.series_position,
                 "publisher": b.publisher,
+                "room_id": b.room_id,
+                "location_id": b.location_id,
             }
             for b in books
         ],
