@@ -224,17 +224,29 @@
     }
   }
 
+  function applyCardSelection(div, sid) {
+    const sel = _selected.has(sid);
+    div.style.outline = sel ? '2px solid var(--color-primary)' : '';
+    div.style.outlineOffset = sel ? '2px' : '';
+    const dot = div.querySelector('.sel-dot');
+    if (!dot) return;
+    dot.style.background = sel ? 'var(--color-primary)' : 'var(--color-surface)';
+    dot.style.borderColor = sel ? 'var(--color-primary)' : 'var(--color-border)';
+    dot.innerHTML = sel ? '<svg width="11" height="11" viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3" stroke="white" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>' : '';
+  }
+
   function seriesCard(s) {
     const div = document.createElement('div');
     div.className = 'book-card';
     div.style.cursor = 'pointer';
+    div.dataset.sid = s.id;
     if (_selectMode && _selected.has(s.id)) {
       div.style.outline = '2px solid var(--color-primary)';
       div.style.outlineOffset = '2px';
     }
 
     const checkHtml = _selectMode
-      ? `<div style="position:absolute;top:.4rem;left:.4rem;width:20px;height:20px;border-radius:50%;background:${_selected.has(s.id) ? 'var(--color-primary)' : 'var(--color-surface)'};border:2px solid ${_selected.has(s.id) ? 'var(--color-primary)' : 'var(--color-border)'};display:flex;align-items:center;justify-content:center;z-index:2;flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">
+      ? `<div class="sel-dot" style="position:absolute;top:.4rem;left:.4rem;width:20px;height:20px;border-radius:50%;background:${_selected.has(s.id) ? 'var(--color-primary)' : 'var(--color-surface)'};border:2px solid ${_selected.has(s.id) ? 'var(--color-primary)' : 'var(--color-border)'};display:flex;align-items:center;justify-content:center;z-index:2;flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">
           ${_selected.has(s.id) ? '<svg width="11" height="11" viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3" stroke="white" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>' : ''}
         </div>`
       : '';
@@ -252,8 +264,12 @@
       if (_selectMode) {
         if (_selected.has(s.id)) _selected.delete(s.id);
         else _selected.add(s.id);
+        applyCardSelection(div, s.id);
         updateBulkBar();
-        render();
+        // Met à jour le label "tout sélectionner" sans toucher au DOM de la grille
+        const visible = filtered().map(s => s.id);
+        const allSel = visible.length > 0 && visible.every(id => _selected.has(id));
+        document.getElementById('bulk-select-all').textContent = allSel ? 'Tout désélectionner' : 'Tout sélectionner';
       } else {
         openSeriesModal(s.id);
       }
