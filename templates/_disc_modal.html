@@ -1,5 +1,5 @@
-<div id="disc-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center">
-  <div class="modal-box" style="width:min(560px,96vw);max-height:90vh;overflow-y:auto">
+<div id="disc-modal-overlay" class="modal-overlay" style="display:none">
+  <div class="modal-card" style="max-width:560px">
     <div class="modal-header">
       <h2 class="modal-title" id="disc-modal-title">Disque</h2>
       <button class="modal-close" id="disc-modal-close" aria-label="Fermer">
@@ -77,7 +77,6 @@
 
   function closeModal() {
     overlay.style.display = 'none';
-    overlay.style.alignItems = '';
     if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
   }
 
@@ -91,8 +90,7 @@
 
   window.openDiscModal = async function(id) {
     _currentId = id;
-    overlay.style.display = 'flex';
-    overlay.style.alignItems = 'center';
+    overlay.style.display = '';
 
     const disc = await loadDisc(id);
     if (!disc) { closeModal(); return; }
