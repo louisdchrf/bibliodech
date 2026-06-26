@@ -29,12 +29,16 @@
       </div>
     </div>
     <div class="filter-sep"></div>
-    <div class="filter-module" id="fg-size" style="display:flex;align-items:center;gap:.3rem">
-      <span style="font-size:.78rem;color:var(--color-text-muted);font-weight:500;margin-right:.1rem">Taille</span>
-      <button class="filter-chip size-chip active" data-val="0">Toutes</button>
-      <button class="filter-chip size-chip" data-val="2">≥ 2</button>
-      <button class="filter-chip size-chip" data-val="5">≥ 5</button>
-      <button class="filter-chip size-chip" data-val="10">≥ 10</button>
+    <div class="filter-module" id="fg-size">
+      <button class="filter-module-label" data-panel="fp-size">Taille<span class="filter-module-badge" id="badge-size"></span></button>
+      <div class="filter-module-panel" id="fp-size">
+        <div class="fp-chips">
+          <button class="filter-chip size-chip active" data-val="0">Toutes</button>
+          <button class="filter-chip size-chip" data-val="2">≥ 2</button>
+          <button class="filter-chip size-chip" data-val="5">≥ 5</button>
+          <button class="filter-chip size-chip" data-val="10">≥ 10</button>
+        </div>
+      </div>
     </div>
     <button class="filter-reset" id="btn-filter-reset" style="display:none" title="Effacer les filtres">✕ Réinitialiser</button>
   </div>
