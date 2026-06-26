@@ -412,6 +412,7 @@
 
   function isValidBarcode(code) {
     if (code.length === 13) {
+      if (!code.startsWith('978') && !code.startsWith('979')) return false;
       const sum = code.split('').slice(0, 12).reduce((s, d, i) => s + parseInt(d) * (i % 2 === 0 ? 1 : 3), 0);
       return (10 - sum % 10) % 10 === parseInt(code[12]);
     }
