@@ -230,6 +230,28 @@ img { display: block; max-width: 100%; }
 .nav-menu-group-label { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--color-text-muted); padding: .4rem .85rem .2rem; }
 .nav-menu-separator { border-top: 1px solid var(--color-border); margin: .35rem 0; }
 
+/* Sous-menus fly-out */
+.nav-submenu { position: relative; }
+.nav-submenu-trigger {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .55rem 1rem; font-size: .85rem; color: var(--color-text);
+  white-space: nowrap; cursor: pointer; user-select: none;
+  transition: background .1s; gap: .5rem;
+}
+.nav-submenu-trigger:hover { background: var(--color-surface-2); }
+.nav-submenu-trigger.active { font-weight: 600; color: var(--color-primary); }
+.nav-submenu-chevron { font-size: .65rem; opacity: .5; }
+.nav-submenu-panel {
+  display: none; position: absolute;
+  left: 100%; top: -.25rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  min-width: 150px; z-index: 400; overflow: hidden;
+}
+.nav-submenu.open > .nav-submenu-panel { display: block; }
+
 .nav-user-dropdown {
   display: none;
   position: absolute;

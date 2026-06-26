@@ -23,14 +23,25 @@
           Médiathèque <span class="nav-menu-chevron">▾</span>
         </span>
         <div class="nav-menu-dropdown">
-          <div class="nav-menu-group-label">Bibliothèque</div>
-          <a href="/library" class="nav-menu-item {% if active=='library' %}active{% endif %}">Ouvrages</a>
-          <a href="/series" class="nav-menu-item {% if active=='series-browse' %}active{% endif %}">Séries</a>
-          <a href="/missing-volumes" class="nav-menu-item {% if active=='missing-volumes' %}active{% endif %}">Manquants</a>
-          {% if user.role == 'admin' %}<a href="/series/proposals" class="nav-menu-item {% if active=='series' %}active{% endif %}">Détection</a>{% endif %}
-          <div class="nav-menu-separator"></div>
-          <div class="nav-menu-group-label">Musique</div>
-          <a href="/music" class="nav-menu-item {% if active=='music' %}active{% endif %}">Disques</a>
+          <div class="nav-submenu {% if active in ['library','series-browse','series','missing-volumes'] %}open{% endif %}" id="nav-sub-books">
+            <div class="nav-submenu-trigger {% if active in ['library','series-browse','series','missing-volumes'] %}active{% endif %}">
+              Bibliothèque <span class="nav-submenu-chevron">▶</span>
+            </div>
+            <div class="nav-submenu-panel">
+              <a href="/library" class="nav-menu-item {% if active=='library' %}active{% endif %}">Ouvrages</a>
+              <a href="/series" class="nav-menu-item {% if active=='series-browse' %}active{% endif %}">Séries</a>
+              <a href="/missing-volumes" class="nav-menu-item {% if active=='missing-volumes' %}active{% endif %}">Manquants</a>
+              {% if user.role == 'admin' %}<a href="/series/proposals" class="nav-menu-item {% if active=='series' %}active{% endif %}">Détection</a>{% endif %}
+            </div>
+          </div>
+          <div class="nav-submenu {% if active=='music' %}open{% endif %}" id="nav-sub-music">
+            <div class="nav-submenu-trigger {% if active=='music' %}active{% endif %}">
+              Musique <span class="nav-submenu-chevron">▶</span>
+            </div>
+            <div class="nav-submenu-panel">
+              <a href="/music" class="nav-menu-item {% if active=='music' %}active{% endif %}">Disques</a>
+            </div>
+          </div>
         </div>
       </div>
       <a href="/locations" {% if active=='locations' %}class="active"{% endif %}>Localisations</a>
@@ -100,6 +111,24 @@
           var isOpen = menu.classList.contains('open');
           document.querySelectorAll('.nav-menu.open').forEach(function(m) { m.classList.remove('open'); });
           if (!isOpen) menu.classList.add('open');
+        });
+      });
+
+      // Sous-menus fly-out
+      document.querySelectorAll('.nav-submenu').forEach(function(sub) {
+        var trigger = sub.querySelector('.nav-submenu-trigger');
+        trigger.addEventListener('mouseenter', function() {
+          sub.closest('.nav-menu-dropdown').querySelectorAll('.nav-submenu').forEach(function(s) { s.classList.remove('open'); });
+          sub.classList.add('open');
+        });
+        sub.addEventListener('mouseleave', function(e) {
+          if (!sub.contains(e.relatedTarget)) sub.classList.remove('open');
+        });
+        trigger.addEventListener('click', function(e) {
+          e.stopPropagation();
+          var isOpen = sub.classList.contains('open');
+          sub.closest('.nav-menu-dropdown').querySelectorAll('.nav-submenu').forEach(function(s) { s.classList.remove('open'); });
+          if (!isOpen) sub.classList.add('open');
         });
       });
 
