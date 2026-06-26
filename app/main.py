@@ -161,7 +161,7 @@ def music_page(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse(url="/login", status_code=302)
     if redir := _require_pw_changed(user): return redir
     from app.models import Room
-    rooms = db.query(Room).order_by(Room.name).all()
+    rooms = [{"id": r.id, "name": r.name} for r in db.query(Room).order_by(Room.name).all()]
     return templates.TemplateResponse("music.html", {
         "request": request, "user": user, "active": "music",
         "rooms": rooms, "build_version": BUILD_VERSION,
