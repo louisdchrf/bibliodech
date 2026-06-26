@@ -8,14 +8,16 @@ FastAPI (Python)
 ├── app/routers/
 │   ├── scan.py          — Scan ISBN, enrichissement, re-enrichissement
 │   ├── books.py         — CRUD livres, bulk actions
+│   ├── music.py         — Scan, CRUD et tâches disques (CDs, vinyles…)
 │   ├── series.py        — Gestion des séries
 │   ├── loans.py         — Prêts
 │   ├── locations.py     — Sites / salles / étagères
 │   ├── users.py         — Comptes utilisateurs
 │   └── settings.py      — Paramètres (sources, clés API, SMTP)
-├── app/lookup.py        — Logique de recherche multi-sources
+├── app/lookup.py        — Logique de recherche multi-sources (livres)
+├── app/lookup_music.py  — Logique de recherche musicale (MusicBrainz, Discogs)
 ├── app/audit.py         — Journal d'activité (audit log)
-├── app/models.py        — Modèles SQLAlchemy
+├── app/models.py        — Modèles SQLAlchemy (Book, Disc, Series, Loan…)
 └── app/database.py      — Init DB + migrations
 
 templates/               — Pages Jinja2 (HTML + JS vanilla)
@@ -92,6 +94,77 @@ La BNF renvoie les auteurs en format UNIMARC (`Prénom. Auteur du texte Nom`). L
 - Multi-auteurs en ISBD (`Nom1, Prénom1, Nom2, Prénom2`)
 - Entrées fantômes (rôle sans nom)
 - Institutions (`Musée du Louvre (Paris). Auteur du texte` → `Musée du Louvre (Paris)`)
+
+---
+
+## Médiathèque musicale
+
+### Scanner CDs, vinyles et cassettes
+
+Le scanner détecte automatiquement si un code-barres est un **ISBN livre** (préfixe 978/979) ou un **EAN musical** et route vers le bon flux :
+
+- ISBN → flux livre existant (`POST /api/scan`)
+- EAN musical → flux disque (`POST /api/scan/music`)
+
+Les codes de 10 à 14 chiffres déclenchent la soumission automatique. Si le code est ambiguë, l'interface propose une fiche "CD/Vinyle" au lieu d'une fiche livre.
+
+### Sources musicales
+
+| Source | Type | Clé requise | Points forts |
+|---|---|---|---|
+| **MusicBrainz** | Gratuit, open source | Non | Lookup EAN direct, couvertures via Cover Art Archive. Max 1 req/s (User-Agent obligatoire). |
+| **Discogs** | Gratuit limité | Oui (25 req/min) | Meilleure couverture des pressages régionaux et rares |
+
+**Waterfall de pochettes** : MusicBrainz (via MBID + Cover Art Archive) → Discogs (via code-barres) → recherche MusicBrainz par titre+artiste.
+
+La clé Discogs se configure dans **Paramètres → Sources → Musique** (clé API personnelle, gratuite).
+
+### Page Médiathèque (`/music`)
+
+- Vue **grille** (pochettes) ou **liste** (tableau)
+- Filtres : format (CD, Vinyl, Cassette…), artiste, localisation
+- Tri : artiste, titre, date d'ajout
+- **Sélection en masse** : modifier la localisation, supprimer
+
+### Fiche disque
+
+Accessible depuis la grille ou la liste. Contient :
+
+- Pochette, titre, artiste, label, format, année
+- Métadonnées : N° catalogue, pistes, pays, langue
+- Liens externes : MusicBrainz, Discogs
+- Onglet **Infos** : tous les champs
+- Onglet **Édition** : modification manuelle de tous les champs + localisation
+
+Si le disque est `Non trouvé` après l'enrichissement, un bouton **Relancer la recherche** ré-interroge MusicBrainz et Discogs sans attendre la tâche planifiée.
+
+### Enrichissement et statuts
+
+| Statut | Signification |
+|---|---|
+| `pending` | En cours d'enrichissement (fond bleu, polling actif) |
+| `ok` | Enrichi avec succès |
+| `not_found` | Aucune source n'a trouvé ce code-barres |
+
+### Tâches planifiables — Musique
+
+Accessibles dans **Tâches → Musique** :
+
+| Tâche | Rôle |
+|---|---|
+| `reenrich-discs` | Re-enrichit les disques `not_found` ou `pending` via MusicBrainz et Discogs |
+| `fetch-disc-covers` | Télécharge les pochettes manquantes pour les disques enrichis |
+| `refresh-disc-covers` | Re-télécharge toutes les pochettes (qualité maximale) |
+
+---
+
+## Recherche globale
+
+Icône loupe dans la barre de navigation (raccourci **⌘K** sur Mac). Cherche en temps réel dans **livres et disques simultanément** dès 2 caractères saisis.
+
+Les résultats sont groupés par type et cliquables :
+- Si on est déjà sur la page Bibliothèque ou Musique, le clic ouvre directement la modale de la fiche
+- Sinon, navigation vers la page correspondante
 
 ---
 
@@ -292,7 +365,7 @@ Page `/stats` — KPIs + graphiques :
 
 | Section | Contenu |
 |---|---|
-| **KPIs** | Livres, Auteurs, Séries, Prêts en cours |
+| **KPIs livres** | Livres, Auteurs, Séries, Prêts en cours |
 | **Ajouts par jour** | Courbe sur 30 jours |
 | **Langues** | Donut chart avec légende |
 | **Par localisation** | Barres horizontales |
@@ -301,6 +374,9 @@ Page `/stats` — KPIs + graphiques :
 | **Prêts** | Total, en cours, % retournés, top emprunteurs, livres les plus prêtés |
 | **Séries** | Total séries, livres en série, % catalogués, séries vides |
 | **Top séries** | Barres des séries les plus fournies |
+| **KPIs musique** | Disques, Artistes, Formats |
+| **Formats** | Donut chart CD / Vinyl / Cassette… |
+| **Top artistes** | Barres des artistes les plus représentés |
 
 ---
 
@@ -320,11 +396,13 @@ Changement de mot de passe obligatoire à la première connexion si `must_change
 
 ## Paramètres
 
-- **Sources** : activer/désactiver chaque source, ordre de priorité, timeout
+- **Sources — Livres** : activer/désactiver chaque source, ordre de priorité, timeout
+- **Sources — Musique** : MusicBrainz (toujours actif), Discogs (clé API à saisir)
 - **Clés API** : Google Books, ISBNdb
 - **SMTP** : configuration email pour les alertes (retards de prêt, nouveau compte)
 - **Import CSV** : importer une liste de livres en masse
-- **Export** : export CSV de la bibliothèque complète
+- **Export CSV — Bibliothèque** : livres (titre, auteurs, ISBN, éditeur, localisation…)
+- **Export CSV — Musique** : discothèque (titre, artiste, label, format, localisation…)
 - **Sauvegardes** : créer, télécharger, restaurer, supprimer des sauvegardes de la base SQLite. Rétention configurable. Planifiable via les tâches.
 
 ### Tâches planifiables
@@ -340,8 +418,12 @@ Accessibles dans **Paramètres → Tâches** :
 | `reenrich` | Re-enrichit tous les livres `not_found` ou sans titre |
 | `reenrich-all` | Re-enrichit tous les livres avec ISBN |
 | `fetch-covers` | Télécharge les couvertures manquantes |
+| `refresh-covers` | Re-télécharge toutes les couvertures en 600px |
 | `clean-series` | Nettoie les noms de séries (casse, accents, doublons) |
 | `backup` | Crée une sauvegarde de la base de données |
+| `reenrich-discs` | Re-enrichit les disques `not_found` ou `pending` |
+| `fetch-disc-covers` | Télécharge les pochettes manquantes des disques |
+| `refresh-disc-covers` | Re-télécharge toutes les pochettes de disques |
 
 ---
 
