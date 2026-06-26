@@ -41,10 +41,12 @@ static/js/quagga2.min.js — Bibliothèque de décodage code-barres
 
 ### Caméra live (Quagga2)
 
-- Bibliothèque : **Quagga2** (`static/js/quagga2.min.js`, 143 KB), décodage EAN-13/EAN-8/UPC
+- Bibliothèque : **Quagga2** (`static/js/quagga2.min.js`, 143 KB), décodage EAN-13 uniquement (ISBN)
 - Requiert **HTTPS** (`getUserMedia`) — fourni par Pangolin en production
 - La caméra reste ouverte après chaque scan (scan en continu)
 - Les résultats apparaissent sous forme de **toasts** (pending → ok/warn/err)
+- **Perf mobile** : résolution cible 480p, `halfSample: true`, fréquence 20 fps — réduit la charge CPU
+- Premier poll de statut à 500 ms (au lieu de 1500 ms) pour réduire l'attente du toast bleu
 - **Flash** : bouton 🔦 visible uniquement si l'appareil supporte `torch` (Android Chrome)
 - **iOS Safari** : live non disponible → fallback automatique sur sélection de photo
 
@@ -252,7 +254,27 @@ Exemples : `"Tintin"`, `"TINTIN"`, `"tïntïn"` → tous équivalents à `"tinti
 
 ### Gestion manuelle
 
-Page **Bibliothèque → Séries** : vue en grille ou liste de toutes les séries, avec couverture du premier tome, nom et nombre de volumes. Clic sur une série → panneau latéral avec la liste des tomes dans l'ordre.
+Page **Bibliothèque → Séries** : vue en grille ou liste de toutes les séries, avec couverture du premier tome, nom et nombre de volumes.
+
+Clic sur une série → **modale à 3 onglets** :
+
+| Onglet | Contenu |
+|---|---|
+| **Infos** | Formulaire : nom, auteurs, éditeur, localisation (pièce + étagère) — modifications appliquées à tous les livres de la série. Bouton Supprimer (admin). |
+| **Tomes** | Liste triée des volumes avec couverture et numéro de tome. Clic → ouvre la modale livre correspondante. |
+| **Historique** | Tous les emprunts liés aux livres de la série (emprunteur, date, statut). |
+
+#### Filtres
+
+- **Recherche texte** : filtre par nom de série
+- **Localisation** : filtre par pièce (une série apparaît si au moins un livre y est rangé)
+- **Taille** : chips Toutes / ≥2 / ≥5 / ≥10 volumes
+
+#### Sélection en masse
+
+Bouton **Sélectionner** → mode sélection : clic sur une carte la coche. Barre flottante avec :
+- Compteur + "Tout sélectionner"
+- **Modifier…** → modale d'édition en masse (auteurs, éditeur, localisation) — seuls les champs renseignés sont appliqués
 
 ---
 
@@ -264,12 +286,33 @@ Page **Bibliothèque → Séries** : vue en grille ou liste de toutes les série
 
 ---
 
+## Statistiques
+
+Page `/stats` — KPIs + graphiques :
+
+| Section | Contenu |
+|---|---|
+| **KPIs** | Livres, Auteurs, Séries, Prêts en cours |
+| **Ajouts par jour** | Courbe sur 30 jours |
+| **Langues** | Donut chart avec légende |
+| **Par localisation** | Barres horizontales |
+| **Top auteurs** | Barres horizontales |
+| **Sources** | Répartition par source d'enrichissement |
+| **Prêts** | Total, en cours, % retournés, top emprunteurs, livres les plus prêtés |
+| **Séries** | Total séries, livres en série, % catalogués, séries vides |
+| **Top séries** | Barres des séries les plus fournies |
+
+---
+
 ## Utilisateurs et rôles
 
 | Rôle | Droits |
 |---|---|
-| **admin** | Tout (suppression, gestion utilisateurs) |
-| **contributeur** | Scan, ajout, modification |
+| **admin** | Tout (suppression, gestion utilisateurs, tâches, paramètres) |
+| **contributeur** | Scan, ajout, modification des livres et séries |
+| **lecteur** | Consultation uniquement |
+
+**Droits par localisation** : l'admin peut restreindre un contributeur à des salles spécifiques (`UserRoomPermission`). Le scanner pré-sélectionne automatiquement les salles autorisées.
 
 Changement de mot de passe obligatoire à la première connexion si `must_change_password = true`.
 
@@ -282,6 +325,23 @@ Changement de mot de passe obligatoire à la première connexion si `must_change
 - **SMTP** : configuration email pour les alertes (retards de prêt, nouveau compte)
 - **Import CSV** : importer une liste de livres en masse
 - **Export** : export CSV de la bibliothèque complète
+- **Sauvegardes** : créer, télécharger, restaurer, supprimer des sauvegardes de la base SQLite. Rétention configurable. Planifiable via les tâches.
+
+### Tâches planifiables
+
+Accessibles dans **Paramètres → Tâches** :
+
+| Tâche | Rôle |
+|---|---|
+| `bnf-series` | Trouve tous les tomes BnF pour chaque série et rattache ceux en bibliothèque |
+| `detect-series` | Comparaison titre/auteurs entre livres sans série (signaux 0, 1, 2) |
+| `sudoc-series` | Interroge le SUDOC pour chaque livre sans série |
+| `ocr-series` | Lecture OCR des couvertures pour détecter les noms de séries |
+| `reenrich` | Re-enrichit tous les livres `not_found` ou sans titre |
+| `reenrich-all` | Re-enrichit tous les livres avec ISBN |
+| `fetch-covers` | Télécharge les couvertures manquantes |
+| `clean-series` | Nettoie les noms de séries (casse, accents, doublons) |
+| `backup` | Crée une sauvegarde de la base de données |
 
 ---
 
