@@ -212,7 +212,6 @@ img { display: block; max-width: 100%; }
   box-shadow: var(--shadow-md);
   min-width: 160px;
   z-index: 300;
-  overflow: hidden;
 }
 .nav-menu.open .nav-menu-dropdown { display: block; }
 .nav-menu-item {
