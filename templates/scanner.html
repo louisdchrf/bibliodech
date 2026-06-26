@@ -260,6 +260,9 @@
     const cover = disc.cover_url
       ? `<img src="${escHtml(disc.cover_url)}" alt="pochette" class="card-cover">`
       : `<div class="card-cover-placeholder">💿</div>`;
+    const locBadge = disc.room_name
+      ? `<span class="badge badge-shelf">${escHtml(disc.room_name)}</span>`
+      : '';
     const div = document.createElement('div');
     div.className = 'scan-card scan-card-ok slide-in';
     div.innerHTML = `
@@ -267,6 +270,7 @@
       <div class="card-info">
         <div class="card-title">${escHtml(disc.title)}</div>
         ${disc.artist ? `<div class="card-authors">${escHtml(disc.artist)}</div>` : ''}
+        ${locBadge ? `<div class="card-badges">${locBadge}</div>` : ''}
       </div>
       <div class="card-status card-status-ok">✓ Ajouté</div>
     `;
