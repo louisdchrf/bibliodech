@@ -6,6 +6,7 @@ Create Date: 2026-06-26
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 revision = 'f6a7b8c9d0e1'
 down_revision = 'e5f6a7b8c9d0'
@@ -14,6 +15,9 @@ depends_on = None
 
 
 def upgrade():
+    bind = op.get_bind()
+    if 'discs' in inspect(bind).get_table_names():
+        return
     op.create_table(
         "discs",
         sa.Column("id", sa.Integer, primary_key=True, index=True),
