@@ -61,6 +61,9 @@ def on_startup():
         path = db_url.replace("sqlite:///", "")
         os.makedirs(os.path.dirname(path), exist_ok=True)
     init_db()
+    from app.auth import init_serializer
+    from app.database import DATABASE_URL
+    init_serializer(DATABASE_URL)
     from app.database import SessionLocal
     db = SessionLocal()
     try:

@@ -14,21 +14,42 @@ from app.models import User
 
 log = logging.getLogger(__name__)
 
-_DEFAULT_SECRET = "change-me-in-production-please"
-SECRET_KEY = os.environ.get("SECRET_KEY", _DEFAULT_SECRET)
-if SECRET_KEY == _DEFAULT_SECRET:
-    log.warning(
-        "[auth] SECRET_KEY non définie — utilisation de la valeur par défaut. "
-        "Définissez SECRET_KEY dans l'environnement pour sécuriser les sessions."
-    )
-
 COOKIE_NAME = "bibliodech_session"
 COOKIE_MAX_AGE = 7 * 24 * 3600
-# Activer secure=True uniquement hors dev (HTTPS requis)
 _COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").lower() in ("1", "true", "yes")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-serializer = URLSafeTimedSerializer(SECRET_KEY)
+
+# SECRET_KEY : priorité à l'env var, sinon on charge depuis la DB (générée au démarrage).
+# Le serializer est initialisé après init_db() via init_serializer().
+_SECRET_KEY: str = ""
+serializer: URLSafeTimedSerializer | None = None
+
+
+def init_serializer(db_url: str) -> None:
+    """Appelé après init_db() pour charger la SECRET_KEY persistée."""
+    global _SECRET_KEY, serializer
+    env_key = os.environ.get("SECRET_KEY", "")
+    if env_key:
+        _SECRET_KEY = env_key
+        log.info("[auth] SECRET_KEY chargée depuis l'environnement.")
+    else:
+        # Lire depuis la table settings
+        from sqlalchemy import create_engine, text
+        import json
+        engine = create_engine(db_url, connect_args={"check_same_thread": False})
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT value FROM settings WHERE key='secret_key'")
+            ).scalar()
+            if row:
+                _SECRET_KEY = json.loads(row)
+                log.info("[auth] SECRET_KEY chargée depuis la base de données.")
+            else:
+                import secrets
+                _SECRET_KEY = secrets.token_hex(32)
+                log.warning("[auth] SECRET_KEY introuvable en base — clé éphémère générée.")
+    serializer = URLSafeTimedSerializer(_SECRET_KEY)
 
 # ── Brute-force protection ────────────────────────────────────────────────────
 _BRUTE_WINDOW = 60        # secondes
@@ -141,7 +162,11 @@ def require_contributor(user: User) -> User:
 
 def bootstrap_admin(db: Session) -> None:
     admin_username = os.environ.get("ADMIN_USERNAME", "admin")
-    admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
+    admin_password = os.environ.get("ADMIN_PASSWORD", "")
+    using_default_password = not admin_password
+    if using_default_password:
+        import secrets
+        admin_password = secrets.token_urlsafe(16)
 
     existing = db.query(User).filter(User.role == "admin").first()
     if existing:
@@ -152,8 +177,16 @@ def bootstrap_admin(db: Session) -> None:
         password_hash=hash_password(admin_password),
         role="admin",
         is_active=True,
+        must_change_password=True,
         created_at=datetime.utcnow(),
     )
     db.add(admin)
     db.commit()
-    log.info("Admin user '%s' created.", admin_username)
+    if using_default_password:
+        log.warning(
+            "[auth] Admin créé avec mot de passe temporaire aléatoire : %s  "
+            "(à changer à la première connexion via ADMIN_PASSWORD ou l'interface)",
+            admin_password,
+        )
+    else:
+        log.info("Admin user '%s' created.", admin_username)

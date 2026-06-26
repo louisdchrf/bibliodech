@@ -22,6 +22,7 @@ class Base(DeclarativeBase):
 
 
 def init_db():
+    import secrets as _secrets
     from app import models  # noqa: F401
     from sqlalchemy import text
     Base.metadata.create_all(bind=engine)
@@ -108,6 +109,17 @@ def init_db():
         for idx_name, ddl in perf_indexes:
             if idx_name not in existing_idx:
                 conn.execute(text(ddl))
+
+        # ── SECRET_KEY auto-générée au premier démarrage ─────────────────────
+        existing_key = conn.execute(
+            text("SELECT value FROM settings WHERE key='secret_key'")
+        ).scalar()
+        if not existing_key:
+            generated = _secrets.token_hex(32)
+            conn.execute(
+                text("INSERT INTO settings (key, value) VALUES ('secret_key', :v)"),
+                {"v": f'"{generated}"'},
+            )
 
         conn.commit()
 
