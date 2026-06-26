@@ -39,50 +39,7 @@
 {% endif %}
 
 {% include "_book_modal.html" %}
-
-<!-- Panneau latéral série -->
-<div id="series-panel" style="position:fixed;top:56px;right:0;bottom:0;width:480px;max-width:100vw;background:var(--color-surface);border-left:1px solid var(--color-border);z-index:200;display:none;flex-direction:column;box-shadow:-4px 0 20px rgba(0,0,0,.12)">
-  <div style="display:flex;align-items:center;gap:.75rem;padding:.85rem 1.25rem;border-bottom:1px solid var(--color-border);flex-shrink:0">
-    <button onclick="closePanel()" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--color-text-muted);line-height:1;padding:.1rem .3rem">←</button>
-    <div style="flex:1;min-width:0">
-      <div id="panel-title" style="font-weight:700;font-size:1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
-      <div id="panel-subtitle" style="font-size:.78rem;color:var(--color-text-muted)"></div>
-    </div>
-    <button id="panel-edit-btn" class="btn btn-ghost btn-sm" onclick="toggleEditForm()" style="display:none">Modifier</button>
-    <button id="panel-delete-btn" class="btn btn-danger btn-sm" onclick="deleteSeries()" style="display:none">Supprimer</button>
-  </div>
-  <!-- Formulaire d'édition inline -->
-  <div id="panel-edit-form" style="display:none;padding:1rem 1.25rem;border-bottom:1px solid var(--color-border);flex-shrink:0;background:var(--color-surface-2,var(--color-bg))">
-    <div class="field" style="margin-bottom:.6rem">
-      <label style="font-size:.75rem;font-weight:600;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:.04em">Nom de la série</label>
-      <input type="text" id="edit-name" class="isbn-input" style="margin-top:.25rem;font-size:.9rem;padding:.4rem .65rem">
-    </div>
-    <div class="field" style="margin-bottom:.6rem">
-      <label style="font-size:.75rem;font-weight:600;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:.04em">Auteur(s) <span style="font-weight:400;text-transform:none">(séparés par des virgules)</span></label>
-      <input type="text" id="edit-authors" class="isbn-input" placeholder="Prénom Nom, Prénom Nom…" style="margin-top:.25rem;font-size:.9rem;padding:.4rem .65rem">
-    </div>
-    <div class="field" style="margin-bottom:.6rem">
-      <label style="font-size:.75rem;font-weight:600;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:.04em">Éditeur</label>
-      <input type="text" id="edit-publisher" class="isbn-input" placeholder="Éditeur…" style="margin-top:.25rem;font-size:.9rem;padding:.4rem .65rem">
-    </div>
-    <div class="field" style="margin-bottom:.75rem">
-      <label style="font-size:.75rem;font-weight:600;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:.04em">Localisation</label>
-      <div style="display:flex;gap:.5rem;margin-top:.25rem">
-        <select id="edit-room" class="select-input" style="flex:1;font-size:.88rem"></select>
-        <select id="edit-shelf" class="select-input" style="flex:1;font-size:.88rem"></select>
-      </div>
-    </div>
-    <div style="display:flex;gap:.5rem">
-      <button class="btn btn-primary btn-sm" onclick="saveSeriesEdit()">Enregistrer</button>
-      <button class="btn btn-ghost btn-sm" onclick="toggleEditForm()">Annuler</button>
-    </div>
-    <p id="edit-error" style="display:none;margin-top:.5rem;font-size:.8rem;color:var(--color-error)"></p>
-  </div>
-  <div id="panel-content" style="flex:1;overflow-y:auto;padding:1.25rem">
-    <p style="color:var(--color-text-muted)">Chargement…</p>
-  </div>
-</div>
-<div id="panel-backdrop" onclick="closePanel()" style="display:none;position:fixed;inset:0;z-index:199;background:rgba(0,0,0,.2)"></div>
+{% include "_series_modal.html" %}
 
 <script>
 (function() {
@@ -156,7 +113,7 @@
         <div class="book-title" title="${escHtml(s.name)}">${escHtml(s.name)}</div>
         <div class="book-author">${s.book_count} livre${s.book_count !== 1 ? 's' : ''}</div>
       </div>`;
-    div.addEventListener('click', () => openPanel(s.id, s.name, s.book_count));
+    div.addEventListener('click', () => openSeriesModal(s.id));
     return div;
   }
 
@@ -166,174 +123,9 @@
     render();
   }
 
-  // ── Panneau latéral ───────────────────────────────────────────────────────
-  const panel = document.getElementById('series-panel');
-  const backdrop = document.getElementById('panel-backdrop');
-
-  let _currentSeriesId = null;
-  let _locTree = [];
-
-  async function loadLocTree() {
-    try {
-      const r = await fetch('/api/locations/tree');
-      _locTree = await r.json();
-    } catch (_) {}
-  }
-
-  function populateEditLocation(roomId, locationId) {
-    const selRoom = document.getElementById('edit-room');
-    const selShelf = document.getElementById('edit-shelf');
-    selRoom.innerHTML = '<option value="">— Pièce —</option>';
-    _locTree.forEach(site => {
-      site.rooms.forEach(room => {
-        const opt = document.createElement('option');
-        opt.value = room.id;
-        opt.textContent = `${site.name} › ${room.name}`;
-        if (room.id === roomId) opt.selected = true;
-        selRoom.appendChild(opt);
-      });
-    });
-    rebuildShelves(roomId, locationId);
-    selRoom.addEventListener('change', () => rebuildShelves(parseInt(selRoom.value) || null, null));
-  }
-
-  function rebuildShelves(roomId, shelfId) {
-    const selShelf = document.getElementById('edit-shelf');
-    selShelf.innerHTML = '<option value="">— Étagère —</option>';
-    if (!roomId) return;
-    const site = _locTree.find(s => s.rooms.some(r => r.id === roomId));
-    const room = site?.rooms.find(r => r.id === roomId);
-    (room?.shelves || []).forEach(sh => {
-      const opt = document.createElement('option');
-      opt.value = sh.id;
-      opt.textContent = sh.name;
-      if (sh.id === shelfId) opt.selected = true;
-      selShelf.appendChild(opt);
-    });
-  }
-
-  async function openPanel(sid, name, count) {
-    _currentSeriesId = sid;
-    document.getElementById('panel-title').textContent = name;
-    document.getElementById('panel-subtitle').textContent = `${count} livre${count !== 1 ? 's' : ''}`;
-    document.getElementById('panel-content').innerHTML = '<p style="color:var(--color-text-muted)">Chargement…</p>';
-    document.getElementById('panel-edit-btn').style.display = '';
-    document.getElementById('panel-delete-btn').style.display = '';
-    document.getElementById('panel-edit-form').style.display = 'none';
-    panel.style.display = 'flex';
-    backdrop.style.display = '';
-
-    const r = await fetch(`/api/series/${sid}/books`);
-    const data = await r.json();
-    _currentSeriesData = data;
-    renderPanelContent(data);
-  }
-
-  let _currentSeriesData = null;
-
-  function closePanel() {
-    panel.style.display = 'none';
-    backdrop.style.display = 'none';
-    document.getElementById('panel-edit-form').style.display = 'none';
-    _currentSeriesId = null;
-    _currentSeriesData = null;
-  }
-
-  window.toggleEditForm = function() {
-    const form = document.getElementById('panel-edit-form');
-    const open = form.style.display !== 'none';
-    if (open) { form.style.display = 'none'; return; }
-
-    // Pré-remplir depuis les livres de la série
-    const books = _currentSeriesData?.books || [];
-    document.getElementById('edit-name').value = document.getElementById('panel-title').textContent;
-    const firstAuthors = books.find(b => b.authors?.length)?.authors || [];
-    document.getElementById('edit-authors').value = firstAuthors.join(', ');
-    document.getElementById('edit-publisher').value = books.find(b => b.publisher)?.publisher || '';
-    const firstRoomId = books.find(b => b.room_id)?.room_id || null;
-    const firstShelfId = books.find(b => b.location_id)?.location_id || null;
-    populateEditLocation(firstRoomId, firstShelfId);
-    document.getElementById('edit-error').style.display = 'none';
-    form.style.display = 'block';
-  };
-
-  window.saveSeriesEdit = async function() {
-    if (!_currentSeriesId) return;
-    const name = document.getElementById('edit-name').value.trim();
-    const authorsRaw = document.getElementById('edit-authors').value.trim();
-    const publisher = document.getElementById('edit-publisher').value.trim();
-    const roomId = parseInt(document.getElementById('edit-room').value) || null;
-    const shelfId = parseInt(document.getElementById('edit-shelf').value) || null;
-
-    const body = { name };
-    if (authorsRaw !== '') body.authors = authorsRaw.split(',').map(a => a.trim()).filter(Boolean);
-    if (publisher !== '') body.publisher = publisher;
-    body.room_id = roomId;
-    body.location_id = shelfId;
-
-    const errEl = document.getElementById('edit-error');
-    errEl.style.display = 'none';
-
-    const res = await fetch(`/api/series/${_currentSeriesId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (res.ok) {
-      const updated = await res.json();
-      document.getElementById('panel-title').textContent = updated.name;
-      document.getElementById('panel-edit-form').style.display = 'none';
-      // Recharger la liste et le contenu du panneau
-      loadSeries();
-      const r2 = await fetch(`/api/series/${_currentSeriesId}/books`);
-      _currentSeriesData = await r2.json();
-      renderPanelContent(_currentSeriesData);
-    } else {
-      const err = await res.json().catch(() => ({}));
-      errEl.textContent = err.detail || 'Erreur lors de la sauvegarde.';
-      errEl.style.display = 'block';
-    }
-  };
-
-  window.deleteSeries = async function() {
-    if (!_currentSeriesId) return;
-    const name = document.getElementById('panel-title').textContent;
-    const count = _all.find(s => s.id === _currentSeriesId)?.book_count ?? 0;
-    const msg = count > 0
-      ? `Supprimer la série "${name}" ?\n${count} livre${count > 1 ? 's' : ''} seront détachés de la série (non supprimés).`
-      : `Supprimer la série vide "${name}" ?`;
-    if (!confirm(msg)) return;
-    const res = await fetch(`/api/series/${_currentSeriesId}`, { method: 'DELETE' });
-    if (res.ok || res.status === 204) {
-      closePanel();
-      loadSeries();
-    } else {
-      alert('Erreur lors de la suppression.');
-    }
-  };
-
-  function renderPanelContent(data) {
-    const books = data.books;
-    if (!books.length) {
-      document.getElementById('panel-content').innerHTML = '<p style="color:var(--color-text-muted)">Aucun livre dans cette série.</p>';
-      return;
-    }
-    const items = books.map(b => `
-      <a href="#" onclick="event.preventDefault();openBookModal(${b.id})" style="text-decoration:none;color:inherit;display:flex;align-items:center;gap:.85rem;padding:.6rem .5rem;border-radius:6px;transition:background .1s" onmouseover="this.style.background='var(--color-surface-2,var(--color-border))'" onmouseout="this.style.background=''">
-        ${b.cover_url
-          ? `<img src="${escHtml(b.cover_url)}" style="width:42px;height:60px;object-fit:cover;border-radius:3px;flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">`
-          : `<div style="width:42px;height:60px;background:var(--color-border);border-radius:3px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:1rem">📖</div>`}
-        <div style="flex:1;min-width:0">
-          <div style="font-size:.88rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${b.series_position != null ? `<span style="font-weight:700;color:var(--color-primary);margin-right:.35rem">T.${b.series_position}</span>` : ''}${escHtml(b.title)}</div>
-          <div style="font-size:.75rem;color:var(--color-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml((b.authors||[]).join(', '))}</div>
-          ${b.publisher ? `<div style="font-size:.72rem;color:var(--color-text-muted)">${escHtml(b.publisher)}</div>` : ''}
-        </div>
-      </a>`).join('');
-    document.getElementById('panel-content').innerHTML = `<div style="display:flex;flex-direction:column;gap:.15rem">${items}</div>`;
-  }
-
-  // Fermer avec Escape
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') closePanel(); });
+  // ── Callbacks modale ──────────────────────────────────────────────────────
+  window.onSeriesModalSaved = loadSeries;
+  window.onSeriesModalDeleted = loadSeries;
 
   // ── Wiring ────────────────────────────────────────────────────────────────
   searchInput.addEventListener('input', () => {
@@ -343,18 +135,14 @@
   filterSize.addEventListener('change', render);
   sortBy.addEventListener('change', render);
 
-  loadLocTree();
   loadSeries();
 
   // ── Purge (admin) ─────────────────────────────────────────────────────────
   window.confirmPurge = async function() {
     if (!confirm('Supprimer toutes les séries, propositions et réinitialiser les livres ?\nCette action est irréversible.')) return;
     const r = await fetch('/api/series/purge', {method:'POST'});
-    if (r.ok) { _all = []; render(); closePanel(); }
+    if (r.ok) { _all = []; render(); }
   };
-
-  // Exposer closePanel globalement pour le bouton ←
-  window.closePanel = closePanel;
 })();
 </script>
 {% endblock %}

@@ -1,0 +1,261 @@
+<!-- Modale série — include autonome. Expose window.openSeriesModal(id) -->
+<div id="series-modal-overlay" class="modal-overlay" style="display:none" role="dialog" aria-modal="true">
+  <div class="modal-card">
+    <button class="modal-close" id="series-modal-close" aria-label="Fermer">&times;</button>
+    <div id="series-modal-content"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const isAdmin = {{ 'true' if user.role == 'admin' else 'false' }};
+  const isContrib = {{ 'true' if user.role in ("admin","contributor") else 'false' }};
+
+  const overlay = document.getElementById('series-modal-overlay');
+  const content = document.getElementById('series-modal-content');
+
+  let _locTree = [];
+  const _ready = fetch('/api/locations/tree').then(r => r.json()).then(d => { _locTree = d; }).catch(() => {});
+
+  function escHtml(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleDateString('fr-FR');
+  }
+
+  // ── Ouvrir / fermer ───────────────────────────────────────────────────────
+  window.openSeriesModal = async function (seriesId) {
+    await _ready;
+    overlay.style.display = 'flex';
+    document.body.classList.add('modal-open');
+    content.innerHTML = '<p style="padding:2rem;text-align:center;color:var(--color-text-muted)">Chargement…</p>';
+
+    const r = await fetch(`/api/series/${seriesId}/books`);
+    if (!r.ok) { content.innerHTML = '<p style="padding:2rem">Erreur de chargement.</p>'; return; }
+    const data = await r.json();
+    renderModal(data);
+  };
+
+  function closeModal() {
+    overlay.style.display = 'none';
+    document.body.classList.remove('modal-open');
+  }
+
+  // ── Rendu principal ───────────────────────────────────────────────────────
+  function renderModal(series) {
+    const cover = series.books?.find(b => b.cover_url)?.cover_url;
+    const firstAuthors = series.books?.find(b => b.authors?.length)?.authors || [];
+    const firstPublisher = series.books?.find(b => b.publisher)?.publisher || '';
+    const firstRoomId = series.books?.find(b => b.room_id)?.room_id || null;
+    const firstShelfId = series.books?.find(b => b.location_id)?.location_id || null;
+
+    content.innerHTML = `
+      <div class="modal-header">
+        <img src="${cover ? escHtml(cover) : '/static/img/no-cover.svg'}" alt="couverture" class="modal-cover" onerror="this.src='/static/img/no-cover.svg'">
+        <div class="modal-header-info">
+          <h2 class="modal-title" id="sm-title">${escHtml(series.name)}</h2>
+          <p class="modal-authors">${series.books?.length ?? 0} tome${(series.books?.length ?? 0) !== 1 ? 's' : ''}</p>
+          ${firstAuthors.length ? `<p class="modal-publisher">${escHtml(firstAuthors.join(', '))}</p>` : ''}
+          ${firstPublisher ? `<p class="modal-publisher">${escHtml(firstPublisher)}</p>` : ''}
+        </div>
+      </div>
+      <div class="modal-tabs">
+        <button class="modal-tab active" data-tab="info">Infos</button>
+        <button class="modal-tab" data-tab="tomes">Tomes <span class="modal-tab-count">${series.books?.length ?? 0}</span></button>
+        <button class="modal-tab" data-tab="history">Historique</button>
+      </div>
+      <div class="modal-tab-panel" id="sm-tab-info">${renderInfoTab(series, firstAuthors, firstPublisher, firstRoomId, firstShelfId)}</div>
+      <div class="modal-tab-panel" id="sm-tab-tomes" style="display:none">${renderTomesTab(series)}</div>
+      <div class="modal-tab-panel" id="sm-tab-history" style="display:none"><div id="sm-history-content" style="color:var(--color-text-muted);padding:.5rem 0">Chargement…</div></div>
+    `;
+
+    // Onglets
+    let historyLoaded = false;
+    content.querySelectorAll('.modal-tab').forEach(tab => {
+      tab.addEventListener('click', async () => {
+        content.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+        content.querySelectorAll('.modal-tab-panel').forEach(p => p.style.display = 'none');
+        tab.classList.add('active');
+        document.getElementById('sm-tab-' + tab.dataset.tab).style.display = '';
+        if (tab.dataset.tab === 'history' && !historyLoaded) {
+          historyLoaded = true;
+          const r = await fetch(`/api/series/${series.id}/loans`);
+          document.getElementById('sm-history-content').innerHTML = renderHistory(r.ok ? await r.json() : []);
+        }
+      });
+    });
+
+    // Wiring formulaire infos
+    wireInfoForm(series);
+  }
+
+  // ── Onglet Infos ─────────────────────────────────────────────────────────
+  function renderInfoTab(series, authors, publisher, roomId, shelfId) {
+    // Construire les options pièce
+    let roomOpts = '<option value="">— Pièce —</option>';
+    let shelfOpts = '<option value="">— Étagère —</option>';
+    _locTree.forEach(site => {
+      site.rooms.forEach(room => {
+        const sel = room.id === roomId ? 'selected' : '';
+        roomOpts += `<option value="${room.id}" ${sel}>${escHtml(site.name)} › ${escHtml(room.name)}</option>`;
+      });
+    });
+    if (roomId) {
+      const site = _locTree.find(s => s.rooms.some(r => r.id === roomId));
+      const room = site?.rooms.find(r => r.id === roomId);
+      (room?.shelves || []).forEach(sh => {
+        const sel = sh.id === shelfId ? 'selected' : '';
+        shelfOpts += `<option value="${sh.id}" ${sel}>${escHtml(sh.name)}</option>`;
+      });
+    }
+
+    return `
+      <form id="sm-info-form" class="edit-form">
+        <div class="form-grid">
+          <div class="field"><label>Nom de la série</label><input type="text" id="sm-name" value="${escHtml(series.name)}" ${isContrib ? '' : 'disabled'}></div>
+          <div class="field"><label>Auteur(s) <span style="font-weight:400;font-size:.8rem">(séparés par des virgules)</span></label>
+            <input type="text" id="sm-authors" value="${escHtml(authors.join(', '))}" placeholder="Prénom Nom, Prénom Nom…" ${isContrib ? '' : 'disabled'}></div>
+          <div class="field"><label>Éditeur</label><input type="text" id="sm-publisher" value="${escHtml(publisher)}" placeholder="Éditeur…" ${isContrib ? '' : 'disabled'}></div>
+        </div>
+        <div class="field-separator">Localisation (tous les livres)</div>
+        <div class="form-grid form-grid-2">
+          <div class="field"><label>Pièce</label>
+            <select id="sm-room" class="input-full" ${isContrib ? '' : 'disabled'}>${roomOpts}</select>
+          </div>
+          <div class="field"><label>Étagère</label>
+            <select id="sm-shelf" class="input-full" ${isContrib ? '' : 'disabled'}>${shelfOpts}</select>
+          </div>
+        </div>
+        ${isContrib ? `
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-primary">Enregistrer</button>
+          ${isAdmin ? `<button type="button" id="sm-delete-btn" class="btn btn-danger">Supprimer la série</button>` : ''}
+        </div>
+        <p id="sm-save-msg" class="edit-msg" style="margin-top:.5rem"></p>` : ''}
+      </form>
+    `;
+  }
+
+  function wireInfoForm(series) {
+    // Cascade étagère quand pièce change
+    const selRoom = document.getElementById('sm-room');
+    const selShelf = document.getElementById('sm-shelf');
+    if (selRoom) {
+      selRoom.addEventListener('change', () => {
+        const rId = parseInt(selRoom.value) || null;
+        selShelf.innerHTML = '<option value="">— Étagère —</option>';
+        if (!rId) return;
+        const site = _locTree.find(s => s.rooms.some(r => r.id === rId));
+        const room = site?.rooms.find(r => r.id === rId);
+        (room?.shelves || []).forEach(sh => {
+          selShelf.innerHTML += `<option value="${sh.id}">${escHtml(sh.name)}</option>`;
+        });
+      });
+    }
+
+    const form = document.getElementById('sm-info-form');
+    if (!form) return;
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('sm-name').value.trim();
+      const authorsRaw = document.getElementById('sm-authors').value.trim();
+      const publisher = document.getElementById('sm-publisher').value.trim();
+      const roomId = parseInt(selRoom?.value) || null;
+      const shelfId = parseInt(selShelf?.value) || null;
+      const body = { name };
+      if (authorsRaw !== '') body.authors = authorsRaw.split(',').map(a => a.trim()).filter(Boolean);
+      body.publisher = publisher || null;
+      body.room_id = roomId;
+      body.location_id = shelfId;
+      const msg = document.getElementById('sm-save-msg');
+      const res = await fetch(`/api/series/${series.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        document.getElementById('sm-title').textContent = updated.name;
+        msg.textContent = 'Enregistré !'; msg.className = 'edit-msg edit-msg-ok';
+        window.onSeriesModalSaved?.();
+        setTimeout(() => { msg.textContent = ''; }, 2000);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        msg.textContent = err.detail || 'Erreur'; msg.className = 'edit-msg edit-msg-err';
+      }
+    });
+
+    if (isAdmin) {
+      document.getElementById('sm-delete-btn')?.addEventListener('click', async () => {
+        const name = document.getElementById('sm-title').textContent;
+        const count = series.books?.length ?? 0;
+        const msg = count > 0
+          ? `Supprimer la série "${name}" ?\n${count} livre${count > 1 ? 's' : ''} seront détachés (non supprimés).`
+          : `Supprimer la série vide "${name}" ?`;
+        if (!confirm(msg)) return;
+        const res = await fetch(`/api/series/${series.id}`, { method: 'DELETE' });
+        if (res.ok || res.status === 204) {
+          closeModal();
+          window.onSeriesModalDeleted?.();
+        } else {
+          alert('Erreur lors de la suppression.');
+        }
+      });
+    }
+  }
+
+  // ── Onglet Tomes ─────────────────────────────────────────────────────────
+  function renderTomesTab(series) {
+    const books = series.books || [];
+    if (!books.length) return '<p style="color:var(--color-text-muted);padding:.5rem 0">Aucun tome dans cette série.</p>';
+    const items = books.map(b => `
+      <a href="#" onclick="event.preventDefault();openBookModal(${b.id})" style="text-decoration:none;color:inherit;display:flex;align-items:center;gap:.85rem;padding:.6rem .5rem;border-radius:6px;transition:background .1s" onmouseover="this.style.background='var(--color-surface-2)'" onmouseout="this.style.background=''">
+        ${b.cover_url
+          ? `<img src="${escHtml(b.cover_url)}" style="width:42px;height:60px;object-fit:cover;border-radius:3px;flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">`
+          : `<div style="width:42px;height:60px;background:var(--color-border);border-radius:3px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:1rem">📖</div>`}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:.88rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+            ${b.series_position != null ? `<span style="font-weight:700;color:var(--color-primary);margin-right:.35rem">T.${b.series_position}</span>` : ''}${escHtml(b.title)}
+          </div>
+          <div style="font-size:.75rem;color:var(--color-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml((b.authors || []).join(', '))}</div>
+          ${b.publisher ? `<div style="font-size:.72rem;color:var(--color-text-muted)">${escHtml(b.publisher)}</div>` : ''}
+        </div>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;color:var(--color-text-muted)"><polyline points="9 18 15 12 9 6"/></svg>
+      </a>`).join('');
+    return `<div style="display:flex;flex-direction:column;gap:.1rem">${items}</div>`;
+  }
+
+  // ── Onglet Historique ─────────────────────────────────────────────────────
+  function renderHistory(loans) {
+    if (!loans.length) return '<p style="color:var(--color-text-muted)">Aucun emprunt enregistré pour cette série.</p>';
+    const rows = loans.map(l => {
+      const status = l.return_date
+        ? `<span style="color:var(--color-ok,#2e9e5b);font-size:.75rem">Rendu le ${fmtDate(l.return_date)}</span>`
+        : l.is_overdue
+          ? `<span style="color:var(--color-error);font-size:.75rem">En retard</span>`
+          : `<span style="color:var(--color-warn,#e07b00);font-size:.75rem">En cours</span>`;
+      return `
+        <div style="display:flex;align-items:center;gap:.75rem;padding:.55rem .25rem;border-bottom:1px solid var(--color-border)">
+          <div style="width:2rem;text-align:center;font-size:.75rem;font-weight:700;color:var(--color-primary);flex-shrink:0">
+            ${l.book_position != null ? `T.${l.book_position}` : '—'}
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:.85rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(l.book_title)}</div>
+            <div style="font-size:.75rem;color:var(--color-text-muted)">${escHtml(l.borrower_name || 'Inconnu')} · ${fmtDate(l.loan_date)}</div>
+          </div>
+          <div style="flex-shrink:0">${status}</div>
+        </div>`;
+    }).join('');
+    return `<div>${rows}</div>`;
+  }
+
+  // ── Fermeture ─────────────────────────────────────────────────────────────
+  document.getElementById('series-modal-close').addEventListener('click', closeModal);
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && overlay.style.display !== 'none') closeModal(); });
+})();
+</script>

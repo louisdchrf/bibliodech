@@ -969,6 +969,40 @@ def update_series(series_id: int, body: dict, request: Request, db: Session = De
     return {"id": series.id, "name": series.name, "book_count": len(series.books)}
 
 
+@router.get("/api/series/{series_id}/loans")
+def get_series_loans(series_id: int, request: Request, db: Session = Depends(get_db)):
+    from fastapi import HTTPException
+    from app.models import Loan
+    get_current_user(request, db)
+    series = db.query(Series).filter(Series.id == series_id).first()
+    if not series:
+        raise HTTPException(404, "Série introuvable")
+    book_ids = [b.id for b in series.books]
+    loans = db.query(Loan).filter(Loan.book_id.in_(book_ids)).order_by(Loan.loan_date.desc()).all()
+    out = []
+    for loan in loans:
+        borrower_name = None
+        if loan.user:
+            borrower_name = loan.user.username
+        elif loan.borrower:
+            borrower_name = loan.borrower.name
+        out.append({
+            "id": loan.id,
+            "book_id": loan.book_id,
+            "book_title": loan.book.title if loan.book else "",
+            "book_position": loan.book.series_position if loan.book else None,
+            "borrower_name": borrower_name,
+            "loan_date": loan.loan_date.isoformat() + "Z" if loan.loan_date else None,
+            "due_date": loan.due_date.isoformat() + "Z" if loan.due_date else None,
+            "return_date": loan.return_date.isoformat() + "Z" if loan.return_date else None,
+            "is_overdue": (
+                loan.due_date is not None and loan.return_date is None
+                and loan.due_date < __import__("datetime").datetime.now(__import__("datetime").timezone.utc).replace(tzinfo=None)
+            ),
+        })
+    return out
+
+
 @router.delete("/api/series/{series_id}", status_code=204)
 def delete_series(series_id: int, request: Request, db: Session = Depends(get_db)):
     from fastapi import HTTPException
