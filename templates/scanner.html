@@ -181,7 +181,7 @@
     if (!hasLocation()) return;
     clearTimeout(autoSubmitTimer);
     const val = isbnInput.value.replace(/\D/g, '');
-    if (val.length === 13 || val.length === 10) {
+    if (val.length >= 10 && val.length <= 14) {
       autoSubmitTimer = setTimeout(() => {
         const isbn = isbnInput.value.trim();
         if (isbn) submitScan(isbn);
@@ -210,23 +210,96 @@
     const location_id = resolveLocationId();
 
     try {
-      const res = await fetch('/api/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isbn, room_id, location_id }),
-      });
-      const data = await res.json();
-
-      if (data.status === 'exists') {
-        replaceCard(card, existsCard(data.book));
-      } else if (data.status === 'pending') {
-        pollBook(data.book.id, card, isbn, 0, data.ean_warning);
-      } else if (data.status === 'ok') {
-        replaceCard(card, bookCard(data.book));
+      if (isBookBarcode(isbn)) {
+        const res = await fetch('/api/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ isbn, room_id, location_id }),
+        });
+        const data = await res.json();
+        if (data.status === 'exists') {
+          replaceCard(card, existsCard(data.book));
+        } else if (data.status === 'pending') {
+          pollBook(data.book.id, card, isbn, 0, data.ean_warning);
+        } else if (data.status === 'ok') {
+          replaceCard(card, bookCard(data.book));
+        }
+      } else {
+        const res = await fetch('/api/scan/music', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ barcode: isbn, room_id }),
+        });
+        const data = await res.json();
+        if (data.status === 'exists') {
+          replaceCard(card, discExistsCard(data.disc));
+        } else if (data.status === 'pending') {
+          pollDisc(data.disc.id, card, isbn, 0);
+        }
       }
     } catch (err) {
       replaceCard(card, errorCard('Erreur réseau lors du scan.'));
     }
+  }
+
+  function discExistsCard(disc) {
+    const div = document.createElement('div');
+    div.className = 'scan-card scan-card-warn slide-in';
+    div.innerHTML = `
+      <div class="card-cover-placeholder">💿</div>
+      <div class="card-info">
+        <div class="card-title">${escHtml(disc.title)}</div>
+        <div class="card-authors">Déjà dans la médiathèque</div>
+      </div>
+      <div class="card-status card-status-warn">⚠ Existant</div>
+    `;
+    return div;
+  }
+
+  function discCard(disc) {
+    const cover = disc.cover_url
+      ? `<img src="${escHtml(disc.cover_url)}" alt="pochette" class="card-cover">`
+      : `<div class="card-cover-placeholder">💿</div>`;
+    const div = document.createElement('div');
+    div.className = 'scan-card scan-card-ok slide-in';
+    div.innerHTML = `
+      ${cover}
+      <div class="card-info">
+        <div class="card-title">${escHtml(disc.title)}</div>
+        ${disc.artist ? `<div class="card-authors">${escHtml(disc.artist)}</div>` : ''}
+      </div>
+      <div class="card-status card-status-ok">✓ Ajouté</div>
+    `;
+    return div;
+  }
+
+  function discNotFoundCard(barcode) {
+    const div = document.createElement('div');
+    div.className = 'scan-card scan-card-error slide-in';
+    div.innerHTML = `
+      <div class="card-cover-placeholder">💿</div>
+      <div class="card-info">
+        <div class="card-title">${escHtml(barcode)}</div>
+        <div class="card-authors">Introuvable en ligne</div>
+      </div>
+    `;
+    return div;
+  }
+
+  async function pollDisc(discId, card, barcode, attempt = 0) {
+    if (attempt > 20) { replaceCard(card, discNotFoundCard(barcode)); return; }
+    await sleep(attempt === 0 ? 500 : 1000);
+    try {
+      const res = await fetch(`/api/music/${discId}`);
+      const data = await res.json();
+      if (data.enrichment_status === 'ok') {
+        replaceCard(card, discCard(data));
+      } else if (data.enrichment_status === 'not_found') {
+        replaceCard(card, discNotFoundCard(barcode));
+      } else {
+        pollDisc(discId, card, barcode, attempt + 1);
+      }
+    } catch { pollDisc(discId, card, barcode, attempt + 1); }
   }
 
   // ── Polling ──────────────────────────────────────────────────────────────
