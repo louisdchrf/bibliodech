@@ -19,17 +19,20 @@
     <div class="nav-links">
       <a href="/scanner" {% if active=='scanner' %}class="active"{% endif %}>Scanner</a>
       <div class="nav-menu" id="nav-menu-library">
-        <span class="nav-menu-trigger {% if active in ['library','series-browse','series','missing-volumes'] %}active{% endif %}">
-          Bibliothèque <span class="nav-menu-chevron">▾</span>
+        <span class="nav-menu-trigger {% if active in ['library','series-browse','series','missing-volumes','music'] %}active{% endif %}">
+          Médiathèque <span class="nav-menu-chevron">▾</span>
         </span>
         <div class="nav-menu-dropdown">
+          <div class="nav-menu-group-label">Bibliothèque</div>
           <a href="/library" class="nav-menu-item {% if active=='library' %}active{% endif %}">Ouvrages</a>
           <a href="/series" class="nav-menu-item {% if active=='series-browse' %}active{% endif %}">Séries</a>
           <a href="/missing-volumes" class="nav-menu-item {% if active=='missing-volumes' %}active{% endif %}">Manquants</a>
           {% if user.role == 'admin' %}<a href="/series/proposals" class="nav-menu-item {% if active=='series' %}active{% endif %}">Détection</a>{% endif %}
+          <div class="nav-menu-separator"></div>
+          <div class="nav-menu-group-label">Musique</div>
+          <a href="/music" class="nav-menu-item {% if active=='music' %}active{% endif %}">Disques</a>
         </div>
       </div>
-      <a href="/music" {% if active=='music' %}class="active"{% endif %}>Médiathèque</a>
       <a href="/locations" {% if active=='locations' %}class="active"{% endif %}>Localisations</a>
       <a href="/loans" {% if active=='loans' %}class="active"{% endif %}>Prêts</a>
       <a href="/stats" {% if active=='stats' %}class="active"{% endif %}>Statistiques</a>
