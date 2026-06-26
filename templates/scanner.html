@@ -451,11 +451,12 @@
       inputStream: {
         type: 'LiveStream',
         target: document.getElementById('quagga-viewport'),
-        constraints: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+        constraints: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 480 } },
       },
-      decoder: { readers: ['ean_reader', 'ean_8_reader', 'upc_reader'] },
+      decoder: { readers: ['ean_reader'] },
+      locator: { patchSize: 'medium', halfSample: true },
       locate: true,
-      frequency: 10,
+      frequency: 20,
     }, err => {
       if (err) {
         stopCamera();
@@ -553,7 +554,7 @@
       toast.innerHTML = `? <strong>${isbn}</strong> <span>introuvable</span>`;
       return;
     }
-    await new Promise(r => setTimeout(r, 1500));
+    await new Promise(r => setTimeout(r, attempt === 0 ? 500 : 1000));
     try {
       const res = await fetch(`/api/scan/status/${bookId}`);
       const data = await res.json();
