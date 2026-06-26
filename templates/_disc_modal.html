@@ -1,214 +1,183 @@
-<div id="disc-modal-overlay" class="modal-overlay" style="display:none">
-  <div class="modal-card" style="max-width:560px">
-    <div class="modal-header">
-      <h2 class="modal-title" id="disc-modal-title">Disque</h2>
-      <button class="modal-close" id="disc-modal-close" aria-label="Fermer">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-
-    <div id="disc-modal-body" style="padding:1.25rem 1.5rem">
-
-      <!-- Couverture + infos principales -->
-      <div style="display:flex;gap:1.25rem;margin-bottom:1.25rem">
-        <div id="disc-cover-wrap" style="flex-shrink:0;width:120px;height:120px;background:var(--color-surface-2);border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="3" x2="12" y2="9"/></svg>
-        </div>
-        <div style="flex:1;min-width:0">
-          <div id="disc-info-title" style="font-size:1.1rem;font-weight:700;margin-bottom:.25rem"></div>
-          <div id="disc-info-artist" style="font-size:.95rem;color:var(--color-text-muted);margin-bottom:.5rem"></div>
-          <div id="disc-info-badges" style="display:flex;gap:.4rem;flex-wrap:wrap"></div>
-        </div>
-      </div>
-
-      <!-- Détails -->
-      <div id="disc-detail-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem .75rem;font-size:.88rem;margin-bottom:1.25rem"></div>
-
-      <!-- Liens externes -->
-      <div id="disc-external-links" style="margin-bottom:.75rem;display:flex;gap:.75rem"></div>
-
-      <!-- Statut enrichissement -->
-      <div id="disc-pending-notice" style="display:none;background:var(--color-surface-2);border-radius:6px;padding:.6rem .85rem;font-size:.84rem;color:var(--color-text-muted);margin-bottom:1rem">
-        ⏳ Recherche des informations en cours…
-      </div>
-
-      <!-- Edit form -->
-      <details id="disc-edit-section" style="margin-top:.5rem">
-        <summary style="cursor:pointer;font-size:.85rem;color:var(--color-text-muted);user-select:none">Modifier</summary>
-        <div style="margin-top:.75rem;display:grid;gap:.6rem">
-          <label class="form-label">Titre
-            <input class="form-input" id="de-title">
-          </label>
-          <label class="form-label">Artiste
-            <input class="form-input" id="de-artist">
-          </label>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
-            <label class="form-label">Format
-              <input class="form-input" id="de-format" placeholder="CD, Vinyl…">
-            </label>
-            <label class="form-label">Année
-              <input class="form-input" id="de-year" type="number" min="1900" max="2099">
-            </label>
-          </div>
-          <label class="form-label">Label
-            <input class="form-input" id="de-label">
-          </label>
-          <label class="form-label">Genre
-            <input class="form-input" id="de-genre">
-          </label>
-          <label class="form-label">Localisation
-            <select class="form-input" id="de-room">
-              <option value="">— Sans —</option>
-            </select>
-          </label>
-          <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.25rem">
-            <button class="btn btn-danger-outline" id="disc-btn-delete">Supprimer</button>
-            <button class="btn btn-primary" id="disc-btn-save">Enregistrer</button>
-          </div>
-        </div>
-      </details>
-
-    </div>
+<!-- Modale disque — expose window.openDiscModal(id) -->
+<div id="disc-modal-overlay" class="modal-overlay" style="display:none" role="dialog" aria-modal="true">
+  <div class="modal-card">
+    <button class="modal-close" id="disc-modal-close" aria-label="Fermer">&times;</button>
+    <div id="disc-modal-content"></div>
   </div>
 </div>
 
 <script>
 (function () {
+  const isAdmin = {{ 'true' if user.role == 'admin' else 'false' }};
   const overlay = document.getElementById('disc-modal-overlay');
-  let _currentId = null;
+  const content = document.getElementById('disc-modal-content');
+  let _currentDisc = null;
   let _pollTimer = null;
+  let _rooms = [];
+
+  // Charger les salles une fois
+  fetch('/api/rooms').then(r => r.ok ? r.json() : []).then(r => { _rooms = r; }).catch(() => {});
+
+  function escHtml(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
 
   function closeModal() {
     overlay.style.display = 'none';
+    document.body.classList.remove('modal-open');
     if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
   }
 
   document.getElementById('disc-modal-close').addEventListener('click', closeModal);
   overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
-
-  async function loadDisc(id) {
-    const r = await fetch(`/api/music/${id}`);
-    return r.ok ? r.json() : null;
-  }
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && overlay.style.display !== 'none') closeModal(); });
 
   window.openDiscModal = async function(id) {
-    _currentId = id;
+    const res = await fetch(`/api/music/${id}`);
+    if (!res.ok) return;
+    _currentDisc = await res.json();
+    renderModal(_currentDisc);
     overlay.style.display = '';
+    document.body.classList.add('modal-open');
 
-    const disc = await loadDisc(id);
-    if (!disc) { closeModal(); return; }
-    fillModal(disc);
-
-    if (disc.enrichment_status === 'pending') {
+    if (_currentDisc.enrichment_status === 'pending') {
       _pollTimer = setInterval(async () => {
-        const updated = await loadDisc(id);
-        if (!updated) return;
+        const r = await fetch(`/api/music/${id}`);
+        if (!r.ok) return;
+        const updated = await r.json();
         if (updated.enrichment_status !== 'pending') {
           clearInterval(_pollTimer); _pollTimer = null;
-          fillModal(updated);
+          _currentDisc = updated;
+          renderModal(updated);
         }
       }, 1500);
     }
   };
 
-  function badge(text, color) {
-    return `<span style="background:${color};color:#fff;border-radius:4px;padding:.15rem .45rem;font-size:.75rem;font-weight:600">${text}</span>`;
-  }
+  function renderModal(d) {
+    const coverHtml = d.cover_url
+      ? `<img src="${escHtml(d.cover_url)}" alt="pochette" class="modal-cover" style="object-fit:cover">`
+      : `<div class="modal-cover" style="display:flex;align-items:center;justify-content:center;background:var(--color-surface-2)"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="3" x2="12" y2="9"/></svg></div>`;
 
-  function fillModal(d) {
-    document.getElementById('disc-modal-title').textContent = d.title || 'Disque';
-    document.getElementById('disc-info-title').textContent = d.title || '';
-    document.getElementById('disc-info-artist').textContent = d.artist || '';
-
-    const coverWrap = document.getElementById('disc-cover-wrap');
-    if (d.cover_url) {
-      coverWrap.innerHTML = `<img src="${d.cover_url}" style="width:100%;height:100%;object-fit:cover" alt="">`;
-    } else {
-      coverWrap.innerHTML = `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="3" x2="12" y2="9"/></svg>`;
-    }
-
-    const badges = document.getElementById('disc-info-badges');
-    badges.innerHTML = '';
-    if (d.format) badges.insertAdjacentHTML('beforeend', badge(d.format, 'var(--color-primary)'));
-    if (d.year) badges.insertAdjacentHTML('beforeend', badge(d.year, 'var(--color-text-muted)'));
-    if (d.enrichment_status === 'not_found') badges.insertAdjacentHTML('beforeend', badge('Non trouvé', '#e55'));
-
-    const grid = document.getElementById('disc-detail-grid');
-    const rows = [
-      ['Label', d.label],
-      ['N° catalogue', d.catalog_number],
-      ['Genre', d.genre],
-      ['Pistes', d.track_count],
-      ['Pays', d.country],
-      ['Langue', d.language],
-      ['Localisation', d.room_name],
+    const infoRows = [
+      ['Label',       d.label],
+      ['N° catalogue',d.catalog_number],
+      ['Genre',       d.genre],
+      ['Pistes',      d.track_count],
+      ['Pays',        d.country],
+      ['Langue',      d.language],
+      ['Localisation',d.room_name],
       ['Code-barres', d.barcode],
-    ].filter(([, v]) => v);
-    grid.innerHTML = rows.map(([k, v]) =>
-      `<div><span style="color:var(--color-text-muted)">${k}</span><br><strong>${v}</strong></div>`
-    ).join('');
+    ].filter(([,v]) => v);
 
-    // Liens externes
-    const links = [];
-    if (d.mbid) links.push(`<a href="https://musicbrainz.org/release/${d.mbid}" target="_blank" rel="noopener" style="color:var(--color-primary);font-size:.82rem;text-decoration:none">MusicBrainz ↗</a>`);
-    if (d.barcode) links.push(`<a href="https://www.discogs.com/search/?q=${d.barcode}&type=release" target="_blank" rel="noopener" style="color:var(--color-primary);font-size:.82rem;text-decoration:none">Discogs ↗</a>`);
-    const linksEl = document.getElementById('disc-external-links');
-    if (linksEl) linksEl.innerHTML = links.join('<span style="color:var(--color-border)"> · </span>');
+    const extLinks = [];
+    if (d.mbid)    extLinks.push(`<a href="https://musicbrainz.org/release/${d.mbid}" target="_blank" rel="noopener" class="btn-link" style="font-size:.82rem">MusicBrainz ↗</a>`);
+    if (d.barcode) extLinks.push(`<a href="https://www.discogs.com/search/?q=${encodeURIComponent(d.barcode)}&type=release" target="_blank" rel="noopener" class="btn-link" style="font-size:.82rem">Discogs ↗</a>`);
 
-    document.getElementById('disc-pending-notice').style.display =
-      d.enrichment_status === 'pending' ? '' : 'none';
+    const roomOptions = _rooms.map(r => `<option value="${r.id}" ${d.room_id == r.id ? 'selected' : ''}>${escHtml(r.name)}</option>`).join('');
 
-    // Fill edit form
-    document.getElementById('de-title').value = d.title || '';
-    document.getElementById('de-artist').value = d.artist || '';
-    document.getElementById('de-format').value = d.format || '';
-    document.getElementById('de-year').value = d.year || '';
-    document.getElementById('de-label').value = d.label || '';
-    document.getElementById('de-genre').value = d.genre || '';
-    document.getElementById('de-room').value = d.room_id || '';
+    content.innerHTML = `
+      <div class="modal-header">
+        ${coverHtml}
+        <div class="modal-header-info">
+          <h2 class="modal-title">${escHtml(d.title)}</h2>
+          ${d.artist ? `<p class="modal-authors">${escHtml(d.artist)}</p>` : ''}
+          ${d.label  ? `<p class="modal-publisher">${escHtml(d.label)}${d.year ? ' · ' + escHtml(d.year) : ''}</p>` : (d.year ? `<p class="modal-publisher">${escHtml(d.year)}</p>` : '')}
+          <div class="modal-badges">
+            ${d.format ? `<span class="badge badge-genre">${escHtml(d.format)}</span>` : ''}
+            ${d.enrichment_status === 'pending'   ? `<span class="badge" style="background:var(--color-warning,#f59e0b);color:#fff">⏳ En cours…</span>` : ''}
+            ${d.enrichment_status === 'not_found' ? `<span class="badge" style="background:var(--color-danger);color:#fff">Non trouvé</span>` : ''}
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-tabs">
+        <button class="modal-tab active" data-tab="info">Infos</button>
+        <button class="modal-tab" data-tab="edit">Édition</button>
+      </div>
+
+      <!-- Onglet Infos -->
+      <div class="modal-tab-panel" id="dm-tab-info">
+        ${infoRows.length ? `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem .75rem;font-size:.88rem;margin-bottom:1rem">
+          ${infoRows.map(([k,v]) => `<div><span style="color:var(--color-text-muted)">${k}</span><br><strong>${escHtml(String(v))}</strong></div>`).join('')}
+        </div>` : ''}
+        ${extLinks.length ? `<div style="display:flex;gap:.75rem;margin-top:.25rem">${extLinks.join('<span style="color:var(--color-border)"> · </span>')}</div>` : ''}
+      </div>
+
+      <!-- Onglet Édition -->
+      <div class="modal-tab-panel" id="dm-tab-edit" style="display:none">
+        <form id="dm-edit-form" class="edit-form">
+          <div class="form-grid">
+            <div class="field"><label>Titre</label><input type="text" name="title" value="${escHtml(d.title)}" required></div>
+            <div class="field"><label>Artiste</label><input type="text" name="artist" value="${escHtml(d.artist || '')}"></div>
+            <div class="field"><label>Label</label><input type="text" name="label" value="${escHtml(d.label || '')}"></div>
+            <div class="field"><label>Genre</label><input type="text" name="genre" value="${escHtml(d.genre || '')}"></div>
+          </div>
+          <div class="form-grid form-grid-2" style="margin-top:.5rem">
+            <div class="field"><label>Format</label><input type="text" name="format" value="${escHtml(d.format || '')}" placeholder="CD, Vinyl…"></div>
+            <div class="field"><label>Année</label><input type="number" name="year" value="${escHtml(d.year || '')}" min="1900" max="2099"></div>
+          </div>
+          <div class="field-separator">Localisation</div>
+          <div class="field">
+            <label>Salle</label>
+            <select name="room_id" class="input-full">
+              <option value="">— Sans —</option>
+              ${roomOptions}
+            </select>
+          </div>
+          <div class="modal-actions">
+            <button type="submit" class="btn btn-primary">Enregistrer</button>
+            ${isAdmin ? `<button type="button" class="btn btn-danger" id="dm-delete-btn">Supprimer</button>` : ''}
+          </div>
+          <div id="dm-edit-msg" class="edit-msg"></div>
+        </form>
+      </div>`;
+
+    // Onglets
+    content.querySelectorAll('.modal-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        content.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+        content.querySelectorAll('.modal-tab-panel').forEach(p => p.style.display = 'none');
+        tab.classList.add('active');
+        document.getElementById('dm-tab-' + tab.dataset.tab).style.display = '';
+      });
+    });
+
+    // Enregistrer
+    document.getElementById('dm-edit-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const body = {
+        title:   fd.get('title')  || undefined,
+        artist:  fd.get('artist') || undefined,
+        label:   fd.get('label')  || undefined,
+        genre:   fd.get('genre')  || undefined,
+        format:  fd.get('format') || undefined,
+        year:    fd.get('year')   || undefined,
+        room_id: fd.get('room_id') ? +fd.get('room_id') : null,
+      };
+      const r = await fetch(`/api/music/${d.id}`, {
+        method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body),
+      });
+      const msg = document.getElementById('dm-edit-msg');
+      if (r.ok) {
+        msg.textContent = 'Enregistré !'; msg.className = 'edit-msg edit-msg-ok';
+        window.onDiscSaved?.();
+        setTimeout(closeModal, 800);
+      } else {
+        msg.textContent = 'Erreur'; msg.className = 'edit-msg edit-msg-err';
+      }
+    });
+
+    // Supprimer
+    document.getElementById('dm-delete-btn')?.addEventListener('click', async () => {
+      if (!confirm('Supprimer ce disque définitivement ?')) return;
+      const r = await fetch(`/api/music/${d.id}`, { method: 'DELETE' });
+      if (r.ok) { closeModal(); window.onDiscDeleted?.(); }
+    });
   }
-
-  // Populate room select
-  fetch('/api/rooms').then(r => r.json()).then(rooms => {
-    const sel = document.getElementById('de-room');
-    rooms.forEach(r => {
-      const opt = document.createElement('option');
-      opt.value = r.id;
-      opt.textContent = r.name;
-      sel.appendChild(opt);
-    });
-  }).catch(() => {});
-
-  document.getElementById('disc-btn-save').addEventListener('click', async () => {
-    const body = {
-      title: document.getElementById('de-title').value.trim() || undefined,
-      artist: document.getElementById('de-artist').value.trim() || undefined,
-      format: document.getElementById('de-format').value.trim() || undefined,
-      year: document.getElementById('de-year').value.trim() || undefined,
-      label: document.getElementById('de-label').value.trim() || undefined,
-      genre: document.getElementById('de-genre').value.trim() || undefined,
-      room_id: document.getElementById('de-room').value ? +document.getElementById('de-room').value : null,
-    };
-    const r = await fetch(`/api/music/${_currentId}`, {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(body),
-    });
-    if (r.ok) {
-      const updated = await r.json();
-      fillModal(updated);
-      window.onDiscSaved?.();
-    }
-  });
-
-  document.getElementById('disc-btn-delete').addEventListener('click', async () => {
-    if (!confirm('Supprimer ce disque ?')) return;
-    const r = await fetch(`/api/music/${_currentId}`, { method: 'DELETE' });
-    if (r.ok) {
-      closeModal();
-      window.onDiscDeleted?.();
-    }
-  });
 
 })();
 </script>
