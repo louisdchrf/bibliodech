@@ -135,6 +135,20 @@ async def _enrich_book(book_id: int, isbn: str, _progress_key: str | None = None
         # Couverture — chaîne de fallback
         book.cover_url = await _resolve_cover(isbn, info, db=db)
 
+        if info.get("series_name") and not book.series_id:
+            from app.models import Series
+            from app.routers.series import _norm
+            s_name = info["series_name"]
+            all_series = db.query(Series).all()
+            match = next((s for s in all_series if _norm(s.name) == _norm(s_name)), None)
+            if not match:
+                match = Series(name=s_name, source=info.get("source", "lookup"))
+                db.add(match)
+                db.flush()
+            book.series_id = match.id
+            if info.get("series_position") is not None:
+                book.series_position = float(info["series_position"])
+
         book.enrichment_status = "ok"
         book.enrichment_source = info.get("source")
         if info.get("_per_source"):
