@@ -1647,7 +1647,10 @@ body.modal-open { overflow: hidden; }
 
 @media (max-width: 768px) {
   .nav-hamburger { display: flex; align-items: center; }
-  .nav-user .nav-username { display: none; }
+  /* Le sélecteur d'origine ciblait .nav-username (classe) mais l'élément utilise un id */
+  .nav-user .nav-username,
+  #nav-username-label,
+  .nav-user-chevron { display: none; }
 
   .nav-links {
     display: none;
@@ -1661,10 +1664,11 @@ body.modal-open { overflow: hidden; }
   .nav-links.open { display: flex; }
   .nav-links a { padding: .75rem 1.5rem; border-radius: 0; font-size: 1rem; }
 
-  .navbar { position: relative; flex-wrap: wrap; }
-  .nav-search { order: 2; margin-left: 0; }
-  .nav-user { order: 3; }
-  .nav-hamburger { order: 4; margin-left: auto; }
+  .navbar { position: relative; flex-wrap: nowrap; padding: 0 .75rem; gap: .5rem; }
+  .nav-logo { flex-shrink: 0; }
+  .nav-search { order: 2; margin-left: auto; }
+  .nav-user { order: 3; flex-shrink: 0; }
+  .nav-hamburger { order: 4; flex-shrink: 0; margin-left: 0; }
 }
 
 /* ── Responsive global ───────────────────────────────────────────────────── */
