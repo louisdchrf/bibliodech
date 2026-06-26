@@ -495,19 +495,37 @@ async def _lookup_bnf(client: httpx.AsyncClient, isbn: str) -> dict | None:
                     uns = {"mxc": "info:lc/xmlns/marcxchange-v2"}
                     uroot = ET.fromstring(uresp.content)
                     for urec in uroot.findall(".//mxc:record", uns):
+                        fields_225 = []
                         for df in urec.findall("mxc:datafield", uns):
                             tag = df.get("tag")
                             subs = {sf.get("code"): sf.text for sf in df.findall("mxc:subfield", uns)}
                             if tag == "225" and subs.get("a"):
-                                series_name = subs["a"]
-                                if subs.get("v"):
-                                    m = re.search(r"(\d+)", subs["v"])
-                                    if m:
-                                        try:
-                                            series_position = float(m.group(1))
-                                        except ValueError:
-                                            pass
-                                break
+                                fields_225.append(subs)
+                        # Prefer the 225 field whose $v is a small integer (tome number, not a collection code like J2599)
+                        if fields_225:
+                            best = None
+                            for subs in fields_225:
+                                v = subs.get("v", "")
+                                m = re.search(r"^(\d+)$", v.strip()) if v else None
+                                if m and int(m.group(1)) < 10000:
+                                    best = (subs, float(m.group(1)))
+                                    break
+                            if best is None:
+                                best = (fields_225[0], None)
+                            subs, pos = best
+                            series_name = subs["a"]
+                            if pos is not None:
+                                series_position = pos
+                            elif subs.get("v"):
+                                m = re.search(r"(\d+)", subs["v"])
+                                if m:
+                                    try:
+                                        series_position = float(m.group(1))
+                                    except ValueError:
+                                        pass
+                        for df in urec.findall("mxc:datafield", uns):
+                            tag = df.get("tag")
+                            subs = {sf.get("code"): sf.text for sf in df.findall("mxc:subfield", uns)}
                             if tag == "461" and subs.get("t") and not series_name:
                                 series_name = subs["t"]
                                 if subs.get("v"):
