@@ -1100,7 +1100,11 @@ async def check_bnf_volumes(series_id: int, request: Request, db: Session = Depe
     if not series:
         raise HTTPException(404)
 
-    result = await _bnf_check_one_series(series, db)
+    try:
+        result = await _bnf_check_one_series(series, db)
+    except Exception as e:
+        log.warning("check-bnf series %s: %s", series_id, e)
+        return {"series_id": series_id, "name": series.name, "volumes_found": [], "max_known": None, "source": None, "error": str(e)}
     if not result.get("volumes_found"):
         return {"series_id": series_id, "name": series.name, "volumes_found": [], "max_known": None, "source": None}
 
@@ -1145,7 +1149,7 @@ async def _bnf_check_one_series(series: Series, db) -> dict:
     titles_found: dict[int, str] = {}
     isbn_by_volume: dict[int, str] = {}
 
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(timeout=30) as client:
         # Étape 1 : trouver le nom exact BnF via ISBN d'un livre possédé
         bnf_series_name: str | None = None
         for book in [b for b in series.books if b.isbn][:5]:
