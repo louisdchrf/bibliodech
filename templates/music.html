@@ -96,11 +96,6 @@
   const bulkModalOverlay = document.getElementById('bulk-modal-overlay');
   const bulkModalContent = document.getElementById('bulk-modal-content');
 
-  function escHtml(s) {
-    if (!s) return '';
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
   // ── Init ──────────────────────────────────────────────────────────────────
 
   document.getElementById('sort-by').value = _sortBy;
@@ -274,6 +269,7 @@
   document.getElementById('bulk-select-all').addEventListener('click', () => {
     filtered().forEach(d => _selected.add(d.id));
     grid.querySelectorAll('.book-card').forEach(el => el.classList.add('selected'));
+    document.querySelectorAll('#disc-list tr[data-id]').forEach(el => el.classList.add('selected'));
     updateBulkCount();
   });
 

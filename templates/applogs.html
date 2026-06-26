@@ -80,10 +80,6 @@
     listEl.innerHTML = html;
   }
 
-  function escHtml(s) {
-    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  }
-
   document.getElementById('btn-refresh').addEventListener('click', load);
   categoryEl.addEventListener('change', load);
   levelEl.addEventListener('change', load);

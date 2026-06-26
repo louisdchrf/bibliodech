@@ -301,9 +301,9 @@
       } else if (data.enrichment_status === 'not_found') {
         replaceCard(card, discNotFoundCard(barcode));
       } else {
-        pollDisc(discId, card, barcode, attempt + 1);
+        await pollDisc(discId, card, barcode, attempt + 1);
       }
-    } catch { pollDisc(discId, card, barcode, attempt + 1); }
+    } catch { await pollDisc(discId, card, barcode, attempt + 1); }
   }
 
   // ── Polling ──────────────────────────────────────────────────────────────
@@ -321,10 +321,10 @@
       } else if (data.enrichment_status === 'not_found') {
         replaceCard(card, notFoundCard(isbn, bookId, eanWarning));
       } else {
-        pollBook(bookId, card, isbn, attempt + 1, eanWarning);
+        await pollBook(bookId, card, isbn, attempt + 1, eanWarning);
       }
     } catch {
-      pollBook(bookId, card, isbn, attempt + 1);
+      await pollBook(bookId, card, isbn, attempt + 1);
     }
   }
 
@@ -467,10 +467,6 @@
     else prependCard(next);
   }
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-  function escHtml(str) {
-    if (!str) return '';
-    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
 
   // ── Caméra ───────────────────────────────────────────────────────────────
   const camOverlay   = document.getElementById('cam-overlay');
@@ -714,9 +710,9 @@
         toast.innerHTML = `💿 <strong>${barcode}</strong> <span>introuvable</span>`;
         dismissToast(toast, 2500);
       } else {
-        pollMusicToast(toast, discId, barcode, attempt + 1);
+        await pollMusicToast(toast, discId, barcode, attempt + 1);
       }
-    } catch { pollMusicToast(toast, discId, barcode, attempt + 1); }
+    } catch { await pollMusicToast(toast, discId, barcode, attempt + 1); }
   }
 
   function stopCamera() {

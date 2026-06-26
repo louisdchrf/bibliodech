@@ -50,10 +50,6 @@
 {% block scripts %}
 <script>
 (function() {
-  function escHtml(s) {
-    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
   const INTERVAL_PRESETS = [
     { label: '15 min',  value: 15 },
     { label: '30 min',  value: 30 },

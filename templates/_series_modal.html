@@ -17,10 +17,6 @@
   let _locTree = [];
   const _ready = fetch('/api/locations/tree').then(r => r.json()).then(d => { _locTree = d; }).catch(() => {});
 
-  function escHtml(s) {
-    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
   function fmtDate(iso) {
     if (!iso) return '—';
     return new Date(iso).toLocaleDateString('fr-FR');

@@ -18,11 +18,6 @@
   // Charger les salles une fois
   fetch('/api/rooms').then(r => r.ok ? r.json() : []).then(r => { _rooms = r; }).catch(() => {});
 
-  function escHtml(s) {
-    if (!s) return '';
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
   function closeModal() {
     overlay.style.display = 'none';
     document.body.classList.remove('modal-open');
@@ -34,6 +29,7 @@
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && overlay.style.display !== 'none') closeModal(); });
 
   window.openDiscModal = async function(id) {
+    if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
     const res = await fetch(`/api/music/${id}`);
     if (!res.ok) return;
     _currentDisc = await res.json();

@@ -68,8 +68,7 @@ async def _lookup_musicbrainz(barcode: str) -> dict | None:
             for li in rel.get("label-info", []):
                 if li.get("label"):
                     label = li["label"].get("name", "")
-                catalog_number = li.get("catalog-number", "")
-                if label:
+                    catalog_number = li.get("catalog-number", "")
                     break
 
             mbid = rel.get("id", "")
@@ -99,7 +98,7 @@ async def _lookup_musicbrainz(barcode: str) -> dict | None:
 async def _lookup_discogs(barcode: str, api_key: str = "") -> dict | None:
     headers = {"User-Agent": _MB_USER_AGENT}
     if api_key:
-        headers["Authorization"] = f"Discogs key={api_key}"
+        headers["Authorization"] = f"Discogs token={api_key}"
     try:
         async with httpx.AsyncClient(timeout=10, headers=headers) as client:
             r = await client.get(
@@ -169,16 +168,27 @@ async def _cover_from_mb_search(artist: str, title: str) -> str | None:
     return None
 
 
+async def _resolve_cover(disc: dict, barcode: str, discogs_key: str) -> str | None:
+    """Cherche la pochette d'un disque : CAA → Discogs → MB title search."""
+    mbid = disc.get("mbid")
+    if mbid:
+        async with httpx.AsyncClient(timeout=5, headers={"User-Agent": _MB_USER_AGENT}) as client:
+            url = await _cover_from_mbid(client, mbid)
+            if url:
+                return url
+    if barcode:
+        res = await _lookup_discogs(barcode, discogs_key)
+        if res and res.get("cover_url"):
+            return res["cover_url"]
+    return await _cover_from_mb_search(disc.get("artist"), disc.get("title"))
+
+
 async def lookup_barcode(barcode: str, discogs_key: str = "") -> dict | None:
     """Cherche un code-barres musical sur MusicBrainz puis Discogs en fallback."""
     result = await _lookup_musicbrainz(barcode)
     if result:
         if not result.get("cover_url"):
-            discogs = await _lookup_discogs(barcode, discogs_key)
-            if discogs and discogs.get("cover_url"):
-                result["cover_url"] = discogs["cover_url"]
-        if not result.get("cover_url"):
-            result["cover_url"] = await _cover_from_mb_search(result.get("artist"), result.get("title"))
+            result["cover_url"] = await _resolve_cover(result, barcode, discogs_key)
         return result
     result = await _lookup_discogs(barcode, discogs_key)
     if result and not result.get("cover_url"):

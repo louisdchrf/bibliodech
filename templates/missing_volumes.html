@@ -160,10 +160,6 @@
       el.innerHTML = `<span style="font-size:.82rem;color:var(--color-error)">Erreur lors de la vérification BnF.</span>`;
     }
   };
-
-  function escHtml(s) {
-    return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
   function escAttr(s) {
     return String(s ?? '').replace(/'/g, "\\'");
   }

@@ -113,11 +113,6 @@
   const _ready = _init();
 
   // ── Helpers ───────────────────────────────────────────────────────────────
-  function escHtml(str) {
-    if (!str) return '';
-    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
   const SOURCE_LABELS = {
     sudoc:'📚 SUDOC', bnf:'🏛 BNF', decitre:'🛍 Decitre',
     googlebooks:'🔍 Google Books', openlibrary:'📖 Open Library',

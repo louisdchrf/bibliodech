@@ -400,11 +400,6 @@
 {% block scripts %}
 <script>
 (function () {
-  function escHtml(str) {
-    if (!str) return '';
-    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
   // ── Tabs ──────────────────────────────────────────────────────────────────
   document.querySelectorAll('.tasks-switch-btn[data-tab]').forEach(btn => {
     btn.addEventListener('click', () => {
