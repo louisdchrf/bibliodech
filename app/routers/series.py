@@ -927,7 +927,8 @@ def list_series(request: Request, db: Session = Depends(get_db)):
     for s in series:
         books = sorted(s.books, key=lambda b: (b.series_position is None, b.series_position or 0))
         cover = next((b.cover_url for b in books if b.cover_url), None)
-        out.append({"id": s.id, "name": s.name, "book_count": len(books), "cover_url": cover})
+        room_ids = list({b.room_id for b in books if b.room_id})
+        out.append({"id": s.id, "name": s.name, "book_count": len(books), "cover_url": cover, "room_ids": room_ids})
     return out
 
 

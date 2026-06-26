@@ -17,6 +17,15 @@
         <option value="count_desc">Trier par taille (↓)</option>
         <option value="count_asc">Trier par taille (↑)</option>
       </select>
+      <div class="filter-module" id="fg-location" style="position:relative">
+        <button class="filter-module-label" id="btn-loc-filter">Localisation<span id="badge-location" class="filter-module-badge"></span></button>
+        <div class="filter-module-panel" id="fp-location" style="display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:50;min-width:220px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);padding:.5rem 0">
+          <div id="loc-filter-list" style="max-height:260px;overflow-y:auto;padding:.25rem .5rem"></div>
+          <div style="border-top:1px solid var(--color-border);margin-top:.25rem;padding:.4rem .75rem">
+            <button id="loc-filter-reset" class="btn btn-ghost btn-sm" style="font-size:.78rem">Réinitialiser</button>
+          </div>
+        </div>
+      </div>
       <button id="btn-select-mode" class="btn btn-ghost btn-sm" title="Sélection multiple">Sélectionner</button>
       <button id="btn-view-toggle" class="btn btn-ghost btn-icon" title="Changer l'affichage" aria-label="Vue liste / grille">
         <svg id="icon-grid" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
@@ -106,9 +115,36 @@
     return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  // ── Localisation (pour le bulk modal) ────────────────────────────────────
+  // ── Localisation ──────────────────────────────────────────────────────────
+  let _selectedRooms = new Set(); // ids de room sélectionnés pour le filtre
+
   async function loadLocTree() {
     try { const r = await fetch('/api/locations/tree'); _locTree = await r.json(); } catch (_) {}
+
+    // Filtre localisation — remplir la liste
+    const list = document.getElementById('loc-filter-list');
+    _locTree.forEach(site => {
+      if (site.rooms.length === 0) return;
+      const siteEl = document.createElement('div');
+      siteEl.style.cssText = 'font-size:.72rem;font-weight:700;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:.04em;padding:.35rem .5rem .1rem';
+      siteEl.textContent = site.name;
+      list.appendChild(siteEl);
+      site.rooms.forEach(room => {
+        const lbl = document.createElement('label');
+        lbl.className = 'msel-opt';
+        lbl.innerHTML = `<input type="checkbox" value="${room.id}"> ${escHtml(room.name)}`;
+        lbl.querySelector('input').addEventListener('change', () => {
+          const id = room.id;
+          if (lbl.querySelector('input').checked) _selectedRooms.add(id);
+          else _selectedRooms.delete(id);
+          updateLocBadge();
+          render();
+        });
+        list.appendChild(lbl);
+      });
+    });
+
+    // Bulk modal — pièce
     const selRoom = document.getElementById('bulk-room');
     _locTree.forEach(site => {
       site.rooms.forEach(room => {
@@ -127,6 +163,31 @@
       });
     });
   }
+
+  function updateLocBadge() {
+    const badge = document.getElementById('badge-location');
+    badge.textContent = _selectedRooms.size ? ` ${_selectedRooms.size}` : '';
+    badge.style.display = _selectedRooms.size ? '' : 'none';
+  }
+
+  // Ouvrir/fermer le panneau localisation
+  const btnLocFilter = document.getElementById('btn-loc-filter');
+  const fpLocation = document.getElementById('fp-location');
+  btnLocFilter.addEventListener('click', (e) => {
+    e.stopPropagation();
+    fpLocation.style.display = fpLocation.style.display === 'none' ? '' : 'none';
+  });
+  document.addEventListener('click', (e) => {
+    if (!document.getElementById('fg-location').contains(e.target)) {
+      fpLocation.style.display = 'none';
+    }
+  });
+  document.getElementById('loc-filter-reset').addEventListener('click', () => {
+    _selectedRooms.clear();
+    document.querySelectorAll('#loc-filter-list input[type=checkbox]').forEach(c => c.checked = false);
+    updateLocBadge();
+    render();
+  });
 
   // ── Vue grille / liste ────────────────────────────────────────────────────
   let listView = localStorage.getItem('bib_series_list_view') === '1';
@@ -201,7 +262,8 @@
     const minSize = parseInt(filterSize.value) || 0;
     let list = _all.filter(s =>
       s.book_count >= minSize &&
-      (!q || s.name.toLowerCase().includes(q))
+      (!q || s.name.toLowerCase().includes(q)) &&
+      (_selectedRooms.size === 0 || (s.room_ids || []).some(id => _selectedRooms.has(id)))
     );
     const sort = sortBy.value;
     if (sort === 'count_desc') list.sort((a, b) => b.book_count - a.book_count);
