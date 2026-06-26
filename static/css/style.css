@@ -353,6 +353,11 @@ img { display: block; max-width: 100%; }
   line-height: 1.4;
 }
 .btn:active { transform: scale(.97); }
+.btn:disabled, .btn[disabled] {
+  opacity: .4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
 
 .btn-primary  { background: var(--color-accent); color: #fff; }
 .btn-primary:hover { background: var(--color-accent-lt); }
