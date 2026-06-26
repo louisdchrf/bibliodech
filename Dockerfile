@@ -19,6 +19,9 @@ COPY static/ ./static/
 COPY migrations/ ./migrations/
 COPY alembic.ini ./
 COPY startup.sh ./
+COPY docs/ ./docs/
+COPY README.md ./
+COPY ROADMAP.md ./
 RUN chmod +x startup.sh
 
 # Create data directories
