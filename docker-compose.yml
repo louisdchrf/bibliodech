@@ -8,9 +8,11 @@ services:
       - bibliodech_data:/app/data
     environment:
       DATABASE_URL: sqlite:////app/data/bibliodech.db
-      SECRET_KEY: change-me-in-production
+      # SECRET_KEY : si absent, une clé aléatoire est générée et persistée en base au premier démarrage
+      # SECRET_KEY: votre-cle-secrete-ici
       ADMIN_USERNAME: admin
-      ADMIN_PASSWORD: admin123
+      # ADMIN_PASSWORD : si absent, un mot de passe aléatoire est généré et affiché dans les logs
+      # ADMIN_PASSWORD: votre-mot-de-passe-ici
       BUILD_VERSION: "${BUILD_VERSION:-dev}"
     restart: unless-stopped
 
