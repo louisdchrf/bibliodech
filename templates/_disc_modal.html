@@ -88,6 +88,7 @@
             ${d.format ? `<span class="badge badge-genre">${escHtml(d.format)}</span>` : ''}
             ${d.enrichment_status === 'pending'   ? `<span class="badge" style="background:var(--color-warning,#f59e0b);color:#fff">⏳ En cours…</span>` : ''}
             ${d.enrichment_status === 'not_found' ? `<span class="badge" style="background:var(--color-danger);color:#fff">Non trouvé</span>` : ''}
+            ${extLinks.length ? extLinks.join('<span style="color:var(--color-border)"> · </span>') : ''}
           </div>
         </div>
       </div>
@@ -103,7 +104,6 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem .75rem;font-size:.88rem;margin-bottom:1rem">
           ${infoRows.map(([k,v]) => `<div><span style="color:var(--color-text-muted)">${k}</span><br><strong>${escHtml(String(v))}</strong></div>`).join('')}
         </div>` : ''}
-        ${extLinks.length ? `<div style="display:flex;gap:.75rem;margin-top:.25rem">${extLinks.join('<span style="color:var(--color-border)"> · </span>')}</div>` : ''}
       </div>
 
       <!-- Onglet Édition -->
