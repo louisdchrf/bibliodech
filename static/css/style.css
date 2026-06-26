@@ -50,7 +50,7 @@ html.dark {
 /* ── Reset & Base ───────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { font-size: 16px; }
+html { font-size: 16px; overflow-x: hidden; }
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -1337,6 +1337,13 @@ body.modal-open { overflow: hidden; }
 .location-bar-field label { font-size: .75rem; font-weight: 600; color: var(--color-text-muted); }
 .location-bar-field input,
 .location-bar-field select { padding: .35rem .6rem; font-size: .88rem; min-width: 130px; }
+
+@media (max-width: 768px) {
+  .location-bar-field { min-width: 0; flex: 1 1 calc(50% - .5rem); }
+  .location-bar-field input,
+  .location-bar-field select { min-width: 0; width: 100%; box-sizing: border-box; }
+  .location-bar-sep { display: none; }
+}
 .location-bar-sep { font-size: 1.1rem; color: var(--color-border); padding-bottom: .35rem; }
 .location-bar-manage {
   align-self: flex-end; padding-bottom: .4rem;
