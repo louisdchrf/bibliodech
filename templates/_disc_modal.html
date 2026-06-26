@@ -161,7 +161,7 @@
   }
 
   // Populate room select
-  fetch('/api/locations/rooms').then(r => r.json()).then(rooms => {
+  fetch('/api/rooms').then(r => r.json()).then(rooms => {
     const sel = document.getElementById('de-room');
     rooms.forEach(r => {
       const opt = document.createElement('option');
