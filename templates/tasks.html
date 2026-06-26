@@ -10,21 +10,39 @@
     <span class="task-status" id="sched-save-status"></span>
   </div>
 
-  <div class="tasks-list" id="tasks-list">
-    <!-- Tâches planifiables : générées par JS une fois les schedules chargés -->
+  <!-- Sélecteur de catégorie -->
+  <div class="tasks-switcher">
+    <button class="tasks-switch-btn active" data-panel="books">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      Bibliothèque
+    </button>
+    <button class="tasks-switch-btn" data-panel="music">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="3" x2="12" y2="9"/></svg>
+      Musique
+    </button>
+  </div>
 
-    <!-- Tâches non planifiables (statiques) -->
-    <div class="task-card">
-      <div class="task-info">
-        <div class="task-name">Recharger toute la bibliothèque</div>
-        <div class="task-desc">Ré-interroge toutes les sources pour chaque livre avec un ISBN.</div>
-      </div>
-      <div class="task-actions">
-        <span class="task-status" id="status-reenrich-all"></span>
-        <button class="btn btn-ghost btn-sm task-btn" data-task="reenrich-all">Lancer</button>
+  <div id="tasks-panel-books">
+    <div class="tasks-list" id="tasks-list">
+      <!-- Tâches planifiables : générées par JS une fois les schedules chargés -->
+      <!-- Tâches non planifiables (statiques) -->
+      <div class="task-card">
+        <div class="task-info">
+          <div class="task-name">Recharger toute la bibliothèque</div>
+          <div class="task-desc">Ré-interroge toutes les sources pour chaque livre avec un ISBN.</div>
+        </div>
+        <div class="task-actions">
+          <span class="task-status" id="status-reenrich-all"></span>
+          <button class="btn btn-ghost btn-sm task-btn" data-task="reenrich-all">Lancer</button>
+        </div>
       </div>
     </div>
+  </div>
 
+  <div id="tasks-panel-music" style="display:none">
+    <div class="tasks-list" id="tasks-list-music">
+      <!-- Tâches musique : générées par JS -->
+    </div>
   </div>
 </div>
 {% endblock %}
@@ -46,23 +64,27 @@
     { label: '7 jours', value: 10080 },
   ];
 
-  // Tâches planifiables : définition complète ici
-  const SCHEDULABLE = [
-    { id: 'reenrich',       name: 'Compléter les livres manquants',       desc: 'Relance l\'enrichissement pour les livres sans titre ou non trouvés lors du scan initial.' },
-    { id: 'fetch-covers',    name: 'Rechercher les couvertures manquantes', desc: 'Interroge Open Library et Google Books pour télécharger les couvertures des livres qui n\'en ont pas.' },
-    { id: 'refresh-covers',  name: 'Re-télécharger toutes les couvertures (HD)', desc: 'Re-télécharge toutes les couvertures en 600px pour améliorer la qualité de l\'OCR et l\'affichage.' },
-    { id: 'clean-authors', name: 'Normaliser les auteurs',                desc: 'Convertit les auteurs "Nom, Prénom" → "Prénom Nom" pour tous les livres.' },
-    { id: 'detect-series', name: 'Détecter les séries',                   desc: 'Regroupe les livres par série selon le titre et les auteurs. Assigne automatiquement les cas certains, propose les cas ambigus dans la page Séries.' },
-    { id: 'sudoc-series',  name: 'Chercher les séries dans le catalogue', desc: 'Interroge SUDOC et Open Library par ISBN pour trouver le nom de série. Très efficace pour les BDs françaises.' },
-    { id: 'ocr-series',   name: 'Lire les séries sur les couvertures',   desc: 'Reconnaissance de caractères (OCR Tesseract) sur les couvertures pour trouver le nom de série imprimé sur l\'image. Complète la détection par titre.' },
-    { id: 'clean-series', name: 'Normaliser les noms de séries',         desc: 'Capitalise la première lettre et supprime les espaces superflus dans les noms de séries.' },
-    { id: 'bnf-series',     name: 'Compléter les séries via la BnF',     desc: 'Pour chaque série avec des trous, interroge la BnF par ISBN pour trouver les tomes manquants et les rattache automatiquement à la série s\'ils sont déjà en bibliothèque.' },
-    { id: 'enrich-genres',  name: 'Récupérer les genres des livres',     desc: 'Interroge SUDOC et BnF par ISBN pour récupérer le genre (BD, Roman, Documentaire…) des livres qui n\'en ont pas encore.' },
-    { id: 'backup',         name: 'Sauvegarder la base de données',      desc: 'Crée une copie de la base de données sur le serveur. Les 20 dernières sauvegardes sont conservées. Gérez-les dans Paramètres > Sauvegardes.' },
-    { id: 'reenrich-discs',      name: 'Compléter les disques manquants',       desc: 'Relance l\'enrichissement sur les disques non trouvés via MusicBrainz et Discogs.', section: 'Musique' },
-    { id: 'fetch-disc-covers',   name: 'Rechercher les pochettes manquantes',   desc: 'Télécharge les pochettes absentes pour les disques enrichis, via MusicBrainz et Discogs.' },
-    { id: 'refresh-disc-covers', name: 'Re-télécharger toutes les pochettes',   desc: 'Force le re-cache HD de toutes les pochettes de disques.' },
+  const SCHEDULABLE_BOOKS = [
+    { id: 'reenrich',       name: 'Compléter les livres manquants',            desc: 'Relance l\'enrichissement pour les livres sans titre ou non trouvés lors du scan initial.' },
+    { id: 'fetch-covers',   name: 'Rechercher les couvertures manquantes',     desc: 'Interroge Open Library et Google Books pour télécharger les couvertures des livres qui n\'en ont pas.' },
+    { id: 'refresh-covers', name: 'Re-télécharger toutes les couvertures (HD)',desc: 'Re-télécharge toutes les couvertures en 600px pour améliorer la qualité de l\'OCR et l\'affichage.' },
+    { id: 'clean-authors',  name: 'Normaliser les auteurs',                    desc: 'Convertit les auteurs "Nom, Prénom" → "Prénom Nom" pour tous les livres.' },
+    { id: 'detect-series',  name: 'Détecter les séries',                       desc: 'Regroupe les livres par série selon le titre et les auteurs. Assigne automatiquement les cas certains, propose les cas ambigus dans la page Séries.' },
+    { id: 'sudoc-series',   name: 'Chercher les séries dans le catalogue',     desc: 'Interroge SUDOC et Open Library par ISBN pour trouver le nom de série. Très efficace pour les BDs françaises.' },
+    { id: 'ocr-series',     name: 'Lire les séries sur les couvertures',       desc: 'Reconnaissance de caractères (OCR Tesseract) sur les couvertures pour trouver le nom de série imprimé sur l\'image. Complète la détection par titre.' },
+    { id: 'clean-series',   name: 'Normaliser les noms de séries',             desc: 'Capitalise la première lettre et supprime les espaces superflus dans les noms de séries.' },
+    { id: 'bnf-series',     name: 'Compléter les séries via la BnF',           desc: 'Pour chaque série avec des trous, interroge la BnF par ISBN pour trouver les tomes manquants et les rattache automatiquement à la série s\'ils sont déjà en bibliothèque.' },
+    { id: 'enrich-genres',  name: 'Récupérer les genres des livres',           desc: 'Interroge SUDOC et BnF par ISBN pour récupérer le genre (BD, Roman, Documentaire…) des livres qui n\'en ont pas encore.' },
+    { id: 'backup',         name: 'Sauvegarder la base de données',            desc: 'Crée une copie de la base de données sur le serveur. Les 20 dernières sauvegardes sont conservées. Gérez-les dans Paramètres > Sauvegardes.' },
   ];
+
+  const SCHEDULABLE_MUSIC = [
+    { id: 'reenrich-discs',      name: 'Compléter les disques manquants',      desc: 'Relance l\'enrichissement sur les disques non trouvés via MusicBrainz et Discogs.' },
+    { id: 'fetch-disc-covers',   name: 'Rechercher les pochettes manquantes',  desc: 'Télécharge les pochettes absentes pour les disques enrichis, via MusicBrainz et Discogs.' },
+    { id: 'refresh-disc-covers', name: 'Re-télécharger toutes les pochettes',  desc: 'Force le re-cache HD de toutes les pochettes de disques.' },
+  ];
+
+  const SCHEDULABLE = [...SCHEDULABLE_BOOKS, ...SCHEDULABLE_MUSIC];
 
   // Tâches planifiables : toutes passent par /api/tasks/run/{id}
   // Tâches statiques (non planifiables) gardent leur propre endpoint
@@ -75,53 +97,59 @@
 
   let _schedules = {};
 
-  // ── Injecter les cartes planifiables avant les cartes statiques ──────────
-  function renderSchedulableCards() {
-    const list = document.getElementById('tasks-list');
-    const firstStatic = list.querySelector('.task-card');
-    let _lastSection = null;
-    SCHEDULABLE.forEach(t => {
-      if (t.section && t.section !== _lastSection) {
-        _lastSection = t.section;
-        const sep = document.createElement('div');
-        sep.className = 'tasks-section-sep';
-        sep.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="3" x2="12" y2="9"/></svg> ${t.section}`;
-        list.insertBefore(sep, firstStatic);
-      }
-      const cfg = _schedules[t.id] || { enabled: false, interval_minutes: 60, last_run: null, last_result: null };
-      const lastRun = cfg.last_run
-        ? new Date(cfg.last_run).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
-        : null;
-
-      const div = document.createElement('div');
-      div.className = 'task-card' + (t.expand ? ' task-card-expand' : '');
-      div.id = `card-${t.id}`;
-      const btnLabel = t.manualLabel || 'Lancer';
-      const btnId = t.expand ? `btn-${t.id}` : '';
-      div.innerHTML = `
-        <div class="task-info">
-          <div class="task-name">${escHtml(t.name)}</div>
-          <div class="task-desc">${escHtml(t.desc)}</div>
-          ${lastRun ? `<div style="font-size:.75rem;color:var(--color-text-muted);margin-top:.25rem">Dernier lancement : ${lastRun}${cfg.last_result ? ` — ${escHtml(cfg.last_result)}` : ''}</div>` : ''}
-          <div id="next-run-${t.id}" class="task-next-run"></div>
-        </div>
-        <div class="task-actions" style="gap:.5rem">
-          <span class="task-status" id="status-${t.id}"></span>
-          ${t.extraBtn || ''}
-          <label style="display:flex;align-items:center;gap:.35rem;font-size:.82rem;cursor:pointer;white-space:nowrap">
-            <input type="checkbox" id="sched-enabled-${t.id}" ${cfg.enabled ? 'checked' : ''}>
-            Auto
-          </label>
-          <select id="sched-interval-${t.id}" class="select-input" style="width:auto;font-size:.82rem">
-            ${INTERVAL_PRESETS.map(p => `<option value="${p.value}" ${cfg.interval_minutes === p.value ? 'selected' : ''}>${p.label}</option>`).join('')}
-          </select>
-          <button class="btn btn-ghost btn-sm ${t.expand ? '' : 'task-btn'}" ${btnId ? `id="${btnId}"` : ''} data-task="${t.id}">${btnLabel}</button>
-        </div>
-        ${t.expand ? `<div id="expand-${t.id}" style="display:none;margin-top:1rem;width:100%"></div>` : ''}`;
-      list.insertBefore(div, firstStatic);
-    });
-
+  // ── Injecter les cartes planifiables ─────────────────────────────────────
+  function makeTaskCard(t) {
+    const cfg = _schedules[t.id] || { enabled: false, interval_minutes: 60, last_run: null, last_result: null };
+    const lastRun = cfg.last_run
+      ? new Date(cfg.last_run).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
+      : null;
+    const div = document.createElement('div');
+    div.className = 'task-card' + (t.expand ? ' task-card-expand' : '');
+    div.id = `card-${t.id}`;
+    const btnLabel = t.manualLabel || 'Lancer';
+    const btnId = t.expand ? `btn-${t.id}` : '';
+    div.innerHTML = `
+      <div class="task-info">
+        <div class="task-name">${escHtml(t.name)}</div>
+        <div class="task-desc">${escHtml(t.desc)}</div>
+        ${lastRun ? `<div style="font-size:.75rem;color:var(--color-text-muted);margin-top:.25rem">Dernier lancement : ${lastRun}${cfg.last_result ? ` — ${escHtml(cfg.last_result)}` : ''}</div>` : ''}
+        <div id="next-run-${t.id}" class="task-next-run"></div>
+      </div>
+      <div class="task-actions" style="gap:.5rem">
+        <span class="task-status" id="status-${t.id}"></span>
+        ${t.extraBtn || ''}
+        <label style="display:flex;align-items:center;gap:.35rem;font-size:.82rem;cursor:pointer;white-space:nowrap">
+          <input type="checkbox" id="sched-enabled-${t.id}" ${cfg.enabled ? 'checked' : ''}>
+          Auto
+        </label>
+        <select id="sched-interval-${t.id}" class="select-input" style="width:auto;font-size:.82rem">
+          ${INTERVAL_PRESETS.map(p => `<option value="${p.value}" ${cfg.interval_minutes === p.value ? 'selected' : ''}>${p.label}</option>`).join('')}
+        </select>
+        <button class="btn btn-ghost btn-sm ${t.expand ? '' : 'task-btn'}" ${btnId ? `id="${btnId}"` : ''} data-task="${t.id}">${btnLabel}</button>
+      </div>
+      ${t.expand ? `<div id="expand-${t.id}" style="display:none;margin-top:1rem;width:100%"></div>` : ''}`;
+    return div;
   }
+
+  function renderSchedulableCards() {
+    const booksList  = document.getElementById('tasks-list');
+    const firstStatic = booksList.querySelector('.task-card');
+    SCHEDULABLE_BOOKS.forEach(t => booksList.insertBefore(makeTaskCard(t), firstStatic));
+
+    const musicList = document.getElementById('tasks-list-music');
+    SCHEDULABLE_MUSIC.forEach(t => musicList.appendChild(makeTaskCard(t)));
+  }
+
+  // ── Switcher Bibliothèque / Musique ───────────────────────────────────────
+  document.querySelectorAll('.tasks-switch-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tasks-switch-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const panel = btn.dataset.panel;
+      document.getElementById('tasks-panel-books').style.display = panel === 'books' ? '' : 'none';
+      document.getElementById('tasks-panel-music').style.display = panel === 'music' ? '' : 'none';
+    });
+  });
 
   let _nextRuns = {};
 

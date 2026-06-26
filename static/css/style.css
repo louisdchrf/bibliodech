@@ -2298,3 +2298,33 @@ html.dark .missing-vol-tobuy     { background: #2d0f0f; }
   color: var(--color-text-muted);
   padding: 1.25rem 0 .5rem;
 }
+
+/* ── Switcher tâches Bibliothèque / Musique ──────────────────────────────── */
+.tasks-switcher {
+  display: flex;
+  gap: .75rem;
+  margin-bottom: 1.5rem;
+}
+.tasks-switch-btn {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .6rem 1.25rem;
+  border: 2px solid var(--color-border);
+  border-radius: 8px;
+  background: none;
+  font-size: .9rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.tasks-switch-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-text);
+}
+.tasks-switch-btn.active {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
