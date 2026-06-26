@@ -1243,8 +1243,24 @@ async def _bnf_check_one_series(series: Series, db) -> dict:
     # Rattacher les livres trouvés qui ne sont pas encore dans la série
     in_library: dict[int, int] = {}
     assigned = 0
+
+    # 1. Livres déjà dans la série → déjà possédés par numéro de tome
+    for book in series.books:
+        if book.series_position is not None:
+            pos = int(book.series_position)
+            if pos in volumes_found:
+                in_library[pos] = book.id
+
+    # 2. Match par ISBN exact (conversion 10↔13)
     for vol, isbn in isbn_by_volume.items():
-        book = db.query(Book).filter(Book.isbn == isbn).first()
+        if vol in in_library:
+            continue
+        # Essayer ISBN13 puis ISBN10
+        alt = (_isbn10_from_13(isbn) if len(isbn) == 13 else _isbn13_from_10(isbn)) or ""
+        book = (
+            db.query(Book).filter(Book.isbn == isbn).first()
+            or (db.query(Book).filter(Book.isbn == alt).first() if alt else None)
+        )
         if book:
             in_library[vol] = book.id
             changed = False
@@ -1256,6 +1272,23 @@ async def _bnf_check_one_series(series: Series, db) -> dict:
                 changed = True
             if changed:
                 assigned += 1
+
+    # 3. Pour les volumes sans ISBN BnF : chercher par titre normalisé dans la bibliothèque
+    books_without_series = db.query(Book).filter(Book.series_id.is_(None)).all()
+    for vol in volumes_found:
+        if vol in in_library:
+            continue
+        title_bnf = _norm(titles_found.get(vol, ""))
+        if not title_bnf:
+            continue
+        for book in books_without_series:
+            if _norm(book.title) == title_bnf:
+                in_library[vol] = book.id
+                book.series_id = series.id
+                book.series_position = float(vol)
+                assigned += 1
+                break
+
     if assigned:
         db.commit()
 
