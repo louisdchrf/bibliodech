@@ -135,22 +135,35 @@ async def _lookup_discogs(barcode: str, api_key: str = "") -> dict | None:
         return None
 
 
-async def _cover_from_itunes(artist: str, title: str) -> str | None:
-    """Cherche une pochette sur iTunes Search API (gratuit, sans clé)."""
+async def _cover_from_mb_search(artist: str, title: str) -> str | None:
+    """Cherche un MBID par titre+artiste et tente la Cover Art Archive."""
     if not artist or not title:
         return None
+    await _mb_throttle()
     try:
-        async with httpx.AsyncClient(timeout=6) as client:
+        async with httpx.AsyncClient(
+            timeout=10,
+            headers={"User-Agent": _MB_USER_AGENT},
+        ) as client:
             r = await client.get(
-                "https://itunes.apple.com/search",
-                params={"term": f"{artist} {title}", "media": "music", "entity": "album", "limit": 3},
+                f"{_MB_BASE}/release",
+                params={
+                    "query": f'artist:"{artist}" AND release:"{title}"',
+                    "fmt": "json",
+                    "limit": 5,
+                },
             )
             if r.status_code != 200:
                 return None
-            for item in r.json().get("results", []):
-                url = item.get("artworkUrl100", "")
+            for rel in r.json().get("releases", []):
+                if rel.get("score", 0) < 80:
+                    continue
+                mbid = rel.get("id")
+                if not mbid:
+                    continue
+                url = await _cover_from_mbid(client, mbid)
                 if url:
-                    return url.replace("100x100bb", "600x600bb")
+                    return url
     except Exception:
         return None
     return None
@@ -165,11 +178,11 @@ async def lookup_barcode(barcode: str, discogs_key: str = "") -> dict | None:
             if discogs and discogs.get("cover_url"):
                 result["cover_url"] = discogs["cover_url"]
         if not result.get("cover_url"):
-            result["cover_url"] = await _cover_from_itunes(result.get("artist"), result.get("title"))
+            result["cover_url"] = await _cover_from_mb_search(result.get("artist"), result.get("title"))
         return result
     result = await _lookup_discogs(barcode, discogs_key)
     if result and not result.get("cover_url"):
-        result["cover_url"] = await _cover_from_itunes(result.get("artist"), result.get("title"))
+        result["cover_url"] = await _cover_from_mb_search(result.get("artist"), result.get("title"))
     return result
 
 
