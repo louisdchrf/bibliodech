@@ -151,10 +151,11 @@ async def _fetch_disc_covers_logic(db, task_id: str = "fetch-disc-covers") -> di
     if task_id in sched._running:
         sched._running[task_id]["progress"] = {"current": 0, "total": total}
 
+    from app.lookup_music import _cover_from_mbid, _lookup_discogs, _cover_from_mb_search
+
     for i, disc in enumerate(discs):
         url = None
         if disc.mbid:
-            from app.lookup_music import _cover_from_mbid
             async with __import__("httpx").AsyncClient(
                 timeout=5,
                 headers={"User-Agent": "Bibliodech/1.0 (contact@bibliodech.local)"},
@@ -165,6 +166,8 @@ async def _fetch_disc_covers_logic(db, task_id: str = "fetch-disc-covers") -> di
             res = await _lookup_discogs(disc.barcode, discogs_key)
             if res:
                 url = res.get("cover_url")
+        if not url and disc.artist and disc.title:
+            url = await _cover_from_mb_search(disc.artist, disc.title)
         if url:
             local = await fetch_and_save(f"disc_{disc.barcode or disc.id}", url)
             if local:
@@ -192,6 +195,8 @@ async def _refresh_disc_covers_logic(db, task_id: str = "refresh-disc-covers") -
     if task_id in sched._running:
         sched._running[task_id]["progress"] = {"current": 0, "total": total}
 
+    from app.lookup_music import _cover_from_mbid, _lookup_discogs, _cover_from_mb_search
+
     for i, disc in enumerate(discs):
         url = None
         if disc.mbid:
@@ -205,6 +210,8 @@ async def _refresh_disc_covers_logic(db, task_id: str = "refresh-disc-covers") -
             res = await _lookup_discogs(disc.barcode, discogs_key)
             if res:
                 url = res.get("cover_url")
+        if not url and disc.artist and disc.title:
+            url = await _cover_from_mb_search(disc.artist, disc.title)
         if url:
             local = await fetch_and_save(f"disc_{disc.barcode or disc.id}", url)
             if local:
