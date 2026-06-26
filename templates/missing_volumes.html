@@ -4,7 +4,7 @@
 <div class="page-header">
   <div>
     <h1 class="page-title">Ouvrages manquants</h1>
-    <p class="page-subtitle" id="subtitle">Tomes manquants dans vos séries</p>
+    <p class="page-subtitle" id="subtitle">Trous détectés par numéro de tome · Cliquez "Vérifier BnF" pour croiser avec le catalogue national</p>
   </div>
 </div>
 
@@ -94,7 +94,7 @@
           </div>
           <div id="${bnfId}">
             <button class="btn btn-ghost btn-sm" onclick="checkBnF(${s.id}, '${escAttr(s.name)}')">
-              Vérifier les nouveaux tomes (BnF)
+              🔍 Vérifier via BnF
             </button>
           </div>
         </div>
@@ -104,7 +104,7 @@
 
   window.checkBnF = async function (seriesId, name) {
     const el = document.getElementById(`bnf-${seriesId}`);
-    el.innerHTML = `<span style="font-size:.82rem;color:var(--color-text-muted)">Interrogation BnF…</span>`;
+    el.innerHTML = `<span style="font-size:.82rem;color:var(--color-text-muted)">Interrogation du catalogue BnF… (peut prendre 10–20 s)</span>`;
     try {
       const res = await fetch(`/api/series/${seriesId}/check-bnf`);
       const data = await res.json();
@@ -140,7 +140,7 @@
       }
 
       let html = `<div style="font-size:.82rem;margin-top:.25rem">
-        <span style="color:var(--color-text-muted)">BnF : ${data.volumes_found.length} tomes référencés (jusqu'au tome ${data.max_known})</span>`;
+        <span style="color:var(--color-text-muted)">BnF recense ${data.volumes_found.length} tome${data.volumes_found.length > 1 ? 's' : ''} (jusqu'au tome ${data.max_known}) — croisé par numéro de tome, ISBN et titre</span>`;
 
       if (allMissing.length) {
         html += `<ul style="margin:.4rem 0 0 1rem;padding:0;display:flex;flex-direction:column;gap:.2rem">
