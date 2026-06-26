@@ -15,10 +15,11 @@
         <option value="year">Année</option>
         <option value="added_at">Date d'ajout</option>
       </select>
-      <button id="btn-view-toggle" class="toolbar-icon-btn" title="Changer l'affichage" aria-label="Vue liste / grille">
+      <button id="btn-view-toggle" class="toolbar-icon-btn" title="Changer l'affichage">
         <svg id="icon-grid" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
         <svg id="icon-list" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3" cy="6" r="1" fill="currentColor" stroke="none"/><circle cx="3" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="3" cy="18" r="1" fill="currentColor" stroke="none"/></svg>
       </button>
+      <button id="btn-select" class="toolbar-text-btn">Sélectionner</button>
     </div>
   </div>
 
@@ -48,10 +49,29 @@
   <!-- Compteur -->
   <div class="library-meta" id="lib-meta"></div>
 
-  <!-- Grille -->
+  <!-- Grille / Liste -->
   <div id="disc-grid" class="book-grid"></div>
   <div id="disc-list" class="book-list" style="display:none"></div>
 
+</div>
+
+<!-- Barre de sélection multiple -->
+<div id="bulk-bar" class="bulk-bar" style="display:none">
+  <span id="bulk-count" class="bulk-count"></span>
+  <div class="bulk-actions">
+    <button class="btn btn-ghost btn-sm" id="bulk-select-all">Tout sélectionner</button>
+    <button class="btn btn-ghost btn-sm" id="bulk-location">Localisation</button>
+    {% if user.role == 'admin' %}<button class="btn btn-danger btn-sm" id="bulk-delete">Supprimer</button>{% endif %}
+    <button class="btn btn-ghost btn-sm" id="bulk-cancel">Annuler</button>
+  </div>
+</div>
+
+<!-- Modal bulk -->
+<div id="bulk-modal-overlay" class="modal-overlay" style="display:none" role="dialog" aria-modal="true">
+  <div class="modal-card" style="max-width:440px">
+    <button class="modal-close" id="bulk-modal-close" aria-label="Fermer">&times;</button>
+    <div id="bulk-modal-content"></div>
+  </div>
 </div>
 
 {% include "_disc_modal.html" %}
@@ -59,19 +79,33 @@
 <script>
 (function () {
   const rooms = {{ rooms | tojson }};
+  const isAdmin = {{ 'true' if user.role == 'admin' else 'false' }};
 
   let _all = [];
   let _view = localStorage.getItem('music-view') || 'grid';
   let _sortBy = localStorage.getItem('music-sort') || 'artist';
   let _filterFormat = '';
   let _filterRoom = '';
+  let _selectionMode = false;
+  let _selected = new Set();
+
+  const grid = document.getElementById('disc-grid');
+  const bulkBar = document.getElementById('bulk-bar');
+  const bulkCount = document.getElementById('bulk-count');
+  const btnSelect = document.getElementById('btn-select');
+  const bulkModalOverlay = document.getElementById('bulk-modal-overlay');
+  const bulkModalContent = document.getElementById('bulk-modal-content');
+
+  function escHtml(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
 
   // ── Init ──────────────────────────────────────────────────────────────────
 
   document.getElementById('sort-by').value = _sortBy;
   setView(_view);
 
-  // Localisation rooms
   const roomListEl = document.getElementById('room-list');
   rooms.forEach(r => {
     const btn = document.createElement('button');
@@ -95,7 +129,6 @@
   function buildFormatChips() {
     const formats = [...new Set(_all.map(d => d.format).filter(Boolean))].sort();
     const chips = document.getElementById('format-chips');
-    // Remove existing non-"Tous" chips
     [...chips.querySelectorAll('.fmt-chip:not([data-val=""])')].forEach(c => c.remove());
     formats.forEach(f => {
       const btn = document.createElement('button');
@@ -109,8 +142,7 @@
         _filterFormat = c.dataset.val;
         chips.querySelectorAll('.fmt-chip').forEach(x => x.classList.remove('active'));
         c.classList.add('active');
-        const badge = document.getElementById('badge-format');
-        badge.textContent = _filterFormat ? _filterFormat : '';
+        document.getElementById('badge-format').textContent = _filterFormat;
         render();
       });
     });
@@ -129,8 +161,8 @@
           || (d.barcode||'').includes(q);
     }).sort((a, b) => {
       if (_sortBy === 'artist') return (a.artist||'').localeCompare(b.artist||'') || (a.title||'').localeCompare(b.title||'');
-      if (_sortBy === 'title') return (a.title||'').localeCompare(b.title||'');
-      if (_sortBy === 'year') return (b.year||'0').localeCompare(a.year||'0');
+      if (_sortBy === 'title')  return (a.title||'').localeCompare(b.title||'');
+      if (_sortBy === 'year')   return (b.year||'0').localeCompare(a.year||'0');
       if (_sortBy === 'added_at') return (b.added_at||'').localeCompare(a.added_at||'');
       return 0;
     });
@@ -141,15 +173,30 @@
     document.getElementById('lib-meta').textContent = `${list.length} disque${list.length > 1 ? 's' : ''}`;
 
     if (_view === 'grid') {
-      document.getElementById('disc-grid').innerHTML = list.map(cardHtml).join('');
-      document.getElementById('disc-grid').querySelectorAll('.book-card').forEach(el => {
-        el.addEventListener('click', () => openDiscModal(+el.dataset.id));
+      grid.innerHTML = list.map(cardHtml).join('');
+      grid.querySelectorAll('.book-card').forEach(el => {
+        el.addEventListener('click', () => {
+          if (_selectionMode) toggleSelect(+el.dataset.id, el);
+          else openDiscModal(+el.dataset.id);
+        });
       });
     } else {
-      document.getElementById('disc-list').innerHTML = '<table class="books-table"><thead><tr><th></th><th>Titre</th><th>Artiste</th><th>Format</th><th>Année</th><th>Localisation</th></tr></thead><tbody>'
+      document.getElementById('disc-list').innerHTML =
+        '<table class="books-table"><thead><tr><th></th><th>Titre</th><th>Artiste</th><th>Format</th><th>Année</th><th>Localisation</th></tr></thead><tbody>'
         + list.map(rowHtml).join('') + '</tbody></table>';
       document.getElementById('disc-list').querySelectorAll('tr[data-id]').forEach(el => {
-        el.addEventListener('click', () => openDiscModal(+el.dataset.id));
+        el.addEventListener('click', () => {
+          if (_selectionMode) { toggleSelect(+el.dataset.id, el); }
+          else openDiscModal(+el.dataset.id);
+        });
+      });
+    }
+
+    if (_selectionMode) {
+      grid.classList.add('selection-mode');
+      _selected.forEach(id => {
+        const el = grid.querySelector(`[data-id="${id}"]`);
+        if (el) el.classList.add('selected');
       });
     }
   }
@@ -160,29 +207,135 @@
   }
 
   function cardHtml(d) {
-    const pending = d.enrichment_status === 'pending';
-    return `<div class="book-card${pending ? ' pending' : ''}" data-id="${d.id}">
+    const sel = _selected.has(d.id);
+    return `<div class="book-card${d.enrichment_status === 'pending' ? ' pending' : ''}${sel ? ' selected' : ''}" data-id="${d.id}">
+      <div class="book-select-check" aria-hidden="true"></div>
       <div class="book-cover">${coverEl(d)}</div>
       <div class="book-info">
-        <div class="book-title">${d.title}</div>
-        <div class="book-author">${d.artist || ''}</div>
-        ${d.format || d.year ? `<div class="book-author" style="font-size:.75rem">${[d.format, d.year].filter(Boolean).join(' · ')}</div>` : ''}
+        <div class="book-title">${escHtml(d.title)}</div>
+        <div class="book-author">${escHtml(d.artist || '')}</div>
+        ${d.format || d.year ? `<div class="book-author" style="font-size:.75rem">${[d.format, d.year].filter(Boolean).map(escHtml).join(' · ')}</div>` : ''}
       </div>
     </div>`;
   }
 
   function rowHtml(d) {
-    return `<tr data-id="${d.id}" style="cursor:pointer">
+    const sel = _selected.has(d.id);
+    return `<tr data-id="${d.id}" style="cursor:pointer${sel ? ';background:var(--color-surface-2)' : ''}">
       <td style="width:48px">${d.cover_url ? `<img src="${d.cover_url}" style="width:40px;height:40px;object-fit:cover;border-radius:4px" loading="lazy">` : '<div style="width:40px;height:40px;background:var(--color-surface-2);border-radius:4px;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg></div>'}</td>
-      <td>${d.title}</td>
-      <td>${d.artist || '—'}</td>
-      <td>${d.format || '—'}</td>
-      <td>${d.year || '—'}</td>
-      <td>${d.room_name || '—'}</td>
+      <td>${escHtml(d.title)}</td>
+      <td>${escHtml(d.artist || '—')}</td>
+      <td>${escHtml(d.format || '—')}</td>
+      <td>${escHtml(d.year || '—')}</td>
+      <td>${escHtml(d.room_name || '—')}</td>
     </tr>`;
   }
 
-  // ── Events ────────────────────────────────────────────────────────────────
+  // ── Sélection multiple ────────────────────────────────────────────────────
+
+  function enterSelectionMode() {
+    _selectionMode = true;
+    _selected.clear();
+    btnSelect.textContent = 'Annuler';
+    btnSelect.classList.add('active');
+    bulkBar.style.display = 'flex';
+    grid.classList.add('selection-mode');
+    updateBulkCount();
+  }
+
+  function exitSelectionMode() {
+    _selectionMode = false;
+    _selected.clear();
+    btnSelect.textContent = 'Sélectionner';
+    btnSelect.classList.remove('active');
+    bulkBar.style.display = 'none';
+    grid.classList.remove('selection-mode');
+    grid.querySelectorAll('.book-card.selected').forEach(c => c.classList.remove('selected'));
+  }
+
+  function toggleSelect(id, el) {
+    if (_selected.has(id)) { _selected.delete(id); el.classList.remove('selected'); }
+    else                   { _selected.add(id);    el.classList.add('selected'); }
+    updateBulkCount();
+  }
+
+  function updateBulkCount() {
+    const n = _selected.size;
+    bulkCount.textContent = n === 0 ? 'Aucun sélectionné' : `${n} sélectionné${n > 1 ? 's' : ''}`;
+  }
+
+  btnSelect.addEventListener('click', () => {
+    if (_selectionMode) exitSelectionMode(); else enterSelectionMode();
+  });
+
+  document.getElementById('bulk-cancel').addEventListener('click', exitSelectionMode);
+
+  document.getElementById('bulk-select-all').addEventListener('click', () => {
+    filtered().forEach(d => _selected.add(d.id));
+    grid.querySelectorAll('.book-card').forEach(el => el.classList.add('selected'));
+    updateBulkCount();
+  });
+
+  // ── Actions bulk ──────────────────────────────────────────────────────────
+
+  document.getElementById('bulk-location').addEventListener('click', () => {
+    if (!_selected.size) return;
+    const n = _selected.size;
+    bulkModalContent.innerHTML = `
+      <h2>Changer la localisation</h2>
+      <p class="modal-subtitle">${n} disque${n > 1 ? 's' : ''} sélectionné${n > 1 ? 's' : ''}</p>
+      <form id="bulk-form" class="edit-form">
+        <div class="field">
+          <label>Salle</label>
+          <select id="bulk-room" class="input-full">
+            <option value="">— Sans —</option>
+            ${rooms.map(r => `<option value="${r.id}">${escHtml(r.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-primary">Appliquer</button>
+        </div>
+      </form>`;
+
+    document.getElementById('bulk-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const roomId = document.getElementById('bulk-room').value;
+      await Promise.all([..._selected].map(id =>
+        fetch(`/api/music/${id}`, {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ room_id: roomId ? +roomId : null }),
+        })
+      ));
+      closeBulkModal(); exitSelectionMode(); loadDiscs();
+    });
+
+    bulkModalOverlay.style.display = '';
+    document.body.classList.add('modal-open');
+  });
+
+  const deleteBtn = document.getElementById('bulk-delete');
+  if (deleteBtn) {
+    deleteBtn.addEventListener('click', async () => {
+      if (!_selected.size) return;
+      const n = _selected.size;
+      if (!confirm(`Supprimer ${n} disque${n > 1 ? 's' : ''} définitivement ?`)) return;
+      await Promise.all([..._selected].map(id =>
+        fetch(`/api/music/${id}`, { method: 'DELETE' })
+      ));
+      exitSelectionMode(); loadDiscs();
+    });
+  }
+
+  function closeBulkModal() {
+    bulkModalOverlay.style.display = 'none';
+    document.body.classList.remove('modal-open');
+  }
+
+  document.getElementById('bulk-modal-close').addEventListener('click', closeBulkModal);
+  bulkModalOverlay.addEventListener('click', e => { if (e.target === bulkModalOverlay) closeBulkModal(); });
+
+  // ── Events filtres / tri ──────────────────────────────────────────────────
 
   document.getElementById('search').addEventListener('input', render);
 
@@ -206,12 +359,10 @@
     document.getElementById('icon-list').style.display = v === 'grid' ? '' : 'none';
   }
 
-  // Filtres panels
   document.querySelectorAll('.filter-module-label').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
-      const panelId = btn.dataset.panel;
-      const panel = document.getElementById(panelId);
+      const panel = document.getElementById(btn.dataset.panel);
       const isOpen = panel.classList.contains('open');
       document.querySelectorAll('.filter-module-panel').forEach(p => p.classList.remove('open'));
       if (!isOpen) panel.classList.add('open');
@@ -226,21 +377,19 @@
     p.addEventListener('click', e => e.stopPropagation());
   });
 
-  // Localisation filter
   document.querySelectorAll('.loc-chip').forEach(c => {
     c.addEventListener('click', () => {
       _filterRoom = c.dataset.val;
       document.querySelectorAll('.loc-chip').forEach(x => x.classList.remove('active'));
       c.classList.add('active');
-      const badge = document.getElementById('badge-location');
-      badge.textContent = _filterRoom ? (rooms.find(r => String(r.id) === _filterRoom)?.name || (_filterRoom === 'none' ? 'Sans' : '')) : '';
+      document.getElementById('badge-location').textContent =
+        _filterRoom ? (rooms.find(r => String(r.id) === _filterRoom)?.name || (_filterRoom === 'none' ? 'Sans' : '')) : '';
       render();
     });
   });
 
-  // Callback depuis modale
-  window.onDiscSaved = () => loadDiscs();
-  window.onDiscDeleted = () => loadDiscs();
+  window.onDiscSaved   = () => loadDiscs();
+  window.onDiscDeleted = () => { exitSelectionMode(); loadDiscs(); };
 
 })();
 </script>
