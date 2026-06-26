@@ -17,6 +17,7 @@
         <option value="count_desc">Trier par taille (↓)</option>
         <option value="count_asc">Trier par taille (↑)</option>
       </select>
+      <button id="btn-select-mode" class="btn btn-ghost btn-sm" title="Sélection multiple">Sélectionner</button>
       <button id="btn-view-toggle" class="btn btn-ghost btn-icon" title="Changer l'affichage" aria-label="Vue liste / grille">
         <svg id="icon-grid" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
         <svg id="icon-list" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3" cy="6" r="1" fill="currentColor" stroke="none"/><circle cx="3" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="3" cy="18" r="1" fill="currentColor" stroke="none"/></svg>
@@ -29,6 +30,48 @@
   <div id="empty-state" class="empty-state" style="display:none">
     <div class="empty-icon">📚</div>
     <p>Aucune série trouvée</p>
+  </div>
+</div>
+
+<!-- Barre de sélection flottante -->
+<div id="bulk-bar" style="display:none;position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);z-index:300;background:var(--color-surface);border:1px solid var(--color-border);border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.18);padding:.65rem 1rem;display:none;align-items:center;gap:.75rem;min-width:340px">
+  <span id="bulk-count" style="font-size:.9rem;font-weight:600;flex:1"></span>
+  <button class="btn btn-ghost btn-sm" id="bulk-select-all">Tout sélectionner</button>
+  <button class="btn btn-primary btn-sm" id="bulk-edit-btn">Modifier…</button>
+  <button class="btn btn-ghost btn-sm" id="bulk-cancel-btn">Annuler</button>
+</div>
+
+<!-- Modale édition en masse -->
+<div id="bulk-modal-overlay" class="modal-overlay" style="display:none" role="dialog" aria-modal="true">
+  <div class="modal-card" style="max-width:480px">
+    <button class="modal-close" id="bulk-modal-close">&times;</button>
+    <div class="modal-header" style="flex-direction:column;align-items:flex-start;gap:.25rem">
+      <h2 class="modal-title" style="font-size:1.05rem">Modifier les séries sélectionnées</h2>
+      <p id="bulk-modal-subtitle" style="font-size:.83rem;color:var(--color-text-muted);margin:0"></p>
+    </div>
+    <p style="font-size:.8rem;color:var(--color-text-muted);margin:.5rem 0 1rem">Seuls les champs renseignés seront appliqués à tous les livres de chaque série sélectionnée.</p>
+    <form id="bulk-form" class="edit-form">
+      <div class="form-grid">
+        <div class="field"><label>Auteur(s) <span style="font-weight:400;font-size:.78rem">(séparés par des virgules)</span></label>
+          <input type="text" id="bulk-authors" placeholder="laisser vide pour ne pas modifier…"></div>
+        <div class="field"><label>Éditeur</label>
+          <input type="text" id="bulk-publisher" placeholder="laisser vide pour ne pas modifier…"></div>
+      </div>
+      <div class="field-separator">Localisation (tous les livres des séries)</div>
+      <div class="form-grid form-grid-2">
+        <div class="field"><label>Pièce</label>
+          <select id="bulk-room" class="input-full"><option value="">— ne pas modifier —</option></select>
+        </div>
+        <div class="field"><label>Étagère</label>
+          <select id="bulk-shelf" class="input-full"><option value="">— ne pas modifier —</option></select>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-primary" id="bulk-submit-btn">Appliquer</button>
+        <button type="button" class="btn btn-ghost" id="bulk-form-cancel">Annuler</button>
+      </div>
+      <p id="bulk-msg" class="edit-msg" style="margin-top:.5rem"></p>
+    </form>
   </div>
 </div>
 
@@ -49,12 +92,40 @@
   const searchInput = document.getElementById('search');
   const filterSize = document.getElementById('filter-size');
   const sortBy = document.getElementById('sort-by');
+  const bulkBar = document.getElementById('bulk-bar');
+  const bulkCount = document.getElementById('bulk-count');
+  const bulkModalOverlay = document.getElementById('bulk-modal-overlay');
 
   let _all = [];
+  let _selected = new Set(); // ids sélectionnés
+  let _selectMode = false;
+  let _locTree = [];
   let debounceTimer;
 
   function escHtml(s) {
     return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Localisation (pour le bulk modal) ────────────────────────────────────
+  async function loadLocTree() {
+    try { const r = await fetch('/api/locations/tree'); _locTree = await r.json(); } catch (_) {}
+    const selRoom = document.getElementById('bulk-room');
+    _locTree.forEach(site => {
+      site.rooms.forEach(room => {
+        selRoom.innerHTML += `<option value="${room.id}">${escHtml(site.name)} › ${escHtml(room.name)}</option>`;
+      });
+    });
+    selRoom.addEventListener('change', () => {
+      const selShelf = document.getElementById('bulk-shelf');
+      const rId = parseInt(selRoom.value) || null;
+      selShelf.innerHTML = '<option value="">— ne pas modifier —</option>';
+      if (!rId) return;
+      const site = _locTree.find(s => s.rooms.some(r => r.id === rId));
+      const room = site?.rooms.find(r => r.id === rId);
+      (room?.shelves || []).forEach(sh => {
+        selShelf.innerHTML += `<option value="${sh.id}">${escHtml(sh.name)}</option>`;
+      });
+    });
   }
 
   // ── Vue grille / liste ────────────────────────────────────────────────────
@@ -75,6 +146,54 @@
     localStorage.setItem('bib_series_list_view', listView ? '1' : '0');
     applyViewMode();
   });
+
+  // ── Mode sélection ────────────────────────────────────────────────────────
+  const btnSelectMode = document.getElementById('btn-select-mode');
+
+  function enterSelectMode() {
+    _selectMode = true;
+    _selected.clear();
+    btnSelectMode.textContent = 'Quitter';
+    btnSelectMode.classList.add('btn-primary');
+    btnSelectMode.classList.remove('btn-ghost');
+    bulkBar.style.display = 'flex';
+    updateBulkBar();
+    render();
+  }
+
+  function exitSelectMode() {
+    _selectMode = false;
+    _selected.clear();
+    btnSelectMode.textContent = 'Sélectionner';
+    btnSelectMode.classList.remove('btn-primary');
+    btnSelectMode.classList.add('btn-ghost');
+    bulkBar.style.display = 'none';
+    render();
+  }
+
+  btnSelectMode.addEventListener('click', () => {
+    if (_selectMode) exitSelectMode(); else enterSelectMode();
+  });
+
+  function updateBulkBar() {
+    const n = _selected.size;
+    bulkCount.textContent = n === 0 ? 'Aucune sélection' : `${n} série${n > 1 ? 's' : ''} sélectionnée${n > 1 ? 's' : ''}`;
+    document.getElementById('bulk-edit-btn').disabled = n === 0;
+  }
+
+  document.getElementById('bulk-select-all').addEventListener('click', () => {
+    const visible = filtered().map(s => s.id);
+    const allSelected = visible.every(id => _selected.has(id));
+    if (allSelected) {
+      visible.forEach(id => _selected.delete(id));
+    } else {
+      visible.forEach(id => _selected.add(id));
+    }
+    updateBulkBar();
+    render();
+  });
+
+  document.getElementById('bulk-cancel-btn').addEventListener('click', exitSelectMode);
 
   // ── Filtrage / tri ────────────────────────────────────────────────────────
   function filtered() {
@@ -98,22 +217,47 @@
     emptyState.style.display = list.length === 0 ? 'flex' : 'none';
     grid.innerHTML = '';
     list.forEach(s => grid.appendChild(seriesCard(s)));
+    if (_selectMode) {
+      const visible = list.map(s => s.id);
+      const allSel = visible.length > 0 && visible.every(id => _selected.has(id));
+      document.getElementById('bulk-select-all').textContent = allSel ? 'Tout désélectionner' : 'Tout sélectionner';
+    }
   }
 
   function seriesCard(s) {
     const div = document.createElement('div');
     div.className = 'book-card';
     div.style.cursor = 'pointer';
+    if (_selectMode && _selected.has(s.id)) {
+      div.style.outline = '2px solid var(--color-primary)';
+      div.style.outlineOffset = '2px';
+    }
+
+    const checkHtml = _selectMode
+      ? `<div style="position:absolute;top:.4rem;left:.4rem;width:20px;height:20px;border-radius:50%;background:${_selected.has(s.id) ? 'var(--color-primary)' : 'var(--color-surface)'};border:2px solid ${_selected.has(s.id) ? 'var(--color-primary)' : 'var(--color-border)'};display:flex;align-items:center;justify-content:center;z-index:2;flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,.15)">
+          ${_selected.has(s.id) ? '<svg width="11" height="11" viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3" stroke="white" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>' : ''}
+        </div>`
+      : '';
+
     const cover = s.cover_url
       ? `<img src="${escHtml(s.cover_url)}" alt="couverture" class="book-cover" loading="lazy" onerror="this.src='/static/img/no-cover.svg'">`
       : `<img src="/static/img/no-cover.svg" alt="couverture" class="book-cover">`;
     div.innerHTML = `
-      <div class="book-cover-wrap">${cover}</div>
+      <div class="book-cover-wrap" style="position:relative">${checkHtml}${cover}</div>
       <div class="book-meta">
         <div class="book-title" title="${escHtml(s.name)}">${escHtml(s.name)}</div>
         <div class="book-author">${s.book_count} livre${s.book_count !== 1 ? 's' : ''}</div>
       </div>`;
-    div.addEventListener('click', () => openSeriesModal(s.id));
+    div.addEventListener('click', () => {
+      if (_selectMode) {
+        if (_selected.has(s.id)) _selected.delete(s.id);
+        else _selected.add(s.id);
+        updateBulkBar();
+        render();
+      } else {
+        openSeriesModal(s.id);
+      }
+    });
     return div;
   }
 
@@ -125,7 +269,76 @@
 
   // ── Callbacks modale ──────────────────────────────────────────────────────
   window.onSeriesModalSaved = loadSeries;
-  window.onSeriesModalDeleted = loadSeries;
+  window.onSeriesModalDeleted = () => { exitSelectMode(); loadSeries(); };
+
+  // ── Bulk edit modal ───────────────────────────────────────────────────────
+  document.getElementById('bulk-edit-btn').addEventListener('click', () => {
+    const n = _selected.size;
+    if (!n) return;
+    document.getElementById('bulk-modal-subtitle').textContent =
+      `${n} série${n > 1 ? 's' : ''} sélectionnée${n > 1 ? 's' : ''}`;
+    document.getElementById('bulk-authors').value = '';
+    document.getElementById('bulk-publisher').value = '';
+    document.getElementById('bulk-room').value = '';
+    document.getElementById('bulk-shelf').innerHTML = '<option value="">— ne pas modifier —</option>';
+    document.getElementById('bulk-msg').textContent = '';
+    bulkModalOverlay.style.display = 'flex';
+    document.body.classList.add('modal-open');
+  });
+
+  function closeBulkModal() {
+    bulkModalOverlay.style.display = 'none';
+    document.body.classList.remove('modal-open');
+  }
+
+  document.getElementById('bulk-modal-close').addEventListener('click', closeBulkModal);
+  document.getElementById('bulk-form-cancel').addEventListener('click', closeBulkModal);
+  bulkModalOverlay.addEventListener('click', e => { if (e.target === bulkModalOverlay) closeBulkModal(); });
+
+  document.getElementById('bulk-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const authorsRaw = document.getElementById('bulk-authors').value.trim();
+    const publisher = document.getElementById('bulk-publisher').value.trim();
+    const roomId = parseInt(document.getElementById('bulk-room').value) || null;
+    const shelfId = parseInt(document.getElementById('bulk-shelf').value) || null;
+
+    const body = {};
+    if (authorsRaw) body.authors = authorsRaw.split(',').map(a => a.trim()).filter(Boolean);
+    if (publisher) body.publisher = publisher;
+    if (roomId) body.room_id = roomId;
+    if (shelfId) body.location_id = shelfId;
+
+    if (!Object.keys(body).length) {
+      document.getElementById('bulk-msg').textContent = 'Renseignez au moins un champ.';
+      document.getElementById('bulk-msg').className = 'edit-msg edit-msg-err';
+      return;
+    }
+
+    const btn = document.getElementById('bulk-submit-btn');
+    btn.disabled = true; btn.textContent = 'En cours…';
+    const msg = document.getElementById('bulk-msg');
+    msg.textContent = ''; msg.className = 'edit-msg';
+
+    const ids = [..._selected];
+    const results = await Promise.all(ids.map(id =>
+      fetch(`/api/series/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).then(r => ({ id, ok: r.ok }))
+    ));
+
+    btn.disabled = false; btn.textContent = 'Appliquer';
+    const failed = results.filter(r => !r.ok).length;
+    if (failed) {
+      msg.textContent = `${failed} erreur${failed > 1 ? 's' : ''}.`;
+      msg.className = 'edit-msg edit-msg-err';
+    } else {
+      msg.textContent = `✓ ${ids.length} série${ids.length > 1 ? 's' : ''} mise${ids.length > 1 ? 's' : ''} à jour`;
+      msg.className = 'edit-msg edit-msg-ok';
+      setTimeout(() => { closeBulkModal(); exitSelectMode(); loadSeries(); }, 900);
+    }
+  });
 
   // ── Wiring ────────────────────────────────────────────────────────────────
   searchInput.addEventListener('input', () => {
@@ -135,13 +348,14 @@
   filterSize.addEventListener('change', render);
   sortBy.addEventListener('change', render);
 
+  loadLocTree();
   loadSeries();
 
   // ── Purge (admin) ─────────────────────────────────────────────────────────
   window.confirmPurge = async function() {
     if (!confirm('Supprimer toutes les séries, propositions et réinitialiser les livres ?\nCette action est irréversible.')) return;
     const r = await fetch('/api/series/purge', {method:'POST'});
-    if (r.ok) { _all = []; render(); }
+    if (r.ok) { _all = []; exitSelectMode(); render(); }
   };
 })();
 </script>
