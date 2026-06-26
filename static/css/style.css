@@ -1662,8 +1662,9 @@ body.modal-open { overflow: hidden; }
   .nav-links a { padding: .75rem 1.5rem; border-radius: 0; font-size: 1rem; }
 
   .navbar { position: relative; flex-wrap: wrap; }
-  .nav-user { order: 2; }
-  .nav-hamburger { order: 3; margin-left: .5rem; }
+  .nav-search { order: 2; margin-left: 0; }
+  .nav-user { order: 3; }
+  .nav-hamburger { order: 4; margin-left: auto; }
 }
 
 /* ── Responsive global ───────────────────────────────────────────────────── */
