@@ -59,6 +59,7 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
 }
 
 .main-content { flex: 1; }
@@ -1664,6 +1665,7 @@ body.modal-open { overflow: hidden; }
   .nav-links.open { display: flex; }
   .nav-links a { padding: .75rem 1.5rem; border-radius: 0; font-size: 1rem; }
 
+  .nav-logo-text { display: none; }
   .navbar { position: relative; flex-wrap: nowrap; padding: 0 .75rem; gap: .5rem; }
   .nav-logo { flex-shrink: 0; }
   .nav-search { order: 2; margin-left: auto; }
