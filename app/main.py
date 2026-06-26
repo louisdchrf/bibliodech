@@ -614,8 +614,6 @@ from fastapi.responses import PlainTextResponse
 _DOCS_ROOT = pathlib.Path(__file__).parent.parent
 
 _DOC_FILES = [
-    ("README",              "README.md",                   "Présentation"),
-    ("ROADMAP",             "ROADMAP.md",                  "Roadmap"),
     ("FONCTIONNALITES",     "docs/FONCTIONNALITES.md",     "Fonctionnalités"),
     ("STACK",               "docs/STACK.md",               "Stack technique"),
     ("SERIE_ASSIGNATION",   "docs/SERIE_ASSIGNATION.md",   "Assignation des séries"),
