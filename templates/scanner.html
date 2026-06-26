@@ -572,17 +572,17 @@
   }
 
   function isBarcodeInFrame(result) {
-    // Vérifie que le centre du code-barres est dans la zone du viseur
-    // (correspond aux marges area: top/bottom 25%, left/right 11%)
+    // result.box est en coordonnées canvas (pixels flux vidéo), pas CSS.
     const box = result.box;
-    if (!box || !box.length) return true; // pas de box → on laisse passer
-    const vp = document.getElementById('quagga-viewport');
-    if (!vp) return true;
-    const W = vp.offsetWidth, H = vp.offsetHeight;
+    if (!box || !box.length) return true;
+    const canvas = Quagga.canvas?.dom?.image;
+    const W = canvas?.width;
+    const H = canvas?.height;
+    if (!W || !H) return true;
     const cx = box.reduce((s, p) => s + p[0], 0) / box.length;
     const cy = box.reduce((s, p) => s + p[1], 0) / box.length;
-    const marginX = W * 0.11, marginY = H * 0.25;
-    return cx >= marginX && cx <= W - marginX && cy >= marginY && cy <= H - marginY;
+    // Marges identiques à area: left/right 11%, top/bottom 25%
+    return cx >= W * 0.11 && cx <= W * 0.89 && cy >= H * 0.25 && cy <= H * 0.75;
   }
 
   function onBarcodeDetected(result) {
