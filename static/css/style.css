@@ -2291,7 +2291,16 @@ html.dark .missing-vol-tobuy     { background: #2d0f0f; }
   letter-spacing: .07em;
   color: var(--color-text-muted);
 }
-.msel-opt-shelf { padding: .4rem .75rem; font-size: .875rem; color: var(--color-text-muted); }
+.msel-opt-shelf {
+  padding: .3rem .75rem .3rem 2rem;
+  font-size: .82rem;
+  color: var(--color-text-muted);
+  border-left: 2px solid var(--color-border);
+  margin-left: 1.25rem;
+  margin-right: .25rem;
+  border-radius: 0 4px 4px 0;
+}
+.msel-opt-shelf:hover { background: var(--color-surface-2); }
 
 /* ── Prochain lancement ──────────────────────────────────────────────────── */
 .task-next-run {
