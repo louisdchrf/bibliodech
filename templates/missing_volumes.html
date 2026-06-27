@@ -67,6 +67,7 @@
     const timelineCells = [];
     const elsewhereByPos = {};
     (s.gaps_detail || []).forEach(g => { if (g.found_elsewhere) elsewhereByPos[g.position] = g.found_elsewhere; });
+    const ownedByPos = s.owned_by_pos || {};
     const displayMax = Math.max(maxPos, s.bnf_max_known || 0);
 
     for (let i = 1; i <= displayMax; i++) {
@@ -75,7 +76,7 @@
       const beyondOwned = i > maxPos;
       let bg, color, border, titleAttr, cursor;
       if (isOwned) {
-        bg = 'var(--color-primary)'; color = '#fff'; border = 'none'; titleAttr = `Tome ${i}`; cursor = 'default';
+        bg = 'var(--color-primary)'; color = '#fff'; border = 'none'; titleAttr = `Tome ${i}`; cursor = 'pointer';
       } else if (elsewhere) {
         bg = 'var(--color-warn,#e07b00)'; color = '#fff'; border = 'none';
         titleAttr = `Tome ${i} — présent dans la bibliothèque : "${elsewhere.title}"${elsewhere.series_id ? ' (autre série)' : ' (sans série)'}`;
@@ -87,8 +88,11 @@
         bg = 'var(--color-surface-2)'; color = 'var(--color-text-muted)'; border = '2px dashed var(--color-border)';
         titleAttr = `Tome ${i} — manquant`; cursor = 'default';
       }
+      const clickHandler = isOwned && ownedByPos[i]
+        ? `onclick="openBookModal(${ownedByPos[i]})"`
+        : elsewhere ? `onclick="openBookModal(${elsewhere.id})"` : '';
       timelineCells.push(
-        `<div title="${escAttr(titleAttr)}" ${elsewhere ? `onclick="openBookModal(${elsewhere.id})"` : ''} style="
+        `<div title="${escAttr(titleAttr)}" ${clickHandler} style="
           width:28px;height:28px;border-radius:4px;display:flex;align-items:center;justify-content:center;
           font-size:.7rem;font-weight:600;cursor:${cursor};
           background:${bg};color:${color};border:${border};

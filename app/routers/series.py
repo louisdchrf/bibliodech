@@ -1358,6 +1358,7 @@ def get_missing_volumes(request: Request, db: Session = Depends(get_db)):
             "name": s.name,
             "cover_url": cover,
             "owned": sorted(owned),
+            "owned_by_pos": {int(b.series_position): b.id for b in books_with_pos},
             "max_owned": max_pos,
             "bnf_max_known": bnf_max if s.bnf_max_known else None,
             "gaps": gaps,
