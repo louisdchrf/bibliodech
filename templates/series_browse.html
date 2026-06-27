@@ -55,8 +55,25 @@
 <div id="bulk-bar" style="display:none;position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);z-index:300;background:var(--color-surface);border:1px solid var(--color-border);border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.18);padding:.65rem 1rem;display:none;align-items:center;gap:.75rem;min-width:340px">
   <span id="bulk-count" style="font-size:.9rem;font-weight:600;flex:1"></span>
   <button class="btn btn-ghost btn-sm" id="bulk-select-all">Tout sélectionner</button>
+  <button class="btn btn-secondary btn-sm" id="bulk-merge-btn" style="display:none">Fusionner…</button>
   <button class="btn btn-primary btn-sm" id="bulk-edit-btn">Modifier…</button>
   <button class="btn btn-ghost btn-sm" id="bulk-cancel-btn">Annuler</button>
+</div>
+
+<!-- Modale fusion -->
+<div id="merge-modal-overlay" class="modal-overlay" style="display:none" role="dialog" aria-modal="true">
+  <div class="modal-card" style="max-width:420px">
+    <button class="modal-close" id="merge-modal-close">&times;</button>
+    <div class="modal-header" style="flex-direction:column;align-items:flex-start;gap:.25rem">
+      <h2 class="modal-title" style="font-size:1.05rem">Fusionner deux séries</h2>
+      <p style="font-size:.83rem;color:var(--color-text-muted);margin:0">Choisissez la série à conserver. L'autre sera supprimée et ses livres déplacés.</p>
+    </div>
+    <div id="merge-choices" style="display:flex;flex-direction:column;gap:.5rem;margin:1rem 0"></div>
+    <p id="merge-msg" class="edit-msg" style="margin-top:.5rem"></p>
+    <div class="modal-actions" style="margin-top:.5rem">
+      <button class="btn btn-ghost" id="merge-cancel-btn">Annuler</button>
+    </div>
+  </div>
 </div>
 
 <!-- Modale édition en masse -->
@@ -273,7 +290,55 @@
     const n = _selected.size;
     bulkCount.textContent = n === 0 ? 'Aucune sélection' : `${n} série${n > 1 ? 's' : ''} sélectionnée${n > 1 ? 's' : ''}`;
     document.getElementById('bulk-edit-btn').disabled = n === 0;
+    const mergeBtn = document.getElementById('bulk-merge-btn');
+    mergeBtn.style.display = n === 2 ? '' : 'none';
   }
+
+  // ── Fusion ────────────────────────────────────────────────────────────────
+  const mergeOverlay = document.getElementById('merge-modal-overlay');
+  function closeMergeModal() {
+    mergeOverlay.style.display = 'none';
+    document.body.classList.remove('modal-open');
+  }
+  document.getElementById('merge-modal-close').addEventListener('click', closeMergeModal);
+  document.getElementById('merge-cancel-btn').addEventListener('click', closeMergeModal);
+  mergeOverlay.addEventListener('click', e => { if (e.target === mergeOverlay) closeMergeModal(); });
+
+  document.getElementById('bulk-merge-btn').addEventListener('click', () => {
+    const ids = [..._selected];
+    if (ids.length !== 2) return;
+    const [a, b] = ids.map(id => _all.find(s => s.id === id));
+    if (!a || !b) return;
+    const msg = document.getElementById('merge-msg');
+    msg.textContent = '';
+    document.getElementById('merge-choices').innerHTML = [a, b].map(keep => {
+      const other = keep === a ? b : a;
+      return `<button class="btn btn-ghost" style="text-align:left;padding:.75rem 1rem;border:1px solid var(--color-border);border-radius:8px;display:flex;flex-direction:column;gap:.2rem"
+        onclick="doMerge(${other.id}, ${keep.id})">
+        <span style="font-weight:600">Garder <em>${escHtml(keep.name)}</em></span>
+        <span style="font-size:.8rem;color:var(--color-text-muted)">Supprimer "${escHtml(other.name)}" (${other.book_count} tome${other.book_count !== 1 ? 's' : ''} déplacés)</span>
+      </button>`;
+    }).join('');
+    mergeOverlay.style.display = 'flex';
+    document.body.classList.add('modal-open');
+  });
+
+  window.doMerge = async function(sourceId, targetId) {
+    const msg = document.getElementById('merge-msg');
+    msg.textContent = 'Fusion en cours…'; msg.className = 'edit-msg';
+    document.querySelectorAll('#merge-choices button').forEach(b => b.disabled = true);
+    const res = await fetch(`/api/series/${sourceId}/merge-into/${targetId}`, { method: 'POST' });
+    if (res.ok) {
+      const data = await res.json();
+      msg.textContent = `✓ ${data.merged} tome${data.merged !== 1 ? 's' : ''} déplacés vers "${data.target_name}"${data.conflicts ? ` (${data.conflicts} conflit${data.conflicts !== 1 ? 's' : ''} de numéro)` : ''}`;
+      msg.className = 'edit-msg edit-msg-ok';
+      setTimeout(() => { closeMergeModal(); exitSelectMode(); loadSeries(); }, 1200);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      msg.textContent = err.detail || 'Erreur'; msg.className = 'edit-msg edit-msg-err';
+      document.querySelectorAll('#merge-choices button').forEach(b => b.disabled = false);
+    }
+  };
 
   document.getElementById('bulk-select-all').addEventListener('click', () => {
     const visible = filtered().map(s => s.id);

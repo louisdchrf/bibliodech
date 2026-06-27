@@ -1118,6 +1118,39 @@ def get_series_loans(series_id: int, request: Request, db: Session = Depends(get
     return out
 
 
+@router.post("/api/series/{series_id}/merge-into/{target_id}")
+def merge_series(series_id: int, target_id: int, request: Request, db: Session = Depends(get_db)):
+    """Fusionne series_id dans target_id : déplace tous les livres, supprime la source."""
+    from fastapi import HTTPException
+    user = get_current_user(request, db)
+    require_contributor(user)
+    if series_id == target_id:
+        raise HTTPException(400, "Impossible de fusionner une série avec elle-même")
+    source = db.query(Series).filter(Series.id == series_id).first()
+    target = db.query(Series).filter(Series.id == target_id).first()
+    if not source or not target:
+        raise HTTPException(404, "Série introuvable")
+
+    # Positions déjà utilisées dans la cible
+    taken = {b.series_position for b in target.books if b.series_position is not None}
+
+    moved = 0
+    conflicts = 0
+    for book in list(source.books):
+        book.series_id = target_id
+        if book.series_position is not None and book.series_position in taken:
+            # Conflit de position — on garde la position mais on signale
+            conflicts += 1
+        elif book.series_position is not None:
+            taken.add(book.series_position)
+        moved += 1
+
+    db.query(SeriesProposal).filter(SeriesProposal.existing_series_id == series_id).update({"existing_series_id": target_id})
+    db.delete(source)
+    db.commit()
+    return {"merged": moved, "conflicts": conflicts, "target_id": target_id, "target_name": target.name}
+
+
 @router.delete("/api/series/{series_id}", status_code=204)
 def delete_series(series_id: int, request: Request, db: Session = Depends(get_db)):
     from fastapi import HTTPException

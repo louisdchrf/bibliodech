@@ -130,7 +130,17 @@
           <button type="submit" class="btn btn-primary">Enregistrer</button>
           ${isAdmin ? `<button type="button" id="sm-delete-btn" class="btn btn-danger">Supprimer la série</button>` : ''}
         </div>
-        <p id="sm-save-msg" class="edit-msg" style="margin-top:.5rem"></p>` : ''}
+        <p id="sm-save-msg" class="edit-msg" style="margin-top:.5rem"></p>
+        <div class="field-separator" style="margin-top:1.25rem">Fusionner avec une autre série</div>
+        <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+          <select id="sm-merge-target" class="input-full" style="flex:1;min-width:0">
+            <option value="">— Choisir une série à absorber —</option>
+          </select>
+          <button type="button" class="btn btn-ghost btn-sm" id="sm-merge-btn">Fusionner</button>
+        </div>
+        <p style="font-size:.78rem;color:var(--color-text-muted);margin:.3rem 0 0">Les livres de la série choisie seront déplacés ici, puis cette série sera supprimée.</p>
+        <p id="sm-merge-msg" class="edit-msg" style="margin-top:.3rem"></p>
+        ` : ''}
       </form>
     `;
   }
@@ -184,6 +194,41 @@
         msg.textContent = err.detail || 'Erreur'; msg.className = 'edit-msg edit-msg-err';
       }
     });
+
+    // Fusionner avec une autre série
+    const mergeTarget = document.getElementById('sm-merge-target');
+    const mergeBtn = document.getElementById('sm-merge-btn');
+    if (mergeTarget) {
+      fetch('/api/series').then(r => r.json()).then(all => {
+        all.filter(s => s.id !== series.id).sort((a,b) => a.name.localeCompare(b.name, 'fr')).forEach(s => {
+          const opt = document.createElement('option');
+          opt.value = s.id;
+          opt.textContent = `${s.name} (${s.book_count} tome${s.book_count !== 1 ? 's' : ''})`;
+          mergeTarget.appendChild(opt);
+        });
+      });
+      mergeBtn.addEventListener('click', async () => {
+        const sourceId = parseInt(mergeTarget.value);
+        if (!sourceId) return;
+        const sourceName = mergeTarget.options[mergeTarget.selectedIndex].text;
+        if (!confirm(`Fusionner "${sourceName}" dans "${series.name}" ?\nLa série source sera supprimée.`)) return;
+        const mergeMsg = document.getElementById('sm-merge-msg');
+        mergeBtn.disabled = true; mergeBtn.textContent = '⏳';
+        const res = await fetch(`/api/series/${sourceId}/merge-into/${series.id}`, { method: 'POST' });
+        if (res.ok) {
+          const data = await res.json();
+          mergeMsg.textContent = `✓ ${data.merged} tome${data.merged !== 1 ? 's' : ''} déplacés${data.conflicts ? ` (${data.conflicts} conflit${data.conflicts !== 1 ? 's' : ''} de numéro)` : ''}`;
+          mergeMsg.className = 'edit-msg edit-msg-ok';
+          window.onSeriesModalSaved?.();
+          // Recharger la modale pour refléter les nouveaux tomes
+          setTimeout(() => window.openSeriesModal(series.id), 1000);
+        } else {
+          const err = await res.json().catch(() => ({}));
+          mergeMsg.textContent = err.detail || 'Erreur'; mergeMsg.className = 'edit-msg edit-msg-err';
+          mergeBtn.disabled = false; mergeBtn.textContent = 'Fusionner';
+        }
+      });
+    }
 
     if (isAdmin) {
       document.getElementById('sm-delete-btn')?.addEventListener('click', async () => {
