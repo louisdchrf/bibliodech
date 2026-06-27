@@ -38,6 +38,7 @@
   const content = document.getElementById('series-modal-content');
 
   let _locTree = [];
+  let _currentSeriesId = null;
   const _ready = fetch('/api/locations/tree').then(r => r.json()).then(d => { _locTree = d; }).catch(() => {});
 
   function fmtDate(iso) {
@@ -47,6 +48,7 @@
 
   // ── Ouvrir / fermer ───────────────────────────────────────────────────────
   window.openSeriesModal = async function (seriesId) {
+    _currentSeriesId = seriesId;
     await _ready;
     overlay.style.display = 'flex';
     document.body.classList.add('modal-open');
@@ -320,8 +322,12 @@
 
   // ── Ouvrir un livre depuis l'onglet Tomes ────────────────────────────────
   window.openBookFromSeriesModal = function(bookId) {
+    const currentSeriesId = _currentSeriesId;
     overlay.style.display = 'none';
     openBookModal(bookId);
+    window.onBookModalSaved = () => {
+      if (currentSeriesId) window.openSeriesModal(currentSeriesId);
+    };
     window.onBookModalClosed = () => { overlay.style.display = 'flex'; };
   };
 
