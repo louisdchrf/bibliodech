@@ -141,6 +141,7 @@ class BulkUpdateData(BaseModel):
     authors: Optional[list[str]] = None
     series_id: Optional[int] = None
     series_position: Optional[float] = None
+    series_start: Optional[int] = None   # numéro de tome de départ (incrémenté par livre)
     room_id: Optional[int] = None
 
 

@@ -105,6 +105,7 @@
   <div class="bulk-actions">
     <button class="btn btn-ghost btn-sm" id="bulk-select-all">Tout sélectionner</button>
     <button class="btn btn-ghost btn-sm" id="bulk-authors">Modifier auteurs</button>
+    <button class="btn btn-ghost btn-sm" id="bulk-series">Série</button>
 <button class="btn btn-ghost btn-sm" id="bulk-location">Localisation</button>
     <button class="btn btn-ghost btn-sm" id="bulk-reenrich">🔄 Recharger</button>
     {% if user.role == 'admin' %}<button class="btn btn-danger btn-sm" id="bulk-delete">Supprimer</button>{% endif %}
@@ -333,6 +334,7 @@
   let debounceTimer;
   let allLocations = [];
   let locTree = [];
+  let allSeries = [];
   let selectionMode = false;
   let selectedIds = new Set();
 
@@ -361,6 +363,9 @@
     applyViewMode();
   });
 
+
+  // ── Series list ───────────────────────────────────────────────────────────
+  fetch('/api/series').then(r => r.ok ? r.json() : []).then(d => { allSeries = d; }).catch(() => {});
 
   // ── Locations ─────────────────────────────────────────────────────────────
   async function loadLocations() {
@@ -535,6 +540,11 @@
   });
 
   // ── Bulk actions ──────────────────────────────────────────────────────────
+  document.getElementById('bulk-series').addEventListener('click', () => {
+    if (!selectedIds.size) return;
+    openBulkModal('series');
+  });
+
   document.getElementById('bulk-authors').addEventListener('click', () => {
     if (!selectedIds.size) return;
     openBulkModal('authors');
@@ -596,6 +606,27 @@
             <button type="submit" class="btn btn-primary">Appliquer</button>
           </div>
         </form>`;
+    } else if (type === 'series') {
+      const seriesOptions = allSeries.map(s => `<option value="${s.id}">${escHtml(s.name)}</option>`).join('');
+      modalContent.innerHTML = `
+        <h2>Assigner une série</h2>
+        <p class="modal-subtitle">${n} livre${n > 1 ? 's' : ''} sélectionné${n > 1 ? 's' : ''}</p>
+        <form id="bulk-form" class="edit-form">
+          <div class="field">
+            <label>Série</label>
+            <select name="series_id" class="input-full">
+              <option value="">— Aucune —</option>
+              ${seriesOptions}
+            </select>
+          </div>
+          <div class="field">
+            <label>Tome de départ <span style="font-weight:400;color:var(--color-text-muted)">(optionnel — incrémenté pour chaque livre)</span></label>
+            <input type="number" name="series_start" min="1" step="1" placeholder="ex: 1">
+          </div>
+          <div class="modal-actions">
+            <button type="submit" class="btn btn-primary">Appliquer</button>
+          </div>
+        </form>`;
     } else if (type === 'location') {
       modalContent.innerHTML = `
         <h2>Changer la localisation</h2>
@@ -638,6 +669,11 @@
       if (type === 'authors') {
         const raw = fd.get('authors') || '';
         data.authors = raw.split(',').map(a => a.trim()).filter(Boolean);
+      } else if (type === 'series') {
+        const sid = fd.get('series_id');
+        data.series_id = sid ? parseInt(sid) : null;
+        const start = fd.get('series_start');
+        if (start) data.series_start = parseInt(start);
       } else if (type === 'location') {
         const roomId = document.getElementById('bulk-loc-room')?.value;
         data.room_id = roomId ? parseInt(roomId) : null;

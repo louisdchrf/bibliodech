@@ -399,6 +399,7 @@ def bulk_books(
         d = body.data
         if d is None:
             raise HTTPException(status_code=400, detail="data requis pour action update")
+        pos_counter = float(d.series_start) if d.series_start is not None else None
         for b in books:
             if d.authors is not None:
                 b.authors = json.dumps(d.authors)
@@ -406,7 +407,12 @@ def bulk_books(
                 b.room_id = d.room_id
             if d.series_id is not None:
                 b.series_id = d.series_id
-            if d.series_position is not None:
+            elif d.series_id == 0:
+                b.series_id = None
+            if pos_counter is not None:
+                b.series_position = pos_counter
+                pos_counter += 1
+            elif d.series_position is not None:
                 b.series_position = d.series_position
         db.commit()
         return {"updated": len(books)}
