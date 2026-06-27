@@ -136,17 +136,32 @@
         el.innerHTML = `<span style="font-size:.82rem;color:var(--color-text-muted)">Aucune donnée trouvée sur la BnF pour cette série.</span>`;
         return;
       }
-      const ownedSet = new Set(s ? s.owned : []);
-      const bnfVolumes = new Set(data.volumes_found);
-      const notOwned = data.volumes_found.filter(v => !ownedSet.has(v));
-      const newTomes = notOwned.filter(v => v > (s ? s.max_owned : 0));
-      const gapsToo = notOwned.filter(v => v <= (s ? s.max_owned : 0));
+      // Mettre à jour _data et re-rendre la timeline
+      if (s) {
+        s.bnf_max_known = data.max_known;
+        const card = document.getElementById(`series-${seriesId}`);
+        if (card) {
+          const newCard = makeCard(s);
+          card.replaceWith(newCard);
+        }
+      }
+      // el peut avoir changé si la carte a été re-rendue
+      const el2 = document.getElementById(`bnf-${seriesId}`) || el;
 
-      // Tous les tomes non possédés (nouveaux + trous)
-      const allMissing = [...new Set([...newTomes, ...gapsToo])].sort((a,b) => a-b);
+      const ownedSet = new Set(s ? s.owned : []);
+      const notOwned = data.volumes_found.filter(v => !ownedSet.has(v));
+      const allMissing = [...new Set(notOwned)].sort((a,b) => a-b);
+
+      // Filtrer les volumes dont le titre est juste le nom de série (non informatifs)
+      const seriesNameNorm = (s?.name || name).toLowerCase().trim();
+      function hasUsefulTitle(v) {
+        const t = (data.titles?.[v] || '').toLowerCase().trim();
+        return t && t !== seriesNameNorm;
+      }
 
       function renderVolume(v) {
-        const t = data.titles?.[v] ? escHtml(data.titles[v]) : `Tome ${v}`;
+        const rawTitle = data.titles?.[v];
+        const t = rawTitle ? escHtml(rawTitle) : `Tome ${v}`;
         const isbn = data.isbn_by_volume?.[v];
         const bookId = data.in_library?.[v];
         if (bookId) {
@@ -162,18 +177,27 @@
         </li>`;
       }
 
+      // N'afficher que les tomes avec un titre utile (pas juste le nom de série)
+      // + toujours les trous internes (v <= max_owned) même sans titre
+      const maxOwned = s ? s.max_owned : 0;
+      const displayMissing = allMissing.filter(v => hasUsefulTitle(v) || v <= maxOwned);
+
       let html = `<div style="font-size:.82rem;margin-top:.25rem">
         <span style="color:var(--color-text-muted)">BnF recense ${data.volumes_found.length} tome${data.volumes_found.length > 1 ? 's' : ''} (jusqu'au tome ${data.max_known}) — croisé par numéro de tome, ISBN et titre</span>`;
 
-      if (allMissing.length) {
+      if (displayMissing.length) {
+        const hiddenCount = allMissing.length - displayMissing.length;
         html += `<ul style="margin:.4rem 0 0 1rem;padding:0;display:flex;flex-direction:column;gap:.2rem">
-          ${allMissing.map(renderVolume).join('')}
+          ${displayMissing.map(renderVolume).join('')}
         </ul>`;
+        if (hiddenCount > 0) {
+          html += `<span style="color:var(--color-text-muted);font-size:.78rem">${hiddenCount} tome${hiddenCount > 1 ? 's' : ''} supplémentaire${hiddenCount > 1 ? 's' : ''} recensé${hiddenCount > 1 ? 's' : ''} sans titre distinct.</span>`;
+        }
       } else {
         html += `<br><span style="color:var(--color-ok,#2e9e5b)">Vous avez tous les tomes référencés sur la BnF.</span>`;
       }
       html += `</div>`;
-      el.innerHTML = html;
+      el2.innerHTML = html;
     } catch {
       el.innerHTML = `<span style="font-size:.82rem;color:var(--color-error)">Erreur lors de la vérification BnF.</span>`;
     }
