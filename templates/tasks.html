@@ -121,7 +121,7 @@
         <select id="sched-interval-${t.id}" class="select-input" style="width:auto;font-size:.82rem">
           ${INTERVAL_PRESETS.map(p => `<option value="${p.value}" ${cfg.interval_minutes === p.value ? 'selected' : ''}>${p.label}</option>`).join('')}
         </select>
-        <button class="btn btn-ghost btn-sm ${t.expand ? '' : 'task-btn'}" ${btnId ? `id="${btnId}"` : ''} data-task="${t.id}">${btnLabel}</button>
+        <button class="btn btn-ghost btn-sm task-btn" ${btnId ? `id="${btnId}"` : ''} data-task="${t.id}">${btnLabel}</button>
       </div>
       ${t.expand ? `<div id="expand-${t.id}" style="display:none;margin-top:1rem;width:100%"></div>` : ''}`;
     return div;

@@ -2024,7 +2024,8 @@ body.modal-open { overflow: hidden; }
 
 /* ── Fusion séries doublons ─────────────────────────────────────────────── */
 .task-card-expand { flex-wrap: wrap; }
-.task-card-expand .task-actions { width: 100%; justify-content: flex-start; }
+.task-card-expand .task-info { width: 100%; }
+.task-card-expand .task-actions { flex-shrink: 0; }
 
 .dupe-pair {
   display: flex; flex-direction: column; gap: .5rem;
