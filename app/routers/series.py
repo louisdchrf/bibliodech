@@ -618,14 +618,20 @@ async def _detect(db: Session, task_id: str = "detect-series") -> dict:
             data = json.loads(b.source_data)
         except Exception:
             continue
-        # Prendre le premier series_name non-null parmi toutes les sources
+        # Prendre le premier series_name non-null parmi toutes les sources,
+        # à condition que le nom de série apparaisse dans le titre de la même source
+        # (filtre les collections éditoriales comme "Les grands formats", "Poche"…).
         for src, v in data.items():
-            if isinstance(v, dict) and v.get("series_name"):
-                sn = v["series_name"]
-                sp = v.get("series_position")
-                pos = float(sp) if sp is not None else None
-                source_series_groups[_norm(sn)].append((b, pos, sn))
-                break
+            if not isinstance(v, dict) or not v.get("series_name"):
+                continue
+            sn = v["series_name"]
+            src_title = v.get("title") or b.title
+            if _norm(sn) not in _norm(src_title):
+                continue  # series_name absent du titre → collection éditeur probable
+            sp = v.get("series_position")
+            pos = float(sp) if sp is not None else None
+            source_series_groups[_norm(sn)].append((b, pos, sn))
+            break
 
     for norm_name, entries in source_series_groups.items():
         canon_name = entries[0][2]  # nom brut de la première entrée

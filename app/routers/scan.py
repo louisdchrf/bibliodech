@@ -139,16 +139,20 @@ async def _enrich_book(book_id: int, isbn: str, _progress_key: str | None = None
             from app.models import Series
             from app.routers.series import _norm
             s_name = info["series_name"]
-            all_series = db.query(Series).all()
-            match = next((s for s in all_series if _norm(s.name) == _norm(s_name)), None)
-            if not match:
-                match = Series(name=s_name, source=info.get("source", "lookup"))
-                db.add(match)
-                db.flush()
-            if not book.series_id:
-                book.series_id = match.id
-            if info.get("series_position") is not None and book.series_position is None:
-                book.series_position = float(info["series_position"])
+            # Rejeter les collections éditoriales : le nom de série doit apparaître
+            # dans le titre brut retourné par la même source.
+            raw_title = info.get("title") or book.title or ""
+            if _norm(s_name) in _norm(raw_title):
+                all_series = db.query(Series).all()
+                match = next((s for s in all_series if _norm(s.name) == _norm(s_name)), None)
+                if not match:
+                    match = Series(name=s_name, source=info.get("source", "lookup"))
+                    db.add(match)
+                    db.flush()
+                if not book.series_id:
+                    book.series_id = match.id
+                if info.get("series_position") is not None and book.series_position is None:
+                    book.series_position = float(info["series_position"])
 
         book.enrichment_status = "ok"
         book.enrichment_source = info.get("source")
@@ -370,15 +374,17 @@ async def apply_book_source(
         from app.models import Series
         from app.routers.series import _norm
         s_name = data["series_name"]
-        all_series = db.query(Series).all()
-        match = next((s for s in all_series if _norm(s.name) == _norm(s_name)), None)
-        if not match:
-            match = Series(name=s_name, source=source_id)
-            db.add(match)
-            db.flush()
-        book.series_id = match.id
-        if data.get("series_position") is not None and book.series_position is None:
-            book.series_position = float(data["series_position"])
+        raw_title = data.get("title") or book.title or ""
+        if _norm(s_name) in _norm(raw_title):
+            all_series = db.query(Series).all()
+            match = next((s for s in all_series if _norm(s.name) == _norm(s_name)), None)
+            if not match:
+                match = Series(name=s_name, source=source_id)
+                db.add(match)
+                db.flush()
+            book.series_id = match.id
+            if data.get("series_position") is not None and book.series_position is None:
+                book.series_position = float(data["series_position"])
     book.enrichment_source = source_id
     book.source = source_id
 
