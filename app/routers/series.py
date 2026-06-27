@@ -595,6 +595,56 @@ async def _detect(db: Session, task_id: str = "detect-series") -> dict:
 
     db.commit()
 
+    # ── Signal 0b : series_name dans source_data ─────────────────────────────
+    # Certains livres ont été enrichis par plusieurs sources : la source primaire
+    # (ex. Decitre) ne contient pas de series_name, mais une source secondaire
+    # (ex. BNF) en a un stocké dans source_data. On parcourt toutes les sources.
+
+    books_after_s0 = (
+        db.query(Book)
+        .filter(Book.enrichment_status == "ok", Book.series_id.is_(None))
+        .all()
+    )
+    all_series_by_norm = {_norm(s.name): s for s in db.query(Series).all()}
+
+    source_series_groups: dict[str, list[tuple[Book, float | None]]] = defaultdict(list)
+    for b in books_after_s0:
+        if not b.source_data:
+            continue
+        try:
+            data = json.loads(b.source_data)
+        except Exception:
+            continue
+        # Prendre le premier series_name non-null parmi toutes les sources
+        for src, v in data.items():
+            if isinstance(v, dict) and v.get("series_name"):
+                sn = v["series_name"]
+                sp = v.get("series_position")
+                pos = float(sp) if sp is not None else None
+                source_series_groups[_norm(sn)].append((b, pos, sn))
+                break
+
+    for norm_name, entries in source_series_groups.items():
+        canon_name = entries[0][2]  # nom brut de la première entrée
+        series = all_series_by_norm.get(norm_name)
+        if not series:
+            series = next(
+                (s for n, s in all_series_by_norm.items() if norm_name in n or n in norm_name),
+                None,
+            )
+        if not series:
+            series = Series(name=canon_name, source="detected")
+            db.add(series)
+            db.flush()
+            all_series_by_norm[_norm(canon_name)] = series
+        for b, position, _ in entries:
+            b.series_id = series.id
+            if position is not None and b.series_position is None:
+                b.series_position = position
+            auto_assigned += 1
+
+    db.commit()
+
     # Recalculer les orphelins après Signal 0
     books = (
         db.query(Book)
