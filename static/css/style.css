@@ -2296,7 +2296,7 @@ html.dark .missing-vol-tobuy     { background: #2d0f0f; }
   font-size: .82rem;
   color: var(--color-text-muted);
   border-left: 2px solid var(--color-border);
-  margin-left: 1.25rem;
+  margin-left: 1.75rem;
   margin-right: .25rem;
   border-radius: 0 4px 4px 0;
 }
