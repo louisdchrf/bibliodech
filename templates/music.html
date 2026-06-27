@@ -41,7 +41,7 @@
           <button class="filter-chip loc-chip active" data-val="">Toute</button>
           <button class="filter-chip loc-chip" data-val="none">Sans</button>
         </div>
-        <div class="fp-list" id="room-list"></div>
+        <div class="fp-list" id="msel-location-drop"></div>
       </div>
     </div>
   </div>
@@ -85,7 +85,7 @@
   let _view = localStorage.getItem('music-view') || 'grid';
   let _sortBy = localStorage.getItem('music-sort') || 'artist';
   let _filterFormat = '';
-  let _filterRoom = '';
+  let locTree = [];
   let _selectionMode = false;
   let _selected = new Set();
 
@@ -101,15 +101,58 @@
   document.getElementById('sort-by').value = _sortBy;
   setView(_view);
 
-  const roomListEl = document.getElementById('room-list');
-  rooms.forEach(r => {
-    const btn = document.createElement('button');
-    btn.className = 'filter-chip loc-chip';
-    btn.dataset.val = String(r.id);
-    btn.textContent = r.name;
-    roomListEl.appendChild(btn);
-  });
+  function makeInlineList(dropId, onChangeCb) {
+    const drop = document.getElementById(dropId);
+    if (!drop) return { getValues: () => [], clear: () => {}, _onchange: () => {} };
+    function getValues() {
+      return [...drop.querySelectorAll('input[type=checkbox]:checked')].map(c => c.value);
+    }
+    function _onchange() {
+      if (getValues().length > 0)
+        drop.closest('.filter-module')?.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+      onChangeCb();
+    }
+    function clear() { drop.querySelectorAll('input[type=checkbox]').forEach(c => c.checked = false); }
+    return { getValues, clear, _onchange };
+  }
 
+  const mselLoc = makeInlineList('msel-location-drop', () => { refreshLocBadge(); render(); });
+
+  async function loadLocations() {
+    const res = await fetch('/api/locations/tree');
+    locTree = await res.json();
+    const drop = document.getElementById('msel-location-drop');
+    drop.innerHTML = '';
+    locTree.forEach(site => {
+      const hdr = document.createElement('div');
+      hdr.className = 'fp-list-header';
+      hdr.textContent = site.name;
+      drop.appendChild(hdr);
+      site.rooms.forEach(room => {
+        const lbl = document.createElement('label');
+        lbl.className = 'msel-opt';
+        lbl.innerHTML = `<input type="checkbox" value="${escHtml(String(room.id))}"> ${escHtml(room.name)}`;
+        lbl.querySelector('input').addEventListener('change', () => mselLoc._onchange());
+        drop.appendChild(lbl);
+        (room.shelves || []).forEach(shelf => {
+          const slbl = document.createElement('label');
+          slbl.className = 'msel-opt msel-opt-shelf';
+          slbl.innerHTML = `<input type="checkbox" value="shelf:${escHtml(String(shelf.id))}"> ${escHtml(shelf.name)}`;
+          slbl.querySelector('input').addEventListener('change', () => mselLoc._onchange());
+          drop.appendChild(slbl);
+        });
+      });
+    });
+  }
+
+  function refreshLocBadge() {
+    const vals = mselLoc.getValues();
+    const chip = document.querySelector('.loc-chip.active')?.dataset.val ?? '';
+    const badge = document.getElementById('badge-location');
+    badge.textContent = vals.length ? `${vals.length} sél.` : chip === 'none' ? 'Sans' : '';
+  }
+
+  loadLocations();
   loadDiscs();
 
   // ── Data ──────────────────────────────────────────────────────────────────
@@ -147,8 +190,17 @@
     const q = document.getElementById('search').value.toLowerCase().trim();
     return _all.filter(d => {
       if (_filterFormat && d.format !== _filterFormat) return false;
-      if (_filterRoom === 'none' && d.room_id) return false;
-      if (_filterRoom && _filterRoom !== 'none' && String(d.room_id) !== _filterRoom) return false;
+      const locVals = mselLoc.getValues();
+      const locChip = document.querySelector('.loc-chip.active')?.dataset.val ?? '';
+      if (locVals.length) {
+        const rooms = locVals.filter(v => !v.startsWith('shelf:'));
+        const shelves = locVals.filter(v => v.startsWith('shelf:')).map(v => v.slice(6));
+        const roomMatch = rooms.length ? rooms.includes(String(d.room_id)) : true;
+        const shelfMatch = shelves.length ? shelves.includes(String(d.location_id)) : true;
+        if (rooms.length && shelves.length) { if (!roomMatch && !shelfMatch) return false; }
+        else if (rooms.length && !roomMatch) return false;
+        else if (shelves.length && !shelfMatch) return false;
+      } else if (locChip === 'none' && d.room_id) return false;
       if (!q) return true;
       return (d.title||'').toLowerCase().includes(q)
           || (d.artist||'').toLowerCase().includes(q)
@@ -376,11 +428,10 @@
 
   document.querySelectorAll('.loc-chip').forEach(c => {
     c.addEventListener('click', () => {
-      _filterRoom = c.dataset.val;
       document.querySelectorAll('.loc-chip').forEach(x => x.classList.remove('active'));
       c.classList.add('active');
-      document.getElementById('badge-location').textContent =
-        _filterRoom ? (rooms.find(r => String(r.id) === _filterRoom)?.name || (_filterRoom === 'none' ? 'Sans' : '')) : '';
+      mselLoc.clear();
+      refreshLocBadge();
       render();
     });
   });
