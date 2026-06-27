@@ -402,6 +402,7 @@
                 const updated = await res.json();
                 Object.assign(book, updated);
                 renderModal(book);
+                window.onBookModalSaved?.();
               } else {
                 applyBtn.disabled = false; applyBtn.textContent = 'Appliquer';
               }
