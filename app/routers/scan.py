@@ -137,12 +137,10 @@ async def _enrich_book(book_id: int, isbn: str, _progress_key: str | None = None
 
         if info.get("series_name"):
             from app.models import Series
-            from app.routers.series import _norm
+            from app.routers.series import _norm, _is_editorial_collection
             s_name = info["series_name"]
-            # Rejeter les collections éditoriales : le nom de série doit apparaître
-            # dans le titre brut retourné par la même source.
             raw_title = info.get("title") or book.title or ""
-            if _norm(s_name) in _norm(raw_title):
+            if not _is_editorial_collection(s_name) and _norm(s_name) in _norm(raw_title):
                 all_series = db.query(Series).all()
                 match = next((s for s in all_series if _norm(s.name) == _norm(s_name)), None)
                 if not match:
@@ -372,10 +370,10 @@ async def apply_book_source(
         book.page_count = data["page_count"]
     if data.get("series_name"):
         from app.models import Series
-        from app.routers.series import _norm
+        from app.routers.series import _norm, _is_editorial_collection
         s_name = data["series_name"]
         raw_title = data.get("title") or book.title or ""
-        if _norm(s_name) in _norm(raw_title):
+        if not _is_editorial_collection(s_name) and _norm(s_name) in _norm(raw_title):
             all_series = db.query(Series).all()
             match = next((s for s in all_series if _norm(s.name) == _norm(s_name)), None)
             if not match:

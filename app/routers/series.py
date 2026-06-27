@@ -18,6 +18,29 @@ router = APIRouter()
 
 _ARTICLES = {"le", "la", "les", "l", "un", "une", "des", "du", "the", "a", "an"}
 
+# Collections éditoriales connues — ne sont pas des séries narratives
+_EDITORIAL_COLLECTIONS = {
+    "les grands formats", "grand format", "grands formats",
+    "folio", "folio junior", "folio policier", "folio sf", "folio classique",
+    "gallimard jeunesse", "gallimard", "poche", "livre de poche", "le livre de poche",
+    "j'ai lu", "j ai lu", "10/18", "10 18", "points", "points roman",
+    "pocket", "pocket jeunesse",
+    "castor poche", "castor doc",
+    "collection r", "r",
+    "scripto", "medium", "medium+",
+    "wiz", "hors serie",
+    "bibliotheque verte", "bibliotheque rose",
+    "fleuve noir", "fleuve editions",
+    "nathan poche", "rageot poche",
+    "romans ado", "romans jeunesse",
+    "collection prestige", "prestige",
+    "integrale", "l integrale", "les integrales",
+}
+
+
+def _is_editorial_collection(series_name: str) -> bool:
+    return _norm(series_name) in _EDITORIAL_COLLECTIONS
+
 
 # ── Normalisation ─────────────────────────────────────────────────────────────
 
@@ -626,6 +649,8 @@ async def _detect(db: Session, task_id: str = "detect-series") -> dict:
                 continue
             sn = v["series_name"]
             src_title = v.get("title") or b.title
+            if _is_editorial_collection(sn):
+                continue  # collection éditeur connue
             if _norm(sn) not in _norm(src_title):
                 continue  # series_name absent du titre → collection éditeur probable
             sp = v.get("series_position")
@@ -1251,6 +1276,12 @@ def get_missing_volumes(request: Request, db: Session = Depends(get_db)):
     """Retourne les trous de tomes pour chaque série ayant des positions renseignées."""
     get_current_user(request, db)
     all_series = db.query(Series).order_by(Series.name).all()
+
+    # Index de tous les livres orphelins (sans série) pour la détection Fix C
+    orphan_books = db.query(Book).filter(Book.series_id.is_(None)).all()
+    # Index des livres dans d'autres séries (titre → book) pour Fix C
+    all_books_by_title = {_norm(b.title): b for b in db.query(Book).all()}
+
     result = []
     for s in all_series:
         books_with_pos = sorted(
@@ -1267,6 +1298,23 @@ def get_missing_volumes(request: Request, db: Session = Depends(get_db)):
         gaps = [i for i in range(min_pos, max_pos + 1) if i not in owned]
         if not gaps:
             continue
+
+        # Fix C : pour chaque trou, chercher un livre dans la bibliothèque
+        # dont le titre contient le nom de la série + un numéro correspondant
+        series_norm = _norm(s.name)
+        gaps_detail = []
+        for gap in gaps:
+            found_elsewhere = None
+            for b in db.query(Book).filter(Book.id.notin_([x.id for x in s.books])).all():
+                t = _norm(b.title)
+                # Le titre doit contenir le nom de la série ET un chiffre correspondant au tome
+                if series_norm in t:
+                    nums = re.findall(r'\b(\d+)\b', b.title)
+                    if str(gap) in nums:
+                        found_elsewhere = {"id": b.id, "title": b.title, "series_id": b.series_id}
+                        break
+            gaps_detail.append({"position": gap, "found_elsewhere": found_elsewhere})
+
         cover = next((b.cover_url for b in s.books if b.cover_url), None)
         no_position = [b for b in s.books if b.series_position is None]
         result.append({
@@ -1276,6 +1324,7 @@ def get_missing_volumes(request: Request, db: Session = Depends(get_db)):
             "owned": sorted(owned),
             "max_owned": max_pos,
             "gaps": gaps,
+            "gaps_detail": gaps_detail,
             "no_position_count": len(no_position),
             "no_position_books": [{"id": b.id, "title": b.title} for b in no_position],
             "books": [

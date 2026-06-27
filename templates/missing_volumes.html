@@ -65,15 +65,28 @@
     const maxPos = s.max_owned;
     const owned = new Set(s.owned);
     const timelineCells = [];
+    const elsewhereByPos = {};
+    (s.gaps_detail || []).forEach(g => { if (g.found_elsewhere) elsewhereByPos[g.position] = g.found_elsewhere; });
+
     for (let i = 1; i <= maxPos; i++) {
       const isOwned = owned.has(i);
+      const elsewhere = elsewhereByPos[i];
+      let bg, color, border, titleAttr, cursor;
+      if (isOwned) {
+        bg = 'var(--color-primary)'; color = '#fff'; border = 'none'; titleAttr = `Tome ${i}`; cursor = 'default';
+      } else if (elsewhere) {
+        bg = 'var(--color-warn,#e07b00)'; color = '#fff'; border = 'none';
+        titleAttr = `Tome ${i} — présent dans la bibliothèque : "${elsewhere.title}"${elsewhere.series_id ? ' (autre série)' : ' (sans série)'}`;
+        cursor = 'pointer';
+      } else {
+        bg = 'var(--color-surface-2)'; color = 'var(--color-text-muted)'; border = '2px dashed var(--color-border)';
+        titleAttr = `Tome ${i} — manquant`; cursor = 'default';
+      }
       timelineCells.push(
-        `<div title="Tome ${i}" style="
+        `<div title="${escAttr(titleAttr)}" ${elsewhere ? `onclick="openBookModal(${elsewhere.id})"` : ''} style="
           width:28px;height:28px;border-radius:4px;display:flex;align-items:center;justify-content:center;
-          font-size:.7rem;font-weight:600;
-          background:${isOwned ? 'var(--color-primary)' : 'var(--color-surface-2)'};
-          color:${isOwned ? '#fff' : 'var(--color-text-muted)'};
-          border:${isOwned ? 'none' : '2px dashed var(--color-border)'};
+          font-size:.7rem;font-weight:600;cursor:${cursor};
+          background:${bg};color:${color};border:${border};
         ">${i}</div>`
       );
     }
