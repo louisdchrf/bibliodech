@@ -499,7 +499,14 @@
         try {
           const r = await fetch(`/api/scan/status/${bookId}`);
           const d = await r.json();
-          if (d.enrichment_status==='ok') { clearInterval(t); renderModal(d.book); window.onBookModalSaved?.(); }
+          if (d.enrichment_status==='ok') {
+            clearInterval(t);
+            // Rafraîchir allSeries au cas où une nouvelle série aurait été créée
+            const sr = await fetch('/api/series');
+            if (sr.ok) allSeries = await sr.json();
+            renderModal(d.book);
+            window.onBookModalSaved?.();
+          }
           else if (d.enrichment_status==='not_found') { clearInterval(t); msg.textContent='Introuvable.'; msg.className='edit-msg edit-msg-err'; btn.disabled=false; btn.textContent='🔄 Relancer'; }
         } catch {}
       }, 1500);
