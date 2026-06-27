@@ -140,7 +140,10 @@ async def _enrich_book(book_id: int, isbn: str, _progress_key: str | None = None
             from app.routers.series import _norm, _is_editorial_collection
             s_name = info["series_name"]
             raw_title = info.get("title") or book.title or ""
-            if not _is_editorial_collection(s_name) and _norm(s_name) in _norm(raw_title):
+            _src = info.get("source", "")
+            _EXPLICIT_SERIES_SOURCES = {"sudoc", "decitre"}
+            _title_ok = _src in _EXPLICIT_SERIES_SOURCES or _norm(s_name) in _norm(raw_title)
+            if not _is_editorial_collection(s_name) and _title_ok:
                 all_series = db.query(Series).all()
                 match = next((s for s in all_series if _norm(s.name) == _norm(s_name)), None)
                 if not match:
