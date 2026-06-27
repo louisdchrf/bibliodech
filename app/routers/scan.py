@@ -227,6 +227,11 @@ async def scan_isbn(
     if existing:
         return {"status": "exists", "book": book_to_dict(existing)}
 
+    # Valider les IDs de localisation (FK) — IDs périmés → None
+    from app.models import Room, Shelf
+    valid_room_id = body.room_id if (body.room_id and db.query(Room).filter(Room.id == body.room_id).first()) else None
+    valid_location_id = body.location_id if (body.location_id and db.query(Shelf).filter(Shelf.id == body.location_id).first()) else None
+
     # Sauvegarde immédiate — le titre est l'ISBN en attendant l'enrichissement
     book = Book(
         isbn=isbn,
@@ -234,8 +239,8 @@ async def scan_isbn(
         authors=json.dumps([]),
         source="pending",
         shelf=body.shelf,
-        location_id=body.location_id,
-        room_id=body.room_id,
+        location_id=valid_location_id,
+        room_id=valid_room_id,
         added_at=datetime.now(timezone.utc),
         enrichment_status="pending",
     )
