@@ -155,7 +155,7 @@
         </select>
         <button class="btn btn-ghost btn-sm group-run-btn" data-group="${g.id}">Lancer</button>
       </div>
-      <div id="expand-${g.id}" style="display:none;margin-top:1rem;width:100%">
+      <div style="margin-top:1rem;width:100%">
         <details>
           <summary style="font-size:.82rem;color:var(--color-text-muted);cursor:pointer;user-select:none;margin-bottom:.5rem">Étapes détaillées</summary>
           <div class="tasks-list" style="gap:.4rem;margin-top:.5rem" id="subtasks-${g.id}"></div>
@@ -346,7 +346,6 @@
     const expandEl = document.getElementById(`expand-${groupId}`);
 
     btn.disabled = true;
-    expandEl.style.display = '';
     statusEl.textContent = 'En cours…';
     statusEl.className = 'task-status task-status-running';
 
