@@ -37,6 +37,8 @@ def disc_to_dict(d: Disc) -> dict:
         "site_id": site.id if site else None,
         "site_name": site.name if site else None,
         "location_id": d.location_id,
+        "shelf_name": d.location.name if d.location else None,
+        "location_label": ((f"{site.name} › {d.room.name}" if site else d.room.name) + (f" › {d.location.name}" if d.location else "")) if d.room else None,
         "enrichment_status": d.enrichment_status,
         "added_at": d.added_at.isoformat() if d.added_at else None,
     }

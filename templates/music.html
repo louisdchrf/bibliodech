@@ -210,7 +210,7 @@
         <div class="book-title">${escHtml(d.title)}</div>
         <div class="book-author">${escHtml(d.artist || '')}</div>
         ${d.format || d.year ? `<div class="book-author" style="font-size:.75rem">${[d.format, d.year].filter(Boolean).map(escHtml).join(' · ')}</div>` : ''}
-        ${d.room_name ? `<div class="book-badges"><span class="badge badge-shelf">${d.site_name ? escHtml(d.site_name) + ' › ' : ''}${escHtml(d.room_name)}</span></div>` : ''}
+        ${d.location_label ? `<div class="book-badges"><span class="badge badge-shelf">${escHtml(d.location_label)}</span></div>` : (d.room_name ? `<div class="book-badges"><span class="badge badge-shelf">${d.site_name ? escHtml(d.site_name) + ' › ' : ''}${escHtml(d.room_name)}</span></div>` : '')}
       </div>
     </div>`;
   }

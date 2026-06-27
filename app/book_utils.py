@@ -42,7 +42,7 @@ def book_to_dict(book: Book) -> dict:
         "site_name": site.name if site else None,
         "shelf_id": shelf.id if shelf else None,
         "shelf_name": shelf.name if shelf else None,
-        "label": f"{site.name} › {room.name}" if site else room.name,
+        "label": (f"{site.name} › {room.name}" if site else room.name) + (f" › {shelf.name}" if shelf else ""),
     } if room else None
 
     # Prêt actif (pas de return_date)
