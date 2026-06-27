@@ -115,6 +115,46 @@ def init_db():
             if idx_name not in existing_idx:
                 conn.execute(text(ddl))
 
+        # ── Migration FK books.location_id : locations → shelves ─────────────
+        books_fks = conn.execute(text("PRAGMA foreign_key_list(books)")).fetchall()
+        bad_fk = any(row[2] == 'locations' and row[3] == 'location_id' for row in books_fks)
+        if bad_fk:
+            conn.execute(text("PRAGMA foreign_keys=OFF"))
+            conn.execute(text("""
+                CREATE TABLE books_new (
+                    id INTEGER NOT NULL,
+                    isbn VARCHAR,
+                    title VARCHAR NOT NULL,
+                    subtitle VARCHAR,
+                    authors TEXT,
+                    publisher VARCHAR,
+                    publish_date VARCHAR,
+                    cover_url VARCHAR,
+                    description TEXT,
+                    page_count INTEGER,
+                    language VARCHAR,
+                    source VARCHAR NOT NULL,
+                    work_key VARCHAR,
+                    series_id INTEGER REFERENCES series(id),
+                    series_position FLOAT,
+                    shelf VARCHAR,
+                    added_at DATETIME,
+                    enrichment_status TEXT NOT NULL DEFAULT 'ok',
+                    location_id INTEGER REFERENCES shelves(id),
+                    room_id INTEGER REFERENCES rooms(id),
+                    source_data TEXT,
+                    enrichment_source TEXT,
+                    genre VARCHAR,
+                    PRIMARY KEY (id),
+                    CONSTRAINT uq_books_isbn UNIQUE (isbn)
+                )
+            """))
+            conn.execute(text("INSERT INTO books_new SELECT * FROM books"))
+            conn.execute(text("DROP TABLE books"))
+            conn.execute(text("ALTER TABLE books_new RENAME TO books"))
+            conn.execute(text("PRAGMA foreign_keys=ON"))
+            conn.commit()
+
         # ── SECRET_KEY auto-générée au premier démarrage ─────────────────────
         existing_key = conn.execute(
             text("SELECT value FROM settings WHERE key='secret_key'")
