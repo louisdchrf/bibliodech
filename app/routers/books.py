@@ -21,6 +21,7 @@ def list_books(
     search: Optional[str] = Query(None),
     site_id: Optional[str] = Query(None),    # filtre sur une adresse entière
     room_id: Optional[str] = Query(None),    # int ou "none" pour livres sans localisation
+    location_id: Optional[str] = Query(None), # étagère spécifique
     source: Optional[str] = Query(None),     # filtre par source d'enrichissement
     series_id: Optional[str] = Query(None),  # int, "none" (sans série), ou "any" (avec série)
     genre: Optional[str] = Query(None),      # valeur exacte ou "none"
@@ -49,6 +50,12 @@ def list_books(
             q = q.filter(Book.room_id == int(parts[0]))
         elif parts:
             q = q.filter(Book.room_id.in_([int(p) for p in parts]))
+    if location_id is not None:
+        loc_parts = [p.strip() for p in location_id.split(",") if p.strip().isdigit()]
+        if len(loc_parts) == 1:
+            q = q.filter(Book.location_id == int(loc_parts[0]))
+        elif loc_parts:
+            q = q.filter(Book.location_id.in_([int(p) for p in loc_parts]))
     if source == "none":
         q = q.filter(Book.enrichment_source.is_(None))
     elif source is not None:

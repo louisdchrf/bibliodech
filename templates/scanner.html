@@ -716,7 +716,10 @@
   async function pollToast(toast, bookId, isbn, attempt = 0) {
     if (attempt > 20) {
       toast.className = 'cam-toast cam-toast-warn';
-      toast.innerHTML = `? <strong>${isbn}</strong> <span>introuvable</span>`;
+      toast.innerHTML = `? <strong>${escHtml(isbn)}</strong> <span>introuvable</span>`;
+      // ajouter une carte d'erreur dans le feed principal
+      const old = feed.querySelector(`[data-book-id="${bookId}"]`);
+      if (!old) prependCard(notFoundCard(isbn, bookId));
       return;
     }
     await new Promise(r => setTimeout(r, attempt === 0 ? 500 : 1000));
@@ -727,10 +730,16 @@
         toast.className = 'cam-toast cam-toast-ok';
         toast.innerHTML = `✓ <strong>${escHtml(data.book.title)}</strong>`;
         dismissToast(toast, 2000);
+        // créer/mettre à jour la carte dans le feed principal
+        const old = feed.querySelector(`[data-book-id="${bookId}"]`);
+        if (old) old.replaceWith(bookCard(data.book));
+        else prependCard(bookCard(data.book));
       } else if (data.enrichment_status === 'not_found') {
         toast.className = 'cam-toast cam-toast-warn';
-        toast.innerHTML = `? <strong>${isbn}</strong> <span>introuvable</span>`;
+        toast.innerHTML = `? <strong>${escHtml(isbn)}</strong> <span>introuvable</span>`;
         dismissToast(toast, 2000);
+        const old = feed.querySelector(`[data-book-id="${bookId}"]`);
+        if (!old) prependCard(notFoundCard(isbn, bookId));
       } else {
         pollToast(toast, bookId, isbn, attempt + 1);
       }

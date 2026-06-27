@@ -104,28 +104,33 @@ def mail_overdue(borrower_name: str, book_title: str, due_date: date) -> tuple[s
     return subject, _wrap("Avis de retard", body)
 
 
-def mail_new_account(username: str, site_url: str = "") -> tuple[str, str]:
+def mail_new_account(username: str, password: str, site_url: str = "") -> tuple[str, str]:
     subject = "Votre compte Bibliodech a été créé"
     login_url = f"{site_url}/login" if site_url else "/login"
     body = f"""
 <p>Bonjour,</p>
-<p>Un compte a été créé pour vous sur <strong>Bibliodech</strong>.</p>
+<p>Un compte a été créé pour vous sur <strong>Bibliodech</strong>. Voici vos identifiants :</p>
 <div class="box">
   <p>Identifiant</p>
   <strong>{username}</strong>
+  <p style="margin-top:12px">Mot de passe temporaire</p>
+  <strong style="font-family:monospace;letter-spacing:.05em">{password}</strong>
 </div>
-<p>Un mot de passe temporaire vous a été communiqué séparément par l'administrateur.</p>
 <p>Connectez-vous à <a href="{login_url}" style="color:#1e3a5f">{login_url}</a> et changez votre mot de passe lors de votre première connexion.</p>
 """
     return subject, _wrap("Nouveau compte", body)
 
 
-def mail_reset_password(username: str, site_url: str = "") -> tuple[str, str]:
+def mail_reset_password(username: str, temp_password: str, site_url: str = "") -> tuple[str, str]:
     subject = "Réinitialisation de votre mot de passe Bibliodech"
     login_url = f"{site_url}/login" if site_url else "/login"
     body = f"""
 <p>Bonjour <strong>{username}</strong>,</p>
-<p>Votre mot de passe a été réinitialisé par un administrateur. Un mot de passe temporaire vous a été communiqué séparément.</p>
+<p>Votre mot de passe a été réinitialisé par un administrateur. Voici votre mot de passe temporaire :</p>
+<div class="box">
+  <p>Mot de passe temporaire</p>
+  <strong style="font-family:monospace;letter-spacing:.05em">{temp_password}</strong>
+</div>
 <p>Connectez-vous à <a href="{login_url}" style="color:#1e3a5f">{login_url}</a> et changez-le immédiatement.</p>
 """
     return subject, _wrap("Réinitialisation du mot de passe", body)
