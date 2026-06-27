@@ -642,7 +642,16 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isbn: raw, room_id, location_id }),
-      }).then(r => r.json()).then(data => {
+      }).then(async r => {
+        if (!r.ok) {
+          let detail = `HTTP ${r.status}`;
+          try { const d = await r.json(); detail = d.detail || detail; } catch (_) {}
+          if (r.status === 401) { window.location.href = '/login'; return; }
+          throw new Error(detail);
+        }
+        return r.json();
+      }).then(data => {
+        if (!data) return;
         if (data.status === 'exists') {
           toast.className = 'cam-toast cam-toast-warn';
           toast.innerHTML = `⚠ <strong>${escHtml(data.book.title)}</strong> <span>déjà dans la bibliothèque</span>`;
@@ -653,17 +662,26 @@
           if (data.status === 'pending') pollToast(toast, data.book.id, raw);
           else dismissToast(toast, 2000);
         }
-      }).catch(() => {
+      }).catch(err => {
         toast.className = 'cam-toast cam-toast-err';
-        toast.innerHTML = `✗ Erreur réseau — ${raw}`;
-        dismissToast(toast, 2000);
+        toast.innerHTML = `✗ ${escHtml(err.message || 'Erreur')} — ${raw}`;
+        dismissToast(toast, 3000);
       });
     } else {
       fetch('/api/scan/music', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ barcode: raw, room_id }),
-      }).then(r => r.json()).then(data => {
+      }).then(async r => {
+        if (!r.ok) {
+          let detail = `HTTP ${r.status}`;
+          try { const d = await r.json(); detail = d.detail || detail; } catch (_) {}
+          if (r.status === 401) { window.location.href = '/login'; return; }
+          throw new Error(detail);
+        }
+        return r.json();
+      }).then(data => {
+        if (!data) return;
         if (data.status === 'exists') {
           toast.className = 'cam-toast cam-toast-warn';
           toast.innerHTML = `⚠ 💿 <strong>${escHtml(data.disc.title)}</strong> <span>déjà dans la médiathèque</span>`;
@@ -674,10 +692,10 @@
           if (data.status === 'pending') pollMusicToast(toast, data.disc.id, raw);
           else dismissToast(toast, 2500);
         }
-      }).catch(() => {
+      }).catch(err => {
         toast.className = 'cam-toast cam-toast-err';
-        toast.innerHTML = `✗ Erreur réseau — ${raw}`;
-        dismissToast(toast, 2000);
+        toast.innerHTML = `✗ ${escHtml(err.message || 'Erreur')} — ${raw}`;
+        dismissToast(toast, 3000);
       });
     }
   }

@@ -111,7 +111,10 @@ async def login(request: Request, db: Session = Depends(get_db)):
     ip = _client_ip(request)
     ua = request.headers.get("User-Agent", "")[:200]
 
-    user = db.query(User).filter(User.username == username, User.is_active == True).first()
+    user = db.query(User).filter(
+        (User.username == username) | (User.email == username),
+        User.is_active == True,
+    ).first()
     if not user or not verify_password(password, user.password_hash):
         record_failed_login(request)
         db.add(AppLog(level="warning", category="auth",
