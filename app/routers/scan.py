@@ -375,12 +375,9 @@ async def apply_book_source(
         from app.models import Series
         from app.routers.series import _norm, _is_editorial_collection
         s_name = data["series_name"]
-        raw_title = data.get("title") or book.title or ""
-        # Le filtre title-match n'est pertinent que pour BnF (collections éditoriales) ;
-        # SUDOC et Decitre cataloguent la série explicitement — on leur fait confiance.
-        _EXPLICIT_SERIES_SOURCES = {"sudoc", "decitre"}
-        title_ok = source_id in _EXPLICIT_SERIES_SOURCES or _norm(s_name) in _norm(raw_title)
-        if not _is_editorial_collection(s_name) and title_ok:
+        # Choix manuel de l'utilisateur : on applique sans filtre titre-match,
+        # seules les collections éditoriales connues sont bloquées.
+        if not _is_editorial_collection(s_name):
             all_series = db.query(Series).all()
             match = next((s for s in all_series if _norm(s.name) == _norm(s_name)), None)
             if not match:
