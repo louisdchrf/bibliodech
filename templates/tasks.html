@@ -65,7 +65,7 @@
     { id: 'fetch-covers',   name: 'Rechercher les couvertures manquantes',     desc: 'Interroge Open Library et Google Books pour télécharger les couvertures des livres qui n\'en ont pas.' },
     { id: 'refresh-covers', name: 'Re-télécharger toutes les couvertures (HD)',desc: 'Re-télécharge toutes les couvertures en 600px pour améliorer la qualité de l\'OCR et l\'affichage.' },
     { id: 'clean-authors',  name: 'Normaliser les auteurs',                    desc: 'Convertit les auteurs "Nom, Prénom" → "Prénom Nom" pour tous les livres.' },
-    { id: 'detect-series',  name: 'Détecter les séries',                       desc: 'Regroupe les livres par série selon le titre et les auteurs. Assigne automatiquement les cas certains, propose les cas ambigus dans la page Séries.' },
+    { id: 'detect-series',  name: 'Détecter les séries',                       desc: 'Regroupe les livres par série selon le titre et les auteurs. Assigne automatiquement les cas certains, propose les cas ambigus dans la page Séries.', expand: true },
     { id: 'sudoc-series',   name: 'Chercher les séries dans le catalogue',     desc: 'Interroge SUDOC et Open Library par ISBN pour trouver le nom de série. Très efficace pour les BDs françaises.' },
     { id: 'ocr-series',     name: 'Lire les séries sur les couvertures',       desc: 'Reconnaissance de caractères (OCR Tesseract) sur les couvertures pour trouver le nom de série imprimé sur l\'image. Complète la détection par titre.' },
     { id: 'clean-series',   name: 'Normaliser les noms de séries',             desc: 'Capitalise la première lettre et supprime les espaces superflus dans les noms de séries.' },
@@ -216,6 +216,63 @@
     }
   }
 
+  // ── Formatage résultats de tâches ────────────────────────────────────────
+  function _formatTaskResult(taskId, r) {
+    if (taskId === 'detect-series') {
+      const a = r.auto_assigned ?? 0, p = r.proposals ?? 0;
+      return `${a} assigné${a !== 1 ? 's' : ''}, ${p} proposition${p !== 1 ? 's' : ''}`;
+    }
+    if (taskId === 'reenrich-missing-discs' || taskId === 'reenrich-books') {
+      return `${r.updated ?? 0} / ${r.total ?? 0} enrichis`;
+    }
+    if (taskId === 'fetch-disc-covers' || taskId === 'refresh-disc-covers') {
+      return `${r.updated ?? 0} / ${r.total ?? 0} pochettes`;
+    }
+    if (typeof r === 'object' && r !== null) {
+      const parts = Object.entries(r)
+        .filter(([k]) => !['assignments','proposals_detail'].includes(k))
+        .map(([k, v]) => `${k}: ${v}`);
+      return parts.join(', ') || 'OK';
+    }
+    return String(r || 'OK');
+  }
+
+  const _SIGNAL_LABELS = { title: 'titre', source_data: 'métadonnées', prefix: 'préfixe', author: 'auteur', 'author-title': 'auteur+titre' };
+
+  function _renderTaskDetail(taskId, r) {
+    if (taskId === 'detect-series') {
+      const assignments = r.assignments || [];
+      const proposals = r.proposals_detail || [];
+      if (!assignments.length && !proposals.length) return '';
+      let html = '<div style="font-size:.82rem;border-top:1px solid var(--color-border);padding-top:.75rem;display:grid;gap:.75rem">';
+      if (assignments.length) {
+        html += '<div><div style="font-weight:600;margin-bottom:.35rem">Assignations automatiques</div><table style="width:100%;border-collapse:collapse">';
+        html += '<tr style="color:var(--color-text-muted);font-size:.78rem"><th style="text-align:left;padding:.2rem .4rem">Livre</th><th style="text-align:left;padding:.2rem .4rem">Série</th><th style="text-align:left;padding:.2rem .4rem">Signal</th></tr>';
+        for (const a of assignments) {
+          const pos = a.position != null ? ` <span style="color:var(--color-text-muted)">#${a.position}</span>` : '';
+          html += `<tr style="border-top:1px solid var(--color-border-light,var(--color-border))">
+            <td style="padding:.25rem .4rem">${escHtml(a.book)}</td>
+            <td style="padding:.25rem .4rem;font-weight:500">${escHtml(a.series)}${pos}</td>
+            <td style="padding:.25rem .4rem"><span class="badge">${escHtml(_SIGNAL_LABELS[a.signal] || a.signal)}</span></td>
+          </tr>`;
+        }
+        html += '</table></div>';
+      }
+      if (proposals.length) {
+        html += '<div><div style="font-weight:600;margin-bottom:.35rem">Propositions créées</div>';
+        for (const p of proposals) {
+          const name = p.proposed_name ? `<strong>${escHtml(p.proposed_name)}</strong>` : '<em style="color:var(--color-text-muted)">nom à définir</em>';
+          const books = (p.books || []).map(b => escHtml(b)).join(', ');
+          html += `<div style="padding:.3rem 0;border-top:1px solid var(--color-border-light,var(--color-border))">${name} — ${books} <span class="badge" style="margin-left:.25rem">${escHtml(_SIGNAL_LABELS[p.signal] || p.signal)}</span></div>`;
+        }
+        html += '</div>';
+      }
+      html += '</div>';
+      return html;
+    }
+    return '';
+  }
+
   // ── Boutons Lancer ────────────────────────────────────────────────────────
   function wireTaskBtns() {
     document.querySelectorAll('.task-btn').forEach(btn => {
@@ -237,8 +294,17 @@
             const res = await fetch(`/api/tasks/run/${taskId}`, { method: 'POST' });
             if (!res.ok) throw new Error(await res.text());
             const data = await res.json();
-            label = data.result;
-            // Afficher liens "Voir →" si applicable
+            const r = data.result || {};
+            label = _formatTaskResult(taskId, r);
+            // Détail expandable si disponible
+            const expandEl = document.getElementById(`expand-${taskId}`);
+            if (expandEl) {
+              const detail = _renderTaskDetail(taskId, r);
+              if (detail) {
+                expandEl.innerHTML = detail;
+                expandEl.style.display = '';
+              }
+            }
           }
           if (statusEl) { statusEl.textContent = label; statusEl.className = 'task-status task-status-ok'; }
         } catch {

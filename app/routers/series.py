@@ -531,6 +531,8 @@ async def _detect(db: Session, task_id: str = "detect-series") -> dict:
 
     auto_assigned = 0
     proposals_created = 0
+    assignments: list[dict] = []   # détail de chaque assignation
+    proposals_detail: list[dict] = []  # détail de chaque proposition
     already_proposed_book_sets: list[frozenset] = [
         frozenset(json.loads(p.book_ids))
         for p in db.query(SeriesProposal).filter(SeriesProposal.status == "pending").all()
@@ -592,6 +594,7 @@ async def _detect(db: Session, task_id: str = "detect-series") -> dict:
             if position is not None and b.series_position is None:
                 b.series_position = position
             auto_assigned += 1
+            assignments.append({"book": b.title, "series": series.name, "position": position, "signal": "title"})
 
     db.commit()
 
@@ -642,6 +645,7 @@ async def _detect(db: Session, task_id: str = "detect-series") -> dict:
             if position is not None and b.series_position is None:
                 b.series_position = position
             auto_assigned += 1
+            assignments.append({"book": b.title, "series": series.name, "position": position, "signal": "source_data"})
 
     db.commit()
 
@@ -700,9 +704,11 @@ async def _detect(db: Session, task_id: str = "detect-series") -> dict:
         if len(known_sids) == 1:
             # Haute confiance : relier directement
             sid = next(iter(known_sids))
+            ser = db.query(Series).get(sid)
             for b in group:
                 b.series_id = sid
                 auto_assigned += 1
+                assignments.append({"book": b.title, "series": ser.name if ser else sid, "signal": "prefix"})
             db.commit()
 
         elif len(known_sids) == 0 and len(group) >= 2:
@@ -725,6 +731,7 @@ async def _detect(db: Session, task_id: str = "detect-series") -> dict:
             )
             db.add(p)
             proposals_created += 1
+            proposals_detail.append({"proposed_name": name, "books": [b.title for b in group], "signal": "prefix"})
             already_proposed_book_sets.append(frozenset(ids))
 
     db.commit()
@@ -754,15 +761,14 @@ async def _detect(db: Session, task_id: str = "detect-series") -> dict:
 
         if len(known_sids) == 1:
             sid = next(iter(known_sids))
+            ser = db.query(Series).get(sid)
             for b in group:
                 b.series_id = sid
                 auto_assigned += 1
+                assignments.append({"book": b.title, "series": ser.name if ser else sid, "signal": "author"})
             db.commit()
 
         elif len(known_sids) > 1:
-            # Plusieurs séries connues pour cet auteur+éditeur.
-            # Essayer de sous-grouper les orphelins par série candidate via
-            # correspondance du titre avec le nom de série connu.
             series_objs = {sid: db.query(Series).get(sid) for sid in known_sids}
             assigned_in_pass: set[int] = set()
             for sid, ser in series_objs.items():
@@ -778,9 +784,9 @@ async def _detect(db: Session, task_id: str = "detect-series") -> dict:
                         b.series_id = sid
                         auto_assigned += 1
                         assigned_in_pass.add(b.id)
+                        assignments.append({"book": b.title, "series": ser.name, "signal": "author-title"})
                     db.commit()
 
-            # Livres non attribués → proposition groupée
             remaining = [b for b in group if b.id not in assigned_in_pass]
             if remaining:
                 ids = [b.id for b in remaining]
@@ -799,10 +805,10 @@ async def _detect(db: Session, task_id: str = "detect-series") -> dict:
                     )
                     db.add(p)
                     proposals_created += 1
+                    proposals_detail.append({"proposed_name": name, "books": [b.title for b in remaining], "signal": "author"})
                     already_proposed_book_sets.append(frozenset(ids))
 
         elif len(known_sids) == 0 and len(group) >= 2:
-            # Nouveau groupe sans série connue → proposition
             ids = [b.id for b in group]
             if _already_proposed(ids):
                 continue
@@ -820,11 +826,17 @@ async def _detect(db: Session, task_id: str = "detect-series") -> dict:
             )
             db.add(p)
             proposals_created += 1
+            proposals_detail.append({"proposed_name": name, "books": [b.title for b in group], "signal": "author"})
             already_proposed_book_sets.append(frozenset(ids))
 
     db.commit()
 
-    return {"auto_assigned": auto_assigned, "proposals": proposals_created}
+    return {
+        "auto_assigned": auto_assigned,
+        "proposals": proposals_created,
+        "assignments": assignments,
+        "proposals_detail": proposals_detail,
+    }
 
 
 # ── API ───────────────────────────────────────────────────────────────────────
