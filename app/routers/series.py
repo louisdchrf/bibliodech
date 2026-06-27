@@ -710,25 +710,46 @@ async def _detect(db: Session, task_id: str = "detect-series") -> dict:
             db.commit()
 
         elif len(known_sids) > 1:
-            # Ambigu → proposition à valider
-            ids = [b.id for b in group]
-            if _already_proposed(ids):
-                continue
-            name = None
-            for b in group:
-                if b.isbn:
-                    name = await _google_series_name(b.isbn, gb_key)
-                    if name:
-                        break
-            p = SeriesProposal(
-                book_ids=json.dumps(ids),
-                proposed_name=name,
-                signal="author",
-                status="pending",
-            )
-            db.add(p)
-            proposals_created += 1
-            already_proposed_book_sets.append(frozenset(ids))
+            # Plusieurs séries connues pour cet auteur+éditeur.
+            # Essayer de sous-grouper les orphelins par série candidate via
+            # correspondance du titre avec le nom de série connu.
+            series_objs = {sid: db.query(Series).get(sid) for sid in known_sids}
+            assigned_in_pass: set[int] = set()
+            for sid, ser in series_objs.items():
+                if not ser:
+                    continue
+                ser_norm = _norm(ser.name)
+                matching = [
+                    b for b in group
+                    if b.id not in assigned_in_pass and ser_norm in _norm(b.title)
+                ]
+                if matching:
+                    for b in matching:
+                        b.series_id = sid
+                        auto_assigned += 1
+                        assigned_in_pass.add(b.id)
+                    db.commit()
+
+            # Livres non attribués → proposition groupée
+            remaining = [b for b in group if b.id not in assigned_in_pass]
+            if remaining:
+                ids = [b.id for b in remaining]
+                if not _already_proposed(ids):
+                    name = None
+                    for b in remaining:
+                        if b.isbn:
+                            name = await _google_series_name(b.isbn, gb_key)
+                            if name:
+                                break
+                    p = SeriesProposal(
+                        book_ids=json.dumps(ids),
+                        proposed_name=name,
+                        signal="author",
+                        status="pending",
+                    )
+                    db.add(p)
+                    proposals_created += 1
+                    already_proposed_book_sets.append(frozenset(ids))
 
         elif len(known_sids) == 0 and len(group) >= 2:
             # Nouveau groupe sans série connue → proposition
