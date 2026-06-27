@@ -17,6 +17,7 @@ class Series(Base):
     name = Column(String, nullable=False, unique=True, index=True)
     source = Column(String, nullable=False, default="manual")
     created_at = Column(DateTime, default=_utcnow)
+    bnf_max_known = Column(Integer, nullable=True)  # nombre de tomes connus via BnF
 
     books = relationship("Book", back_populates="series")
 

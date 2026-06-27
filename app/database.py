@@ -90,6 +90,11 @@ def init_db():
             """))
             conn.execute(text("CREATE INDEX ix_app_logs_created_at ON app_logs (created_at)"))
 
+        # ── Migration colonnes series ─────────────────────────────────────────
+        series_cols = [r[1] for r in conn.execute(text("PRAGMA table_info(series)"))]
+        if "bnf_max_known" not in series_cols:
+            conn.execute(text("ALTER TABLE series ADD COLUMN bnf_max_known INTEGER"))
+
         # ── Migration colonnes discs ──────────────────────────────────────────
         if "discs" in tables:
             disc_cols = [r[1] for r in conn.execute(text("PRAGMA table_info(discs)"))]

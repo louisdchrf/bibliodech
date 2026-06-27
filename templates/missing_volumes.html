@@ -67,10 +67,12 @@
     const timelineCells = [];
     const elsewhereByPos = {};
     (s.gaps_detail || []).forEach(g => { if (g.found_elsewhere) elsewhereByPos[g.position] = g.found_elsewhere; });
+    const displayMax = Math.max(maxPos, s.bnf_max_known || 0);
 
-    for (let i = 1; i <= maxPos; i++) {
+    for (let i = 1; i <= displayMax; i++) {
       const isOwned = owned.has(i);
       const elsewhere = elsewhereByPos[i];
+      const beyondOwned = i > maxPos;
       let bg, color, border, titleAttr, cursor;
       if (isOwned) {
         bg = 'var(--color-primary)'; color = '#fff'; border = 'none'; titleAttr = `Tome ${i}`; cursor = 'default';
@@ -78,6 +80,9 @@
         bg = 'var(--color-warn,#e07b00)'; color = '#fff'; border = 'none';
         titleAttr = `Tome ${i} — présent dans la bibliothèque : "${elsewhere.title}"${elsewhere.series_id ? ' (autre série)' : ' (sans série)'}`;
         cursor = 'pointer';
+      } else if (beyondOwned) {
+        bg = 'transparent'; color = 'var(--color-text-muted)'; border = '2px dashed var(--color-primary-light,var(--color-primary))';
+        titleAttr = `Tome ${i} — disponible à l'achat (connu via BnF)`; cursor = 'default';
       } else {
         bg = 'var(--color-surface-2)'; color = 'var(--color-text-muted)'; border = '2px dashed var(--color-border)';
         titleAttr = `Tome ${i} — manquant`; cursor = 'default';

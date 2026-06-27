@@ -1295,7 +1295,10 @@ def get_missing_volumes(request: Request, db: Session = Depends(get_db)):
             continue
         min_pos, max_pos = min(positions), max(positions)
         owned = set(positions)
-        gaps = [i for i in range(min_pos, max_pos + 1) if i not in owned]
+        # Étendre la plage jusqu'au max BnF connu pour afficher les tomes non encore achetés
+        bnf_max = s.bnf_max_known or max_pos
+        display_max = max(max_pos, bnf_max)
+        gaps = [i for i in range(min_pos, display_max + 1) if i not in owned]
         if not gaps:
             continue
 
@@ -1323,6 +1326,7 @@ def get_missing_volumes(request: Request, db: Session = Depends(get_db)):
             "cover_url": cover,
             "owned": sorted(owned),
             "max_owned": max_pos,
+            "bnf_max_known": bnf_max if s.bnf_max_known else None,
             "gaps": gaps,
             "gaps_detail": gaps_detail,
             "no_position_count": len(no_position),
@@ -1560,8 +1564,10 @@ async def _bnf_check_one_series(series: Series, db) -> dict:
                     book.series_position = float(vol)
                 break
 
-    if assigned:
-        db.commit()
+    # Stocker le max connu via BnF sur la série
+    if volumes_found:
+        series.bnf_max_known = max(volumes_found)
+    db.commit()
 
     return {
         "volumes_found": sorted(volumes_found),
