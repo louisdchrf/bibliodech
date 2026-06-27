@@ -172,7 +172,15 @@ def update_book(
     if not book:
         raise HTTPException(status_code=404, detail="Livre introuvable")
 
+    from app.models import Room, Shelf as ShelfModel
     update_data = body.model_dump(exclude_unset=True)
+    # Valider les FK de localisation pour éviter un 500 si l'ID n'existe plus
+    if "room_id" in update_data and update_data["room_id"] is not None:
+        if not db.query(Room).filter(Room.id == update_data["room_id"]).first():
+            update_data["room_id"] = None
+    if "location_id" in update_data and update_data["location_id"] is not None:
+        if not db.query(ShelfModel).filter(ShelfModel.id == update_data["location_id"]).first():
+            update_data["location_id"] = None
     changed = {}
     for field, value in update_data.items():
         old = getattr(book, field, None)

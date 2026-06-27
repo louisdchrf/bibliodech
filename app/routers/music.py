@@ -199,10 +199,12 @@ async def scan_music(
     if existing:
         return {"status": "exists", "disc": disc_to_dict(existing)}
 
+    valid_room_id = body.room_id if (body.room_id and db.query(Room).filter(Room.id == body.room_id).first()) else None
+
     disc = Disc(
         barcode=barcode,
         title=barcode,
-        room_id=body.room_id,
+        room_id=valid_room_id,
         added_at=datetime.now(timezone.utc),
         added_by=user.id,
         enrichment_status="pending",
