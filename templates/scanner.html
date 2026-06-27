@@ -96,6 +96,7 @@
   <div id="scan-feed" class="scan-feed"></div>
 
 </div>
+{% include "_book_modal.html" %}
 {% endblock %}
 
 {% block scripts %}
@@ -394,15 +395,18 @@
     const div = document.createElement('div');
     div.className = 'scan-card scan-card-ok slide-in';
     div.dataset.bookId = book.id;
+    div.style.cursor = 'pointer';
     div.innerHTML = `
       ${cover}
       <div class="card-info">
         <div class="card-title">${escHtml(book.title)}</div>
         ${authors ? `<div class="card-authors">${escHtml(authors)}</div>` : ''}
+        ${book.publisher ? `<div class="card-authors" style="color:var(--color-text-muted)">${escHtml(book.publisher)}</div>` : ''}
         <div class="card-badges">${seriesBadge}${locBadge}</div>
       </div>
       <div class="card-status card-status-ok">✓ Ajouté</div>
     `;
+    div.addEventListener('click', () => window.openBookModal?.(book.id));
     return div;
   }
 
@@ -442,15 +446,24 @@
   }
 
   function existsCard(book) {
+    const authors = Array.isArray(book.authors) ? book.authors.join(', ') : '';
+    const cover = book.cover_url
+      ? `<img src="${escHtml(book.cover_url)}" alt="couverture" class="card-cover" onerror="this.src='/static/img/no-cover.svg'">`
+      : `<img src="/static/img/no-cover.svg" alt="couverture" class="card-cover">`;
     const div = document.createElement('div');
     div.className = 'scan-card scan-card-warn slide-in';
+    div.style.cursor = 'pointer';
     div.innerHTML = `
+      ${cover}
       <div class="card-info">
         <div class="card-title">${escHtml(book.title)}</div>
-        <div class="card-authors">Déjà dans la bibliothèque</div>
+        ${authors ? `<div class="card-authors">${escHtml(authors)}</div>` : ''}
+        ${book.publisher ? `<div class="card-authors" style="color:var(--color-text-muted)">${escHtml(book.publisher)}</div>` : ''}
+        <div class="card-authors" style="color:var(--color-warn,#e07b00)">Déjà dans la bibliothèque</div>
       </div>
-      <div class="card-status card-status-warn">⚠ Existant</div>
+      <div class="card-status card-status-warn">⚠</div>
     `;
+    div.addEventListener('click', () => window.openBookModal?.(book.id));
     return div;
   }
 

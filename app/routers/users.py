@@ -68,7 +68,7 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
     if body.email and cfg.get(db, "mail_new_account"):
         from app.email import mail_new_account
         site_url = cfg.get(db, "site_url") or ""
-        subject, html = mail_new_account(body.username, body.password, site_url)
+        subject, html = mail_new_account(body.username, site_url)
         _try_send(db, body.email, subject, html)
 
     return new_user
@@ -130,7 +130,7 @@ def reset_user_password(user_id: int, request: Request, db: Session = Depends(ge
     if target.email and cfg.get(db, "mail_reset_password"):
         from app.email import mail_reset_password
         site_url = cfg.get(db, "site_url") or ""
-        subject, html = mail_reset_password(target.username, temp_pw, site_url)
+        subject, html = mail_reset_password(target.username, site_url)
         _try_send(db, target.email, subject, html)
 
     return {"temp_password": temp_pw}

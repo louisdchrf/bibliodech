@@ -34,11 +34,14 @@ def book_to_dict(book: Book) -> dict:
 
     site = room.site if room else None
 
+    shelf = book.location  # Shelf object (location_id → shelves)
     loc = {
         "room_id": room.id,
         "room_name": room.name,
         "site_id": site.id if site else None,
         "site_name": site.name if site else None,
+        "shelf_id": shelf.id if shelf else None,
+        "shelf_name": shelf.name if shelf else None,
         "label": f"{site.name} › {room.name}" if site else room.name,
     } if room else None
 

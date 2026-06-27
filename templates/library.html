@@ -413,7 +413,7 @@
       const rooms  = locMore.filter(v => !v.startsWith('site:') && !v.startsWith('shelf:'));
       if (sites.length === 1 && !rooms.length && !shelves.length) params.set('site_id', sites[0]);
       else if (shelves.length === 1 && !rooms.length) params.set('location_id', shelves[0]);
-      else if (rooms.length === 1) params.set('room_id', rooms[0]);
+      else if (rooms.length >= 1) params.set('room_id', rooms.join(','));
     } else if (locChip === 'none') {
       params.set('room_id', 'none');
     }

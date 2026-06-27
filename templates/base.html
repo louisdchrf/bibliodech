@@ -187,10 +187,10 @@
           <span class="nav-avatar nav-avatar-lg" id="account-avatar-preview">
             <!-- rempli par JS -->
           </span>
-          <label class="avatar-upload-btn" title="Changer la photo">
-            <input type="file" id="account-avatar-input" accept="image/*" style="display:none">
+          <button type="button" class="avatar-upload-btn" title="Changer la photo" id="avatar-upload-trigger">
+            <input type="file" id="account-avatar-input" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-          </label>
+          </button>
         </div>
         <div style="flex:1">
           <label style="font-size:.82rem;font-weight:500;display:block;margin-bottom:.35rem">Nom d'utilisateur</label>
@@ -419,6 +419,11 @@
     document.getElementById('account-modal-close')?.addEventListener('click', closeAccountModal);
     document.getElementById('account-modal-cancel')?.addEventListener('click', closeAccountModal);
     accountModal?.addEventListener('click', function(e){ if (e.target === accountModal) closeAccountModal(); });
+
+    // Bouton caméra → ouvre le sélecteur de fichier
+    document.getElementById('avatar-upload-trigger')?.addEventListener('click', function() {
+      avatarInput.click();
+    });
 
     // Aperçu local avant upload
     avatarInput?.addEventListener('change', function() {

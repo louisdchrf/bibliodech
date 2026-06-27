@@ -9,6 +9,11 @@
   </div>
 </div>
 
+<!-- Surmodale zoom couverture -->
+<div id="bm-cover-zoom-overlay" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.85);align-items:center;justify-content:center;cursor:zoom-out" onclick="document.getElementById('bm-cover-zoom-overlay').style.display='none'">
+  <img id="bm-cover-zoom-img" src="" alt="couverture" style="max-height:90vh;max-width:90vw;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.6);object-fit:contain">
+</div>
+
 <!-- Popup couverture -->
 <div id="bm-cover-modal" class="modal-overlay" style="display:none" role="dialog" aria-modal="true">
   <div class="modal-card" style="max-width:420px">
@@ -221,7 +226,7 @@
     const coverSrc = book.cover_url || '/static/img/no-cover.svg';
     content.innerHTML = `
       <div class="modal-header">
-        <img src="${escHtml(coverSrc)}" alt="couverture" class="modal-cover" onerror="this.src='/static/img/no-cover.svg'">
+        <img src="${escHtml(coverSrc)}" alt="couverture" class="modal-cover" onerror="this.src='/static/img/no-cover.svg'" style="cursor:zoom-in" onclick="const o=document.getElementById('bm-cover-zoom-overlay');document.getElementById('bm-cover-zoom-img').src=this.src;o.style.display='flex'">
         <div class="modal-header-info">
           <h2 class="modal-title">${escHtml(book.title)}</h2>
           ${book.subtitle ? `<p class="modal-subtitle">${escHtml(book.subtitle)}</p>` : ''}
@@ -280,6 +285,13 @@
                 ${(locTree.find(s => s.id == book.location?.site_id)?.rooms || []).map(r => `<option value="${r.id}" ${book.location?.room_id == r.id ? 'selected' : ''}>${escHtml(r.name)}</option>`).join('')}
               </select>
             </div>
+          </div>
+          <div class="field">
+            <label>Étagère</label>
+            <select id="bm-loc-shelf" class="input-full">
+              <option value="">— Aucune —</option>
+              ${((locTree.find(s => s.id == book.location?.site_id)?.rooms || []).find(r => r.id == book.location?.room_id)?.shelves || []).map(sh => `<option value="${sh.id}" ${book.location?.shelf_id == sh.id ? 'selected' : ''}>${escHtml(sh.name)}</option>`).join('')}
+            </select>
           </div>
           <div class="modal-actions">
             <button type="submit" class="btn btn-primary">Enregistrer</button>
@@ -421,13 +433,25 @@
     // Cascade localisation
     const mSite = document.getElementById('bm-loc-site');
     const mRoom = document.getElementById('bm-loc-room');
+    const mShelf = document.getElementById('bm-loc-shelf');
+    function updateShelfSelect() {
+      if (!mShelf) return;
+      const site = locTree.find(s => s.id == mSite?.value);
+      const room = (site?.rooms || []).find(r => r.id == mRoom?.value);
+      const shelves = room?.shelves || [];
+      mShelf.innerHTML = '<option value="">— Aucune —</option>'
+        + shelves.map(sh => `<option value="${sh.id}">${escHtml(sh.name)}</option>`).join('');
+      mShelf.disabled = !shelves.length;
+    }
     if (mSite) {
       mSite.addEventListener('change', () => {
         const site = locTree.find(s => s.id == mSite.value);
         mRoom.innerHTML = '<option value="">— Choisir —</option>'
           + (site ? site.rooms.map(r=>`<option value="${r.id}">${escHtml(r.name)}</option>`).join('') : '');
         mRoom.disabled = !site || !site.rooms.length;
+        updateShelfSelect();
       });
+      mRoom.addEventListener('change', updateShelfSelect);
     }
 
     // Enregistrer
@@ -441,7 +465,8 @@
       const seriesId = seriesVal ? parseInt(seriesVal) : null;
       const seriesPosVal = document.getElementById('bm-series-pos')?.value;
       const seriesPos = seriesPosVal !== '' && seriesPosVal !== null ? parseFloat(seriesPosVal) : null;
-      const payload = { title: fd.get('title'), authors: authorsList, publisher: fd.get('publisher')||null, genre: fd.get('genre')||null, room_id: roomId, series_id: seriesId, series_position: seriesPos };
+      const shelfId = document.getElementById('bm-loc-shelf')?.value ? parseInt(document.getElementById('bm-loc-shelf').value) : null;
+      const payload = { title: fd.get('title'), authors: authorsList, publisher: fd.get('publisher')||null, genre: fd.get('genre')||null, room_id: roomId, location_id: shelfId, series_id: seriesId, series_position: seriesPos };
       const res = await fetch(`/api/books/${bookId}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
       const msg = document.getElementById('bm-edit-msg');
       if (res.ok) {
