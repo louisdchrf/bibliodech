@@ -23,26 +23,11 @@
   </div>
 
   <div id="tasks-panel-books">
-    <div class="tasks-list" id="tasks-list">
-      <!-- Tâches planifiables : générées par JS une fois les schedules chargés -->
-      <!-- Tâches non planifiables (statiques) -->
-      <div class="task-card">
-        <div class="task-info">
-          <div class="task-name">Recharger toute la bibliothèque</div>
-          <div class="task-desc">Ré-interroge toutes les sources pour chaque livre avec un ISBN.</div>
-        </div>
-        <div class="task-actions">
-          <span class="task-status" id="status-reenrich-all"></span>
-          <button class="btn btn-ghost btn-sm task-btn" data-task="reenrich-all">Lancer</button>
-        </div>
-      </div>
-    </div>
+    <div class="tasks-list" id="tasks-list-books"></div>
   </div>
 
   <div id="tasks-panel-music" style="display:none">
-    <div class="tasks-list" id="tasks-list-music">
-      <!-- Tâches musique : générées par JS -->
-    </div>
+    <div class="tasks-list" id="tasks-list-music"></div>
   </div>
 </div>
 {% endblock %}
@@ -51,39 +36,82 @@
 <script>
 (function() {
   const INTERVAL_PRESETS = [
-    { label: '15 min',  value: 15 },
-    { label: '30 min',  value: 30 },
-    { label: '1 heure', value: 60 },
+    { label: '15 min',   value: 15 },
+    { label: '30 min',   value: 30 },
+    { label: '1 heure',  value: 60 },
     { label: '6 heures', value: 360 },
-    { label: '12 heures', value: 720 },
-    { label: '24 heures', value: 1440 },
-    { label: '7 jours', value: 10080 },
+    { label: '12 heures',value: 720 },
+    { label: '24 heures',value: 1440 },
+    { label: '7 jours',  value: 10080 },
   ];
 
-  const SCHEDULABLE_BOOKS = [
-    { id: 'reenrich',       name: 'Compléter les livres manquants',            desc: 'Relance l\'enrichissement pour les livres sans titre ou non trouvés lors du scan initial.' },
-    { id: 'fetch-covers',   name: 'Rechercher les couvertures manquantes',     desc: 'Interroge Open Library et Google Books pour télécharger les couvertures des livres qui n\'en ont pas.' },
-    { id: 'refresh-covers', name: 'Re-télécharger toutes les couvertures (HD)',desc: 'Re-télécharge toutes les couvertures en 600px pour améliorer la qualité de l\'OCR et l\'affichage.' },
-    { id: 'clean-authors',  name: 'Normaliser les auteurs',                    desc: 'Convertit les auteurs "Nom, Prénom" → "Prénom Nom" pour tous les livres.' },
-    { id: 'detect-series',  name: 'Détecter les séries',                       desc: 'Regroupe les livres par série selon le titre et les auteurs. Assigne automatiquement les cas certains, propose les cas ambigus dans la page Séries.', expand: true },
-    { id: 'sudoc-series',   name: 'Chercher les séries dans le catalogue',     desc: 'Interroge SUDOC et Open Library par ISBN pour trouver le nom de série. Très efficace pour les BDs françaises.' },
-    { id: 'ocr-series',     name: 'Lire les séries sur les couvertures',       desc: 'Reconnaissance de caractères (OCR Tesseract) sur les couvertures pour trouver le nom de série imprimé sur l\'image. Complète la détection par titre.' },
-    { id: 'clean-series',   name: 'Normaliser les noms de séries',             desc: 'Capitalise la première lettre et supprime les espaces superflus dans les noms de séries.' },
-    { id: 'bnf-series',     name: 'Compléter les séries via la BnF',           desc: 'Pour chaque série avec des trous, interroge la BnF par ISBN pour trouver les tomes manquants et les rattache automatiquement à la série s\'ils sont déjà en bibliothèque.' },
-    { id: 'enrich-genres',  name: 'Récupérer les genres des livres',           desc: 'Interroge SUDOC et BnF par ISBN pour récupérer le genre (BD, Roman, Documentaire…) des livres qui n\'en ont pas encore.' },
-    { id: 'backup',         name: 'Sauvegarder la base de données',            desc: 'Crée une copie de la base de données sur le serveur. Les 20 dernières sauvegardes sont conservées. Gérez-les dans Paramètres > Sauvegardes.' },
+  // ── Définition des groupes ─────────────────────────────────────────────────
+  const GROUPS_BOOKS = [
+    {
+      id: 'g-enrichissement',
+      name: 'Enrichissement',
+      desc: 'Complète les données manquantes : livres non trouvés, genres, format des auteurs.',
+      defaultInterval: 1440,
+      tasks: [
+        { id: 'reenrich',      name: 'Compléter les livres manquants',  desc: 'Relance l\'enrichissement pour les livres sans titre ou non trouvés lors du scan initial.' },
+        { id: 'enrich-genres', name: 'Récupérer les genres',            desc: 'Interroge SUDOC et BnF par ISBN pour récupérer le genre (BD, Roman, Documentaire…).' },
+        { id: 'clean-authors', name: 'Normaliser les auteurs',          desc: 'Convertit les auteurs "Nom, Prénom" → "Prénom Nom" pour tous les livres.' },
+      ],
+    },
+    {
+      id: 'g-couvertures',
+      name: 'Couvertures',
+      desc: 'Télécharge et met à jour les images de couverture.',
+      defaultInterval: 1440,
+      tasks: [
+        { id: 'fetch-covers',   name: 'Rechercher les couvertures manquantes',      desc: 'Interroge Open Library et Google Books pour les livres sans couverture.' },
+        { id: 'refresh-covers', name: 'Re-télécharger toutes les couvertures (HD)', desc: 'Force le re-cache HD de toutes les couvertures pour améliorer l\'affichage.' },
+      ],
+    },
+    {
+      id: 'g-series',
+      name: 'Séries',
+      desc: 'Détecte, enrichit et normalise les séries de la bibliothèque.',
+      defaultInterval: 1440,
+      expandTaskId: 'detect-series',
+      tasks: [
+        { id: 'sudoc-series',  name: 'Chercher dans le catalogue (SUDOC)',  desc: 'Interroge SUDOC et Open Library par ISBN pour trouver le nom de série.' },
+        { id: 'ocr-series',    name: 'Lire les couvertures (OCR)',          desc: 'Reconnaissance de texte sur les couvertures pour trouver le nom de série imprimé.' },
+        { id: 'detect-series', name: 'Détecter les séries',                 desc: 'Regroupe les livres par série selon le titre et les auteurs. Assigne automatiquement les cas certains.', expand: true },
+        { id: 'bnf-series',    name: 'Compléter via la BnF',               desc: 'Pour chaque série avec des trous, interroge la BnF pour trouver les tomes manquants.' },
+        { id: 'clean-series',  name: 'Normaliser les noms de séries',      desc: 'Capitalise la première lettre et supprime les espaces superflus.' },
+      ],
+    },
+    {
+      id: 'g-maintenance',
+      name: 'Maintenance',
+      desc: 'Sauvegarde et rechargement complet de la bibliothèque.',
+      defaultInterval: 1440,
+      tasks: [
+        { id: 'backup',       name: 'Sauvegarder la base de données',  desc: 'Crée une copie de sauvegarde. Les 20 dernières sont conservées.' },
+        { id: 'reenrich-all', name: 'Recharger toute la bibliothèque', desc: 'Ré-interroge toutes les sources pour chaque livre avec un ISBN.', static: true },
+      ],
+    },
   ];
 
-  const SCHEDULABLE_MUSIC = [
-    { id: 'reenrich-discs',      name: 'Compléter les disques manquants',      desc: 'Relance l\'enrichissement sur les disques non trouvés via MusicBrainz et Discogs.' },
-    { id: 'fetch-disc-covers',   name: 'Rechercher les pochettes manquantes',  desc: 'Télécharge les pochettes absentes pour les disques enrichis, via MusicBrainz et Discogs.' },
-    { id: 'refresh-disc-covers', name: 'Re-télécharger toutes les pochettes',  desc: 'Force le re-cache HD de toutes les pochettes de disques.' },
+  const GROUPS_MUSIC = [
+    {
+      id: 'g-music',
+      name: 'Disques',
+      desc: 'Enrichit et met à jour les pochettes de la médiathèque.',
+      defaultInterval: 1440,
+      tasks: [
+        { id: 'reenrich-discs',      name: 'Compléter les disques manquants',     desc: 'Relance l\'enrichissement sur les disques non trouvés.' },
+        { id: 'fetch-disc-covers',   name: 'Rechercher les pochettes manquantes', desc: 'Télécharge les pochettes absentes via MusicBrainz et Discogs.' },
+        { id: 'refresh-disc-covers', name: 'Re-télécharger toutes les pochettes', desc: 'Force le re-cache HD de toutes les pochettes.' },
+      ],
+    },
   ];
 
-  const SCHEDULABLE = [...SCHEDULABLE_BOOKS, ...SCHEDULABLE_MUSIC];
+  // Toutes les tâches individuelles (pour la planification)
+  const ALL_TASKS = [...GROUPS_BOOKS, ...GROUPS_MUSIC].flatMap(g => g.tasks);
+  const ALL_TASK_IDS = ALL_TASKS.map(t => t.id);
 
-  // Tâches planifiables : toutes passent par /api/tasks/run/{id}
-  // Tâches statiques (non planifiables) gardent leur propre endpoint
   const STATIC_TASKS = {
     'reenrich-all': {
       url: '/api/books/re-enrich-all?force=true', method: 'POST',
@@ -93,47 +121,76 @@
 
   let _schedules = {};
 
-  // ── Injecter les cartes planifiables ─────────────────────────────────────
-  function makeTaskCard(t) {
-    const cfg = _schedules[t.id] || { enabled: false, interval_minutes: 60, last_run: null, last_result: null };
-    const lastRun = cfg.last_run
-      ? new Date(cfg.last_run).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
+  // ── Rendu d'une carte groupe ───────────────────────────────────────────────
+  function makeGroupCard(g) {
+    // Déterminer dernier lancement + état auto du groupe (depuis les tâches membres)
+    const memberConfigs = g.tasks.map(t => _schedules[t.id] || {});
+    const anyEnabled = memberConfigs.some(c => c.enabled);
+    const lastRuns = memberConfigs.map(c => c.last_run).filter(Boolean).sort();
+    const lastRun = lastRuns[lastRuns.length - 1];
+    const lastRunFmt = lastRun
+      ? new Date(lastRun).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
       : null;
-    const div = document.createElement('div');
-    div.className = 'task-card' + (t.expand ? ' task-card-expand' : '');
-    div.id = `card-${t.id}`;
-    const btnLabel = t.manualLabel || 'Lancer';
-    const btnId = t.expand ? `btn-${t.id}` : '';
-    div.innerHTML = `
+    // Intervalle commun (premier membre qui en a un, sinon défaut)
+    const interval = memberConfigs.find(c => c.interval_minutes)?.interval_minutes ?? g.defaultInterval;
+
+    const card = document.createElement('div');
+    card.className = 'task-card task-card-expand';
+    card.id = `card-${g.id}`;
+    card.innerHTML = `
       <div class="task-info">
-        <div class="task-name">${escHtml(t.name)}</div>
-        <div class="task-desc">${escHtml(t.desc)}</div>
-        ${lastRun ? `<div style="font-size:.75rem;color:var(--color-text-muted);margin-top:.25rem">Dernier lancement : ${lastRun}${cfg.last_result ? ` — ${escHtml(cfg.last_result)}` : ''}</div>` : ''}
-        <div id="next-run-${t.id}" class="task-next-run"></div>
+        <div class="task-name">${escHtml(g.name)}</div>
+        <div class="task-desc">${escHtml(g.desc)}</div>
+        ${lastRunFmt ? `<div style="font-size:.75rem;color:var(--color-text-muted);margin-top:.25rem">Dernier lancement : ${lastRunFmt}</div>` : ''}
+        <div id="next-run-${g.id}" class="task-next-run"></div>
       </div>
       <div class="task-actions" style="gap:.5rem">
-        <span class="task-status" id="status-${t.id}"></span>
-        ${t.extraBtn || ''}
+        <span class="task-status" id="status-${g.id}"></span>
         <label style="display:flex;align-items:center;gap:.35rem;font-size:.82rem;cursor:pointer;white-space:nowrap">
-          <input type="checkbox" id="sched-enabled-${t.id}" ${cfg.enabled ? 'checked' : ''}>
+          <input type="checkbox" id="sched-enabled-${g.id}" ${anyEnabled ? 'checked' : ''}>
           Auto
         </label>
-        <select id="sched-interval-${t.id}" class="select-input" style="width:auto;font-size:.82rem">
-          ${INTERVAL_PRESETS.map(p => `<option value="${p.value}" ${cfg.interval_minutes === p.value ? 'selected' : ''}>${p.label}</option>`).join('')}
+        <select id="sched-interval-${g.id}" class="select-input" style="width:auto;font-size:.82rem">
+          ${INTERVAL_PRESETS.map(p => `<option value="${p.value}" ${interval === p.value ? 'selected' : ''}>${p.label}</option>`).join('')}
         </select>
-        <button class="btn btn-ghost btn-sm task-btn" ${btnId ? `id="${btnId}"` : ''} data-task="${t.id}">${btnLabel}</button>
+        <button class="btn btn-ghost btn-sm group-run-btn" data-group="${g.id}">Lancer</button>
       </div>
-      ${t.expand ? `<div id="expand-${t.id}" style="display:none;margin-top:1rem;width:100%"></div>` : ''}`;
-    return div;
+      <div id="expand-${g.id}" style="display:none;margin-top:1rem;width:100%">
+        <details>
+          <summary style="font-size:.82rem;color:var(--color-text-muted);cursor:pointer;user-select:none;margin-bottom:.5rem">Étapes détaillées</summary>
+          <div class="tasks-list" style="gap:.4rem;margin-top:.5rem" id="subtasks-${g.id}"></div>
+        </details>
+        <div id="expand-detect-series" style="margin-top:.5rem"></div>
+      </div>`;
+
+    // Sous-tâches individuelles
+    const subList = card.querySelector(`#subtasks-${g.id}`);
+    for (const t of g.tasks) {
+      const cfg = _schedules[t.id] || {};
+      const sub = document.createElement('div');
+      sub.className = 'task-card';
+      sub.style.cssText = 'padding:.6rem 1rem;background:var(--color-surface-2,var(--color-surface));border-radius:8px';
+      sub.innerHTML = `
+        <div class="task-info">
+          <div class="task-name" style="font-size:.88rem">${escHtml(t.name)}</div>
+          <div class="task-desc" style="font-size:.78rem">${escHtml(t.desc)}</div>
+        </div>
+        <div class="task-actions">
+          <span class="task-status" id="status-${t.id}"></span>
+          <button class="btn btn-ghost btn-sm task-btn" data-task="${t.id}" style="font-size:.78rem;padding:.25rem .6rem">Lancer</button>
+        </div>`;
+      subList.appendChild(sub);
+    }
+
+    return card;
   }
 
-  function renderSchedulableCards() {
-    const booksList  = document.getElementById('tasks-list');
-    const firstStatic = booksList.querySelector('.task-card');
-    SCHEDULABLE_BOOKS.forEach(t => booksList.insertBefore(makeTaskCard(t), firstStatic));
-
-    const musicList = document.getElementById('tasks-list-music');
-    SCHEDULABLE_MUSIC.forEach(t => musicList.appendChild(makeTaskCard(t)));
+  function renderGroups(groups, containerId) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = '';
+    for (const g of groups) {
+      container.appendChild(makeGroupCard(g));
+    }
   }
 
   // ── Switcher Bibliothèque / Musique ───────────────────────────────────────
@@ -147,6 +204,7 @@
     });
   });
 
+  // ── Next-run labels ───────────────────────────────────────────────────────
   let _nextRuns = {};
 
   function fmtNextRun(iso) {
@@ -162,36 +220,28 @@
   }
 
   function updateNextRunLabels() {
-    for (const [id, iso] of Object.entries(_nextRuns)) {
-      const el = document.getElementById(`next-run-${id}`);
-      if (el) el.textContent = fmtNextRun(iso) ? `⏰ ${fmtNextRun(iso)}` : '';
+    // Pour les groupes : prochain lancement = le plus tôt parmi les membres
+    for (const g of [...GROUPS_BOOKS, ...GROUPS_MUSIC]) {
+      const el = document.getElementById(`next-run-${g.id}`);
+      if (!el) continue;
+      const times = g.tasks.map(t => _nextRuns[t.id]).filter(Boolean).sort();
+      const fmt = times[0] ? fmtNextRun(times[0]) : null;
+      el.textContent = fmt ? `⏰ ${fmt}` : '';
     }
   }
 
-  async function loadSchedules() {
-    const [r1, r2] = await Promise.all([
-      fetch('/api/tasks/schedules'),
-      fetch('/api/tasks/next-runs'),
-    ]);
-    _schedules = await r1.json();
-    _nextRuns = await r2.json();
-    renderSchedulableCards();
-    wireAutoSave();
-    wireTaskBtns();
-    updateNextRunLabels();
-    setInterval(updateNextRunLabels, 30000);
-  }
-
-  // ── Auto-save à chaque changement ────────────────────────────────────────
+  // ── Auto-save : quand on change le toggle/intervalle d'un groupe ──────────
   let _saveTimer = null;
   async function autoSave() {
     const statusEl = document.getElementById('sched-save-status');
     const body = {};
-    for (const t of SCHEDULABLE) {
-      body[t.id] = {
-        enabled: document.getElementById(`sched-enabled-${t.id}`)?.checked ?? false,
-        interval_minutes: parseInt(document.getElementById(`sched-interval-${t.id}`)?.value ?? '60'),
-      };
+    for (const g of [...GROUPS_BOOKS, ...GROUPS_MUSIC]) {
+      const enabled = document.getElementById(`sched-enabled-${g.id}`)?.checked ?? false;
+      const interval = parseInt(document.getElementById(`sched-interval-${g.id}`)?.value ?? g.defaultInterval);
+      // Propager à toutes les tâches membres (sauf statiques)
+      for (const t of g.tasks) {
+        if (!t.static) body[t.id] = { enabled, interval_minutes: interval };
+      }
     }
     const res = await fetch('/api/tasks/schedules', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -210,23 +260,17 @@
   }
 
   function wireAutoSave() {
-    for (const t of SCHEDULABLE) {
-      document.getElementById(`sched-enabled-${t.id}`)?.addEventListener('change', autoSave);
-      document.getElementById(`sched-interval-${t.id}`)?.addEventListener('change', autoSave);
+    for (const g of [...GROUPS_BOOKS, ...GROUPS_MUSIC]) {
+      document.getElementById(`sched-enabled-${g.id}`)?.addEventListener('change', autoSave);
+      document.getElementById(`sched-interval-${g.id}`)?.addEventListener('change', autoSave);
     }
   }
 
-  // ── Formatage résultats de tâches ────────────────────────────────────────
+  // ── Résultats et détails ───────────────────────────────────────────────────
   function _formatTaskResult(taskId, r) {
     if (taskId === 'detect-series') {
       const a = r.auto_assigned ?? 0, p = r.proposals ?? 0;
       return `${a} assigné${a !== 1 ? 's' : ''}, ${p} proposition${p !== 1 ? 's' : ''}`;
-    }
-    if (taskId === 'reenrich-missing-discs' || taskId === 'reenrich-books') {
-      return `${r.updated ?? 0} / ${r.total ?? 0} enrichis`;
-    }
-    if (taskId === 'fetch-disc-covers' || taskId === 'refresh-disc-covers') {
-      return `${r.updated ?? 0} / ${r.total ?? 0} pochettes`;
     }
     if (typeof r === 'object' && r !== null) {
       const parts = Object.entries(r)
@@ -239,85 +283,138 @@
 
   const _SIGNAL_LABELS = { title: 'titre', source_data: 'métadonnées', prefix: 'préfixe', author: 'auteur', 'author-title': 'auteur+titre' };
 
-  function _renderTaskDetail(taskId, r) {
-    if (taskId === 'detect-series') {
-      const assignments = r.assignments || [];
-      const proposals = r.proposals_detail || [];
-      if (!assignments.length && !proposals.length) return '';
-      let html = '<div style="font-size:.82rem;border-top:1px solid var(--color-border);padding-top:.75rem;display:grid;gap:.75rem">';
-      if (assignments.length) {
-        html += '<div><div style="font-weight:600;margin-bottom:.35rem">Assignations automatiques</div><table style="width:100%;border-collapse:collapse">';
-        html += '<tr style="color:var(--color-text-muted);font-size:.78rem"><th style="text-align:left;padding:.2rem .4rem">Livre</th><th style="text-align:left;padding:.2rem .4rem">Série</th><th style="text-align:left;padding:.2rem .4rem">Signal</th></tr>';
-        for (const a of assignments) {
-          const pos = a.position != null ? ` <span style="color:var(--color-text-muted)">#${a.position}</span>` : '';
-          html += `<tr style="border-top:1px solid var(--color-border-light,var(--color-border))">
-            <td style="padding:.25rem .4rem">${escHtml(a.book)}</td>
-            <td style="padding:.25rem .4rem;font-weight:500">${escHtml(a.series)}${pos}</td>
-            <td style="padding:.25rem .4rem"><span class="badge">${escHtml(_SIGNAL_LABELS[a.signal] || a.signal)}</span></td>
-          </tr>`;
-        }
-        html += '</table></div>';
+  function _renderDetectDetail(r) {
+    const assignments = r.assignments || [];
+    const proposals = r.proposals_detail || [];
+    if (!assignments.length && !proposals.length) return '';
+    let html = '<div style="font-size:.82rem;border-top:1px solid var(--color-border);padding-top:.75rem;display:grid;gap:.75rem">';
+    if (assignments.length) {
+      html += '<div><div style="font-weight:600;margin-bottom:.35rem">Assignations automatiques</div><table style="width:100%;border-collapse:collapse">';
+      html += '<tr style="color:var(--color-text-muted);font-size:.78rem"><th style="text-align:left;padding:.2rem .4rem">Livre</th><th style="text-align:left;padding:.2rem .4rem">Série</th><th style="text-align:left;padding:.2rem .4rem">Signal</th></tr>';
+      for (const a of assignments) {
+        const pos = a.position != null ? ` <span style="color:var(--color-text-muted)">#${a.position}</span>` : '';
+        html += `<tr style="border-top:1px solid var(--color-border-light,var(--color-border))">
+          <td style="padding:.25rem .4rem">${escHtml(a.book)}</td>
+          <td style="padding:.25rem .4rem;font-weight:500">${escHtml(a.series)}${pos}</td>
+          <td style="padding:.25rem .4rem"><span class="badge">${escHtml(_SIGNAL_LABELS[a.signal] || a.signal)}</span></td>
+        </tr>`;
       }
-      if (proposals.length) {
-        html += '<div><div style="font-weight:600;margin-bottom:.35rem">Propositions créées</div>';
-        for (const p of proposals) {
-          const name = p.proposed_name ? `<strong>${escHtml(p.proposed_name)}</strong>` : '<em style="color:var(--color-text-muted)">nom à définir</em>';
-          const books = (p.books || []).map(b => escHtml(b)).join(', ');
-          html += `<div style="padding:.3rem 0;border-top:1px solid var(--color-border-light,var(--color-border))">${name} — ${books} <span class="badge" style="margin-left:.25rem">${escHtml(_SIGNAL_LABELS[p.signal] || p.signal)}</span></div>`;
-        }
-        html += '</div>';
+      html += '</table></div>';
+    }
+    if (proposals.length) {
+      html += '<div><div style="font-weight:600;margin-bottom:.35rem">Propositions créées</div>';
+      for (const p of proposals) {
+        const name = p.proposed_name ? `<strong>${escHtml(p.proposed_name)}</strong>` : '<em style="color:var(--color-text-muted)">nom à définir</em>';
+        const books = (p.books || []).map(b => escHtml(b)).join(', ');
+        html += `<div style="padding:.3rem 0;border-top:1px solid var(--color-border-light,var(--color-border))">${name} — ${books} <span class="badge" style="margin-left:.25rem">${escHtml(_SIGNAL_LABELS[p.signal] || p.signal)}</span></div>`;
       }
       html += '</div>';
-      return html;
     }
-    return '';
+    html += '</div>';
+    return html;
   }
 
-  // ── Boutons Lancer ────────────────────────────────────────────────────────
-  function wireTaskBtns() {
+  // ── Lancer une tâche individuelle ─────────────────────────────────────────
+  async function runTask(taskId) {
+    const statusEl = document.getElementById(`status-${taskId}`);
+    if (statusEl) { statusEl.textContent = '⏳'; statusEl.className = 'task-status task-status-running'; }
+    const staticTask = STATIC_TASKS[taskId];
+    if (staticTask) {
+      const res = await fetch(staticTask.url, { method: staticTask.method });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      const label = staticTask.label(data);
+      if (statusEl) { statusEl.textContent = label; statusEl.className = 'task-status task-status-ok'; }
+      return { label };
+    }
+    const res = await fetch(`/api/tasks/run/${taskId}`, { method: 'POST' });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    const r = data.result || {};
+    const label = _formatTaskResult(taskId, r);
+    if (statusEl) { statusEl.textContent = label; statusEl.className = 'task-status task-status-ok'; }
+    return { label, result: r };
+  }
+
+  // ── Lancer un groupe (tâches en séquence) ────────────────────────────────
+  async function runGroup(groupId) {
+    const group = [...GROUPS_BOOKS, ...GROUPS_MUSIC].find(g => g.id === groupId);
+    if (!group) return;
+
+    const btn = document.querySelector(`[data-group="${groupId}"]`);
+    const statusEl = document.getElementById(`status-${groupId}`);
+    const expandEl = document.getElementById(`expand-${groupId}`);
+
+    btn.disabled = true;
+    expandEl.style.display = '';
+    statusEl.textContent = 'En cours…';
+    statusEl.className = 'task-status task-status-running';
+
+    let completed = 0;
+    const errors = [];
+
+    for (const t of group.tasks) {
+      statusEl.textContent = `${t.name}…`;
+      try {
+        const { result } = await runTask(t.id);
+        completed++;
+        // Afficher le détail de detect-series dans la zone expand
+        if (t.id === 'detect-series' && result) {
+          const detail = _renderDetectDetail(result);
+          const detectEl = document.getElementById('expand-detect-series');
+          if (detectEl && detail) detectEl.innerHTML = detail;
+        }
+      } catch (e) {
+        errors.push(t.name);
+        const statusSubEl = document.getElementById(`status-${t.id}`);
+        if (statusSubEl) { statusSubEl.textContent = 'Erreur'; statusSubEl.className = 'task-status task-status-err'; }
+      }
+    }
+
+    btn.disabled = false;
+    if (errors.length === 0) {
+      statusEl.textContent = `${completed} étape${completed > 1 ? 's' : ''} terminée${completed > 1 ? 's' : ''}`;
+      statusEl.className = 'task-status task-status-ok';
+    } else {
+      statusEl.textContent = `${errors.length} erreur${errors.length > 1 ? 's' : ''}`;
+      statusEl.className = 'task-status task-status-err';
+    }
+    setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'task-status'; }, 5000);
+  }
+
+  // ── Câblage des boutons ───────────────────────────────────────────────────
+  function wireBtns() {
+    // Boutons groupe
+    document.querySelectorAll('.group-run-btn').forEach(btn => {
+      btn.addEventListener('click', () => runGroup(btn.dataset.group));
+    });
+    // Boutons sous-tâche
     document.querySelectorAll('.task-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
-        const taskId = btn.dataset.task;
-        const statusEl = document.getElementById(`status-${taskId}`);
         btn.disabled = true; btn.textContent = '⏳';
-        if (statusEl) { statusEl.textContent = 'En cours…'; statusEl.className = 'task-status task-status-running'; }
-        try {
-          const staticTask = STATIC_TASKS[taskId];
-          let label;
-          if (staticTask) {
-            const res = await fetch(staticTask.url, { method: staticTask.method });
-            if (!res.ok) throw new Error(await res.text());
-            const data = await res.json();
-            label = staticTask.label(data);
-          } else {
-            // Tâche planifiable → endpoint unifié
-            const res = await fetch(`/api/tasks/run/${taskId}`, { method: 'POST' });
-            if (!res.ok) throw new Error(await res.text());
-            const data = await res.json();
-            const r = data.result || {};
-            label = _formatTaskResult(taskId, r);
-            // Détail expandable si disponible
-            const expandEl = document.getElementById(`expand-${taskId}`);
-            if (expandEl) {
-              const detail = _renderTaskDetail(taskId, r);
-              if (detail) {
-                expandEl.innerHTML = detail;
-                expandEl.style.display = '';
-              }
-            }
-          }
-          if (statusEl) { statusEl.textContent = label; statusEl.className = 'task-status task-status-ok'; }
-        } catch {
-          if (statusEl) { statusEl.textContent = 'Erreur'; statusEl.className = 'task-status task-status-err'; }
-        } finally {
-          btn.disabled = false; btn.textContent = 'Lancer';
-        }
+        try { await runTask(btn.dataset.task); }
+        catch { const s = document.getElementById(`status-${btn.dataset.task}`); if(s){ s.textContent='Erreur'; s.className='task-status task-status-err'; } }
+        finally { btn.disabled = false; btn.textContent = 'Lancer'; }
       });
     });
   }
 
-  // Lancer les tâches non planifiables (statiques) + charger les schedules
-  wireTaskBtns();
+  // ── Init ──────────────────────────────────────────────────────────────────
+  async function loadSchedules() {
+    const [r1, r2] = await Promise.all([
+      fetch('/api/tasks/schedules'),
+      fetch('/api/tasks/next-runs'),
+    ]);
+    _schedules = await r1.json();
+    _nextRuns = await r2.json();
+    renderGroups(GROUPS_BOOKS, 'tasks-list-books');
+    renderGroups(GROUPS_MUSIC, 'tasks-list-music');
+    wireAutoSave();
+    wireBtns();
+    updateNextRunLabels();
+    setInterval(updateNextRunLabels, 30000);
+  }
+
   loadSchedules();
 })();
 </script>
