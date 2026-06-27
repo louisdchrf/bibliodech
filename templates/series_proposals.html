@@ -304,6 +304,7 @@ async function rejectProposal(id) {
   }
 }
 
+window.onBookModalSaved = () => loadProposals();
 loadProposals();
 
 // Délégation d'événement pour les boutons OCR et SUDOC (générés dynamiquement)

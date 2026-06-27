@@ -457,6 +457,7 @@
   });
   sortBy.addEventListener('change', render);
 
+  window.onBookModalSaved = () => loadSeries();
   loadLocTree();
   loadSeries();
 
