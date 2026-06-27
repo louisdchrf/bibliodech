@@ -356,7 +356,9 @@
           const r = await fetch(`/api/books/${book.id}/apply-source/${sid}`, {method:'POST'});
           const data = await r.json();
           if (!r.ok) { btn.disabled=false; btn.textContent='✓ Utiliser'; btn.title=data.detail||'Erreur'; return; }
-          // Mettre à jour le livre local et re-rendre
+          // Rafraîchir allSeries au cas où une nouvelle série aurait été créée
+          const sr = await fetch('/api/series');
+          if (sr.ok) allSeries = await sr.json();
           Object.assign(book, data);
           renderModal(book);
           window.onBookModalSaved?.();
