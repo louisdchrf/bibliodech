@@ -43,6 +43,15 @@
     <button id="cam-torch" class="btn cam-torch-btn" style="display:none" title="Flash">🔦</button>
     <button id="cam-close" class="btn cam-close-btn">✕ Fermer</button>
   </div>
+  <!-- Overlay BarcodeDetector natif -->
+  <div id="native-cam-overlay" class="cam-overlay" style="display:none" aria-hidden="true">
+    <video id="native-cam-video" autoplay playsinline muted style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>
+    <div class="cam-frame-overlay"><div class="cam-laser"></div></div>
+    <div class="cam-live-feed" id="native-cam-feed"></div>
+    <div style="position:absolute;top:.75rem;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.55);color:#fff;font-size:.72rem;padding:.25rem .6rem;border-radius:99px;white-space:nowrap">BarcodeDetector natif</div>
+    <button id="native-cam-close" class="btn cam-close-btn">✕ Fermer</button>
+  </div>
+
   <!-- Fallback iOS : input fichier caméra -->
   <input type="file" id="cam-file-input" accept="image/*" capture="environment" style="display:none">
 
@@ -57,9 +66,13 @@
         placeholder="Saisir un ISBN…"
         class="isbn-input"
       >
-      <button id="cam-btn" class="btn btn-primary cam-btn" title="Scanner avec la caméra">
+      <button id="cam-btn" class="btn btn-primary cam-btn" title="Scanner avec Quagga (JS)">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-        <span class="cam-btn-label">Caméra</span>
+        <span class="cam-btn-label">Quagga</span>
+      </button>
+      <button id="native-cam-btn" class="btn btn-secondary cam-btn" title="Scanner avec BarcodeDetector natif" style="display:none">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 7h2v10H7zm4 0h1v10h-1zm3 0h3v10h-3z"/></svg>
+        <span class="cam-btn-label">Natif</span>
       </button>
     </div>
     <p class="scan-hint" id="scan-hint-text">Saisissez un ISBN ou utilisez la caméra</p>
@@ -861,6 +874,125 @@
   });
   camOverlay.addEventListener('click', (e) => { if (e.target === camOverlay) stopCamera(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && liveActive) stopCamera(); });
+
+  // ── BarcodeDetector natif ─────────────────────────────────────────────────
+  const nativeCamBtn     = document.getElementById('native-cam-btn');
+  const nativeCamOverlay = document.getElementById('native-cam-overlay');
+  const nativeCamClose   = document.getElementById('native-cam-close');
+  const nativeCamVideo   = document.getElementById('native-cam-video');
+  const nativeCamFeed    = document.getElementById('native-cam-feed');
+  let nativeStream       = null;
+  let nativeRafId        = null;
+  let nativeActive       = false;
+  let nativeLastScanned  = null;
+  let nativeLastAt       = 0;
+
+  if ('BarcodeDetector' in window) {
+    nativeCamBtn.style.display = '';
+  }
+
+  async function startNative() {
+    if (!('BarcodeDetector' in window)) return;
+    nativeCamOverlay.style.display = 'flex';
+    nativeCamOverlay.removeAttribute('aria-hidden');
+    document.body.style.overflow = 'hidden';
+    nativeCamFeed.innerHTML = '';
+
+    try {
+      nativeStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 },
+                 focusMode: 'continuous' },
+      });
+      nativeCamVideo.srcObject = nativeStream;
+      await nativeCamVideo.play();
+    } catch {
+      stopNative();
+      return;
+    }
+
+    const detector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
+    nativeActive = true;
+
+    async function tick() {
+      if (!nativeActive) return;
+      try {
+        const barcodes = await detector.detect(nativeCamVideo);
+        for (const bc of barcodes) {
+          const raw = bc.rawValue.replace(/\D/g, '');
+          if (!raw || (raw.length !== 13 && raw.length !== 10)) continue;
+          if (!isValidBarcode(raw)) continue;
+          const now = Date.now();
+          if (raw === nativeLastScanned && now - nativeLastAt < DEBOUNCE_MS) continue;
+
+          if (!isBookBarcode(raw)) {
+            if (_pendingCode === raw) { _pendingCount++; }
+            else { _pendingCode = raw; _pendingCount = 1; }
+            if (_pendingCount < MUSIC_CONFIRM_COUNT) continue;
+            _pendingCode = null; _pendingCount = 0;
+          }
+
+          nativeLastScanned = raw; nativeLastAt = Date.now();
+          if (navigator.vibrate) navigator.vibrate(240);
+
+          const toast = document.createElement('div');
+          toast.className = 'cam-toast cam-toast-pending';
+          toast.innerHTML = `<span class="cam-toast-spinner"></span><span>${raw}</span>`;
+          nativeCamFeed.insertBefore(toast, nativeCamFeed.firstChild);
+
+          const room_id = resolveRoomId();
+          const location_id = resolveLocationId();
+
+          if (isBookBarcode(raw)) {
+            fetch('/api/scan', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ isbn: raw, room_id, location_id }),
+            }).then(async r => {
+              if (!r.ok) {
+                let detail = `HTTP ${r.status}`;
+                try { const d = await r.json(); detail = d.detail || detail; } catch (_) {}
+                if (r.status === 401) { window.location.href = '/login'; return; }
+                throw new Error(detail);
+              }
+              return r.json();
+            }).then(data => {
+              if (!data) return;
+              if (data.status === 'exists') {
+                toast.className = 'cam-toast cam-toast-warn';
+                toast.innerHTML = `⚠ Déjà scanné — <strong>${escHtml(data.book?.title || raw)}</strong>`;
+                dismissToast(toast, 3000);
+                const existing = feed.querySelector(`[data-book-id="${data.book?.id}"]`);
+                if (!existing) prependCard(bookCard(data.book));
+              } else if (data.status === 'pending') {
+                pollToast(toast, data.book.id, raw);
+              }
+            }).catch(err => {
+              toast.innerHTML = `✗ ${escHtml(err.message || 'Erreur')} — ${raw}`;
+              toast.className = 'cam-toast cam-toast-error';
+              dismissToast(toast, 4000);
+            });
+          }
+          break;
+        }
+      } catch (_) {}
+      nativeRafId = requestAnimationFrame(tick);
+    }
+    nativeRafId = requestAnimationFrame(tick);
+  }
+
+  function stopNative() {
+    nativeActive = false;
+    if (nativeRafId) { cancelAnimationFrame(nativeRafId); nativeRafId = null; }
+    if (nativeStream) { nativeStream.getTracks().forEach(t => t.stop()); nativeStream = null; }
+    nativeCamVideo.srcObject = null;
+    nativeCamOverlay.style.display = 'none';
+    nativeCamOverlay.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+  }
+
+  nativeCamBtn.addEventListener('click', startNative);
+  nativeCamClose.addEventListener('click', stopNative);
+  nativeCamOverlay.addEventListener('click', (e) => { if (e.target === nativeCamOverlay) stopNative(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && nativeActive) stopNative(); });
 
   // ── Init ─────────────────────────────────────────────────────────────────
   updateScanEnabled();
