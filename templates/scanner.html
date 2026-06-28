@@ -59,6 +59,7 @@
     <div class="cam-frame-overlay"><div class="cam-laser"></div></div>
     <div class="cam-live-feed" id="zxing-cam-feed"></div>
     <div style="position:absolute;top:.75rem;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.55);color:#fff;font-size:.72rem;padding:.25rem .6rem;border-radius:99px;white-space:nowrap">ZXing</div>
+    <button id="zxing-cam-torch" class="btn cam-torch-btn" style="display:none" title="Flash">🔦</button>
     <button id="zxing-cam-close" class="btn cam-close-btn">✕ Fermer</button>
   </div>
 
@@ -1013,10 +1014,12 @@
   const zxingCamClose   = document.getElementById('zxing-cam-close');
   const zxingCamVideo   = document.getElementById('zxing-cam-video');
   const zxingCamFeed    = document.getElementById('zxing-cam-feed');
+  const zxingCamTorch   = document.getElementById('zxing-cam-torch');
   let zxingReader       = null;
   let zxingActive       = false;
   let zxingLastScanned  = null;
   let zxingLastAt       = 0;
+  let zxingTorchOn      = false;
 
   function loadZXing() {
     if (window.ZXingBrowser) return Promise.resolve(window.ZXingBrowser);
@@ -1049,6 +1052,20 @@
     zxingReader = new ZXingBrowser.BrowserMultiFormatReader(hints, {
       delayBetweenScanAttempts: 100,
     });
+
+    // Torch : check après que la vidéo démarre
+    zxingCamVideo.addEventListener('loadedmetadata', () => {
+      const stream = zxingCamVideo.srcObject;
+      if (!stream) return;
+      const track = stream.getVideoTracks()[0];
+      if (!track) return;
+      const caps = track.getCapabilities ? track.getCapabilities() : {};
+      if (caps.torch) {
+        zxingCamTorch.style.display = 'block';
+        zxingTorchOn = false;
+        zxingCamTorch.classList.remove('cam-torch-on');
+      }
+    }, { once: true });
 
     try {
       await zxingReader.decodeFromVideoDevice(null, zxingCamVideo, (result, err) => {
@@ -1115,12 +1132,27 @@
     try { zxingReader?.reset(); } catch (_) {}
     zxingReader = null;
     zxingCamVideo.srcObject = null;
+    zxingTorchOn = false;
+    zxingCamTorch.style.display = 'none';
+    zxingCamTorch.classList.remove('cam-torch-on');
     zxingCamOverlay.style.display = 'none';
     zxingCamOverlay.setAttribute('aria-hidden', 'true');
     document.body.style.overflow = '';
   }
 
   zxingCamBtn.addEventListener('click', startZXing);
+  zxingCamTorch.addEventListener('click', async () => {
+    const stream = zxingCamVideo.srcObject;
+    const track = stream?.getVideoTracks()[0];
+    if (!track) return;
+    zxingTorchOn = !zxingTorchOn;
+    try {
+      await track.applyConstraints({ advanced: [{ torch: zxingTorchOn }] });
+      zxingCamTorch.classList.toggle('cam-torch-on', zxingTorchOn);
+      zxingCamTorch.title = zxingTorchOn ? 'Éteindre le flash' : 'Flash';
+    } catch { zxingTorchOn = !zxingTorchOn; }
+  });
+
   zxingCamClose.addEventListener('click', stopZXing);
   zxingCamOverlay.addEventListener('click', (e) => { if (e.target === zxingCamOverlay) stopZXing(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && zxingActive) stopZXing(); });
