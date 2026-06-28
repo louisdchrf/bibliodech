@@ -156,6 +156,18 @@
           <button type="button" class="btn btn-ghost" id="sm-merge-open-btn">Fusionner…</button>
           ${isAdmin ? `<button type="button" id="sm-delete-btn" class="btn btn-danger">Supprimer la série</button>` : ''}
         </div>
+        ${isAdmin ? `
+        <div id="sm-delete-confirm" style="display:none;margin-top:.75rem;padding:.75rem 1rem;background:var(--color-surface-2);border-radius:8px;border:1px solid var(--color-danger,#d93025)">
+          <div style="font-weight:600;margin-bottom:.5rem;color:var(--color-danger,#d93025)">Confirmer la suppression</div>
+          <label style="display:flex;align-items:center;gap:.5rem;margin-bottom:.75rem;cursor:pointer;font-size:.9rem">
+            <input type="checkbox" id="sm-delete-books-chk">
+            Supprimer aussi les <strong id="sm-delete-books-count"></strong> ouvrage${(series.books?.length??0)>1?'s':''} liés
+          </label>
+          <div style="display:flex;gap:.5rem">
+            <button type="button" id="sm-delete-confirm-btn" class="btn btn-danger btn-sm">Confirmer</button>
+            <button type="button" id="sm-delete-cancel-btn" class="btn btn-ghost btn-sm">Annuler</button>
+          </div>
+        </div>` : ''}
         <p id="sm-save-msg" class="edit-msg" style="margin-top:.5rem"></p>` : ''}
       </form>
     `;
@@ -257,14 +269,24 @@
     });
 
     if (isAdmin) {
-      document.getElementById('sm-delete-btn')?.addEventListener('click', async () => {
-        const name = document.getElementById('sm-title').textContent;
-        const count = series.books?.length ?? 0;
-        const msg = count > 0
-          ? `Supprimer la série "${name}" ?\n${count} livre${count > 1 ? 's' : ''} seront détachés (non supprimés).`
-          : `Supprimer la série vide "${name}" ?`;
-        if (!confirm(msg)) return;
-        const res = await fetch(`/api/series/${series.id}`, { method: 'DELETE' });
+      const deleteConfirm = document.getElementById('sm-delete-confirm');
+      const deleteBooksCnt = document.getElementById('sm-delete-books-count');
+      const count = series.books?.length ?? 0;
+      if (deleteBooksCnt) deleteBooksCnt.textContent = count;
+
+      document.getElementById('sm-delete-btn')?.addEventListener('click', () => {
+        deleteConfirm.style.display = deleteConfirm.style.display === 'none' ? '' : 'none';
+      });
+
+      document.getElementById('sm-delete-cancel-btn')?.addEventListener('click', () => {
+        deleteConfirm.style.display = 'none';
+        document.getElementById('sm-delete-books-chk').checked = false;
+      });
+
+      document.getElementById('sm-delete-confirm-btn')?.addEventListener('click', async () => {
+        const deleteBooks = document.getElementById('sm-delete-books-chk').checked;
+        const url = `/api/series/${series.id}${deleteBooks ? '?delete_books=true' : ''}`;
+        const res = await fetch(url, { method: 'DELETE' });
         if (res.ok || res.status === 204) {
           closeModal();
           window.onSeriesModalDeleted?.();

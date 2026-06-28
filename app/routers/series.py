@@ -1152,7 +1152,7 @@ def merge_series(series_id: int, target_id: int, request: Request, db: Session =
 
 
 @router.delete("/api/series/{series_id}", status_code=204)
-def delete_series(series_id: int, request: Request, db: Session = Depends(get_db)):
+def delete_series(series_id: int, request: Request, db: Session = Depends(get_db), delete_books: bool = False):
     from fastapi import HTTPException
     from app.auth import require_admin
     user = get_current_user(request, db)
@@ -1160,9 +1160,13 @@ def delete_series(series_id: int, request: Request, db: Session = Depends(get_db
     series = db.query(Series).filter(Series.id == series_id).first()
     if not series:
         raise HTTPException(404, "Série introuvable")
-    for book in series.books:
-        book.series_id = None
-        book.series_position = None
+    if delete_books:
+        for book in list(series.books):
+            db.delete(book)
+    else:
+        for book in series.books:
+            book.series_id = None
+            book.series_position = None
     db.query(SeriesProposal).filter(SeriesProposal.existing_series_id == series_id).delete()
     db.delete(series)
     db.commit()
