@@ -558,13 +558,17 @@
       inputStream: {
         type: 'LiveStream',
         target: document.getElementById('quagga-viewport'),
-        constraints: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 480 } },
-        area: { top: '25%', right: '11%', left: '11%', bottom: '25%' },
+        constraints: {
+          facingMode: 'environment',
+          width: { ideal: 1280 }, height: { ideal: 720 },
+          advanced: [{ focusMode: 'continuous' }],
+        },
+        area: { top: '30%', right: '15%', left: '15%', bottom: '30%' },
       },
       decoder: { readers: ['ean_reader'] },
-      locator: { patchSize: 'medium', halfSample: true },
+      locator: { patchSize: 'large', halfSample: false },
       locate: true,
-      frequency: 20,
+      frequency: 10,
     }, err => {
       if (err) {
         stopCamera();
