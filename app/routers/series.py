@@ -1432,6 +1432,13 @@ async def _bnf_check_one_series(series: Series, db) -> dict:
     Retourne un dict avec volumes_found, isbn_by_volume, in_library, assigned.
     """
     ns_map = {"srw": "http://www.loc.gov/zing/srw/", "mxc": "info:lc/xmlns/marcxchange-v2"}
+    # Numéro max possédé en base (pour filtrer les numéros éditoriaux aberrants)
+    owned_positions = [int(b.series_position) for b in series.books
+                       if b.series_position is not None and b.series_position == int(b.series_position)]
+    max_owned = max(owned_positions) if owned_positions else 0
+    # On accepte jusqu'à max(max_owned * 3, max_owned + 10, 20) — filtre les numéros de collection éditoriaux
+    vol_cap = max(max_owned * 3, max_owned + 10, 20)
+
     volumes_found: set[int] = set()
     titles_found: dict[int, str] = {}
     isbn_by_volume: dict[int, str] = {}
@@ -1520,7 +1527,7 @@ async def _bnf_check_one_series(series: Series, db) -> dict:
                     series_match = True
                     try:
                         n = int(re.sub(r"[^\d]", "", subs.get("v", "") or ""))
-                        if 0 < n < 500:
+                        if 0 < n <= vol_cap:
                             vol_num = n
                     except ValueError:
                         pass
@@ -1528,7 +1535,7 @@ async def _bnf_check_one_series(series: Series, db) -> dict:
                     series_match = True
                     try:
                         n = int(re.sub(r"[^\d]", "", subs.get("v", "") or ""))
-                        if 0 < n < 500:
+                        if 0 < n <= vol_cap:
                             vol_num = n
                     except ValueError:
                         pass
