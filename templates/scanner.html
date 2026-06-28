@@ -1039,12 +1039,14 @@
 
     zxingActive = true;
     const hints = new Map();
-    hints.set(ZXingBrowser.DecodeHintType.POSSIBLE_FORMATS, [
-      ZXingBrowser.BarcodeFormat.EAN_13,
-      ZXingBrowser.BarcodeFormat.EAN_8,
-    ]);
-    hints.set(ZXingBrowser.DecodeHintType.TRY_HARDER, true);
-    zxingReader = new ZXingBrowser.BrowserMultiFormatOneDReader(hints, {
+    if (ZXingBrowser.DecodeHintType && ZXingBrowser.BarcodeFormat) {
+      hints.set(ZXingBrowser.DecodeHintType.POSSIBLE_FORMATS, [
+        ZXingBrowser.BarcodeFormat.EAN_13,
+        ZXingBrowser.BarcodeFormat.EAN_8,
+      ]);
+      hints.set(ZXingBrowser.DecodeHintType.TRY_HARDER, true);
+    }
+    zxingReader = new ZXingBrowser.BrowserMultiFormatReader(hints, {
       delayBetweenScanAttempts: 100,
     });
 
