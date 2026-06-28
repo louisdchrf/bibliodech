@@ -1321,7 +1321,7 @@ def get_missing_volumes(request: Request, db: Session = Depends(get_db)):
             [b for b in s.books if b.series_position is not None],
             key=lambda b: b.series_position,
         )
-        if len(books_with_pos) < 2:
+        if len(books_with_pos) < 1:
             continue
         positions = [int(b.series_position) for b in books_with_pos if b.series_position == int(b.series_position)]
         if not positions:
@@ -1619,7 +1619,7 @@ async def _bnf_series_logic(db, task_id: str = "bnf-series") -> dict:
     """
     from app import scheduler as sched
 
-    # Séries ayant au moins 2 livres avec position et au moins un trou
+    # Toutes les séries ayant au moins 1 livre avec position
     all_series = db.query(Series).all()
     series_with_gaps: list[Series] = []
     for s in all_series:
@@ -1627,10 +1627,8 @@ async def _bnf_series_logic(db, task_id: str = "bnf-series") -> dict:
             int(b.series_position) for b in s.books
             if b.series_position is not None and b.series_position == int(b.series_position)
         ))
-        if len(positions) >= 2:
-            min_p, max_p = min(positions), max(positions)
-            if any(i not in set(positions) for i in range(min_p, max_p + 1)):
-                series_with_gaps.append(s)
+        if len(positions) >= 1:
+            series_with_gaps.append(s)
 
     total = len(series_with_gaps)
     total_assigned = 0
