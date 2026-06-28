@@ -799,6 +799,13 @@
   }
 
   function stopCamera() {
+    if (torchOn) {
+      try {
+        const track = Quagga.CameraAccess?.getActiveTrack();
+        if (track) track.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {});
+      } catch (_) {}
+      torchOn = false;
+    }
     if (liveActive) { try { Quagga.offDetected(onBarcodeDetected); Quagga.stop(); } catch(_){} liveActive = false; }
     camOverlay.style.display = 'none';
     camOverlay.setAttribute('aria-hidden', 'true');
@@ -1129,10 +1136,16 @@
 
   function stopZXing() {
     zxingActive = false;
+    if (zxingTorchOn) {
+      try {
+        const track = zxingCamVideo.srcObject?.getVideoTracks()[0];
+        if (track) track.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {});
+      } catch (_) {}
+      zxingTorchOn = false;
+    }
     try { zxingReader?.reset(); } catch (_) {}
     zxingReader = null;
     zxingCamVideo.srcObject = null;
-    zxingTorchOn = false;
     zxingCamTorch.style.display = 'none';
     zxingCamTorch.classList.remove('cam-torch-on');
     zxingCamOverlay.style.display = 'none';
