@@ -566,9 +566,9 @@
         area: { top: '30%', right: '15%', left: '15%', bottom: '30%' },
       },
       decoder: { readers: ['ean_reader'] },
-      locator: { patchSize: 'large', halfSample: false },
+      locator: { patchSize: 'medium', halfSample: true },
       locate: true,
-      frequency: 10,
+      frequency: 20,
     }, err => {
       if (err) {
         stopCamera();
