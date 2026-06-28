@@ -1038,7 +1038,15 @@
     try { await loadZXing(); } catch { stopZXing(); return; }
 
     zxingActive = true;
-    zxingReader = new ZXingBrowser.BrowserMultiFormatReader();
+    const hints = new Map();
+    hints.set(ZXingBrowser.DecodeHintType.POSSIBLE_FORMATS, [
+      ZXingBrowser.BarcodeFormat.EAN_13,
+      ZXingBrowser.BarcodeFormat.EAN_8,
+    ]);
+    hints.set(ZXingBrowser.DecodeHintType.TRY_HARDER, true);
+    zxingReader = new ZXingBrowser.BrowserMultiFormatOneDReader(hints, {
+      delayBetweenScanAttempts: 100,
+    });
 
     try {
       await zxingReader.decodeFromVideoDevice(null, zxingCamVideo, (result, err) => {
