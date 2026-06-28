@@ -390,7 +390,7 @@
     // Boutons sous-tâche
     document.querySelectorAll('.task-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
-        btn.disabled = true; btn.textContent = '⏳';
+        btn.disabled = true;
         try { await runTask(btn.dataset.task); }
         catch { const s = document.getElementById(`status-${btn.dataset.task}`); if(s){ s.textContent='Erreur'; s.className='task-status task-status-err'; } }
         finally { btn.disabled = false; btn.textContent = 'Lancer'; }
