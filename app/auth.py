@@ -177,7 +177,7 @@ def bootstrap_admin(db: Session) -> None:
         password_hash=hash_password(admin_password),
         role="admin",
         is_active=True,
-        must_change_password=True,
+        must_change_password=False,
         created_at=datetime.utcnow(),
     )
     db.add(admin)
