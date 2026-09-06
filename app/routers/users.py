@@ -149,8 +149,12 @@ def change_own_password(body: dict, request: Request, db: Session = Depends(get_
     new_pw = body.get("new_password", "").strip()
     confirm_pw = body.get("confirm_password", "").strip()
 
-    if not verify_password(old_pw, user.password_hash):
-        raise HTTPException(status_code=403, detail="Mot de passe actuel incorrect")
+    # Lors du changement forcé (premier login avec mot de passe temporaire),
+    # l'utilisateur vient de s'authentifier avec ce mot de passe : pas besoin
+    # de le lui redemander, et le formulaire dédié ne propose pas ce champ.
+    if not user.must_change_password:
+        if not verify_password(old_pw, user.password_hash):
+            raise HTTPException(status_code=403, detail="Mot de passe actuel incorrect")
     if len(new_pw) < 6:
         raise HTTPException(status_code=422, detail="Le nouveau mot de passe doit faire au moins 6 caractères")
     if new_pw != confirm_pw:
